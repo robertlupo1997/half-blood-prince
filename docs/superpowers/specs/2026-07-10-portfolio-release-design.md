@@ -63,6 +63,11 @@ Ship the repo public at v0.1.0 as a launch-first portfolio project:
 - [x] Repair corrupt `.git` (stale `config.lock`, missing `objects/`),
   branch `main`.
 - [x] Baseline commit of as-received state.
+- [ ] Remove non-portfolio artifacts from the tree (per Opus review):
+  `Half-Blood-Prince-Developer-Handoff.docx` and
+  `docs/BUILD_TRANSCRIPT.md` — `git rm --cached` + `.gitignore`, local
+  copies kept. They remain in baseline-commit history; Phase 5 decides
+  whether to squash history before the public push.
 - [ ] Add `ruff` + `mypy` config to `pyproject.toml` dev extras; fix or
   explicitly waive initial violations.
 - [ ] GitHub Actions workflow: pytest + ruff + mypy on push/PR (matrix:
@@ -88,7 +93,9 @@ CLAUDE.md's claims; each verifies against code.
 4. **Security & robustness:** `web_preview.py` XSS (verify the
    `html.escape` claim), regex catastrophic backtracking, path handling,
    and the LLM-output trust boundary (`target_text` flows into regex and
-   PDF search).
+   PDF search). Also dependency hygiene: `pyproject.toml` has no upper
+   bounds or lockfile — recommend a pin policy appropriate for a public
+   repo.
 5. **API usage:** Validate against current Anthropic SDK docs (not
    memory): model IDs (`claude-sonnet-4-20250514` default is stale),
    tool_choice semantics, max_tokens, SDK built-in retry behavior, error
@@ -126,12 +133,18 @@ Built on verified ground, each with tests:
 - **Retry/backoff:** exponential backoff + jitter for 429/500/529 —
   designed relative to the SDK's built-in retries (audit lens 5 determines
   what is actually missing rather than duplicating SDK behavior).
+  Determine the SDK's current `max_retries` default (the Python SDK
+  retries transient errors by default) and design app-level backoff to
+  complement it — never shadow or disable it.
 - **Async page processing:** `AsyncAnthropic` + bounded semaphore (default
   ~4 concurrent). Cross-page context semantics: pages run in waves of the
   concurrency width; the running INVENTION/WARNING notes list updates
-  between waves, not within one. Strictly sequential accumulation remains
-  available via `--concurrency 1`. This trade-off is documented in
-  ARCHITECTURE.md.
+  between waves, not within one. Named risk: pages within one wave cannot
+  see each other's notes, so a concept repeated across a wave can generate
+  redundant INVENTION/WARNING entries; mitigation: dedupe `running_notes`
+  (normalized-text comparison) at each inter-wave sync. Strictly
+  sequential accumulation remains available via `--concurrency 1`. This
+  trade-off is documented in ARCHITECTURE.md.
 - **Collision detection:** track occupied margin regions per page; shift
   or drop overlapping notes deterministically.
 - **Input validation:** PDF magic bytes before `fitz.open`; friendly
@@ -156,11 +169,21 @@ Built on verified ground, each with tests:
   short IP note (Snape persona framed as homage/parody, same posture as
   the Riddle project). Remove or relocate the `.docx` handoff and other
   non-portfolio artifacts.
+- **MUST (security, before any public push):** the committed
+  `.claude/settings.json` sets `"defaultMode": "bypassPermissions"`,
+  which anyone cloning the repo would inherit when running Claude Code
+  in it. Remove `defaultMode` (and re-audit the allow list) from the
+  committed file; Trey's personal bypass preference moves to gitignored
+  `.claude/settings.local.json`. Flagged by automated security review
+  2026-07-10.
 - **Launch drafts:** Show HN title + first comment, r/Python post, X
   thread — committed under `launch/`.
 
 ### Phase 5 — Release
 
+- Decide whether to squash/rebase local history before the first public
+  push (drops the baseline-commit blobs of the removed `.docx` and build
+  transcript; costs the "built in the open" commit narrative).
 - Tag `v0.1.0`, push to GitHub, enable Pages, verify CI green and all
   README links live. User posts launch content when ready.
 
@@ -179,9 +202,13 @@ Built on verified ground, each with tests:
 - **API cost:** E2E + gallery generation spends a few dollars on the
   user's key; per-page cost measured on the fixture first, and gallery page
   counts chosen accordingly.
-- **IP/trademark:** project name and persona reference Harry Potter.
-  Mitigation: homage/parody note, no copyrighted book text in the gallery
-  (public domain only), precedent: Riddle.
+- **IP/trademark:** project name and persona reference Harry Potter
+  ("Half-Blood Prince" and "Snape" are WB/Rowling marks). Mitigation: a
+  concrete README disclaimer — "Half-Blood Prince is a fan-made homage to
+  a gag from the Harry Potter books. It is not affiliated with, or
+  endorsed by, Warner Bros. or J.K. Rowling." — plus no copyrighted book
+  text anywhere in the repo or gallery (public domain only). Precedent:
+  the Riddle project ships the same disclaimer posture.
 - **WSL /mnt/c performance:** installs and test runs are slower on the
   Windows mount; acceptable for this project size. Venv already created at
   `.venv/`.

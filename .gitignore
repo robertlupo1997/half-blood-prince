@@ -44,3 +44,8 @@ preview.html
 
 # Session artifacts
 thoughts/
+*.docx
+docs/BUILD_TRANSCRIPT.md
+
+# SDD scratch
+.superpowers/
