@@ -19,12 +19,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 import anthropic
 
-from halfblood.models import Annotation, AnnotationType, AnnotatedPage, AnnotationPlan
 from halfblood.document_processor import PageContent
+from halfblood.models import AnnotatedPage, Annotation, AnnotationPlan, AnnotationType
 
 logger = logging.getLogger(__name__)
 
@@ -188,9 +188,9 @@ class AnnotationGenerator:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         model: str = "claude-sonnet-4-20250514",
-        persona: Optional[str] = None,
+        persona: str | None = None,
     ) -> None:
         """Initialize the annotation generator.
 
@@ -308,7 +308,7 @@ class AnnotationGenerator:
         user_prompt = self._build_user_prompt(page_text, page_number, book_context)
 
         try:
-            response = self.client.messages.create(
+            response = self.client.messages.create(  # type: ignore[call-overload]  # dicts match SDK TypedDicts at runtime
                 model=self.model,
                 max_tokens=2048,
                 system=system_prompt,
@@ -412,7 +412,7 @@ class AnnotationGenerator:
 
     def _parse_response(
         self,
-        response_text: "anthropic.types.Message | str",
+        response_text: anthropic.types.Message | str,
         page_number: int,
         page_text: str = "",
     ) -> list[Annotation]:
@@ -484,7 +484,7 @@ class AnnotationGenerator:
 
     @staticmethod
     def _extract_raw_annotations(
-        response: "anthropic.types.Message | str", page_number: int
+        response: anthropic.types.Message | str, page_number: int
     ) -> list[dict[str, Any]]:
         """Extract the raw annotation dicts from a Claude response.
 
@@ -505,7 +505,7 @@ class AnnotationGenerator:
                 if getattr(block, "type", None) == "tool_use" and getattr(
                     block, "name", None
                 ) == _ANNOTATION_TOOL_NAME:
-                    tool_input = block.input or {}
+                    tool_input = block.input or {}  # type: ignore[union-attr]  # guarded by getattr type check above
                     result = tool_input.get("annotations", [])
                     if isinstance(result, list):
                         return result

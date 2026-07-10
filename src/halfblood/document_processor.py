@@ -35,15 +35,15 @@ import logging
 import math
 import random
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Sequence
 
 import fitz  # PyMuPDF
 
 from halfblood.models import (
-    Annotation,
     AnnotatedPage,
+    Annotation,
     AnnotationPlan,
     AnnotationType,
 )
@@ -112,9 +112,9 @@ class DocumentProcessor:
 
     def __init__(
         self,
-        font_path: Optional[str] = None,
-        project_root: Optional[str] = None,
-        seed: Optional[int] = None,
+        font_path: str | None = None,
+        project_root: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """
         Args:
@@ -140,8 +140,8 @@ class DocumentProcessor:
     # ----------------------------------------------------------------
 
     def _resolve_handwriting_font(
-        self, explicit_font_path: Optional[str]
-    ) -> tuple[Optional[str], str, bool]:
+        self, explicit_font_path: str | None
+    ) -> tuple[str | None, str, bool]:
         """Locate a handwriting font on disk.
 
         Resolution order:
@@ -278,7 +278,7 @@ class DocumentProcessor:
                 unique.append(variant)
         return unique
 
-    def find_text_rect(self, page: fitz.Page, text: str) -> Optional[fitz.Rect]:
+    def find_text_rect(self, page: fitz.Page, text: str) -> fitz.Rect | None:
         """Locate `text` on `page` and return its bounding rectangle.
 
         Tries an exact (whitespace-normalized) match first, then falls
@@ -371,7 +371,7 @@ class DocumentProcessor:
     def add_margin_note(
         self,
         page: fitz.Page,
-        rect: Optional[fitz.Rect],
+        rect: fitz.Rect | None,
         text: str,
         annotation_type: AnnotationType,
         confidence: float = 0.8,
@@ -476,7 +476,7 @@ class DocumentProcessor:
 
     def _write_margin_text(
         self,
-        shape: "fitz.Shape",
+        shape: fitz.Shape,
         page: fitz.Page,
         rect: fitz.Rect,
         text: str,
@@ -533,7 +533,7 @@ class DocumentProcessor:
 
     def _write_inline_text(
         self,
-        shape: "fitz.Shape",
+        shape: fitz.Shape,
         page: fitz.Page,
         rect: fitz.Rect,
         text: str,
@@ -575,7 +575,7 @@ class DocumentProcessor:
 
     def _write_between_lines_text(
         self,
-        shape: "fitz.Shape",
+        shape: fitz.Shape,
         rect: fitz.Rect,
         text: str,
         ink: tuple[float, float, float],
@@ -611,7 +611,7 @@ class DocumentProcessor:
 
     def _write_replacement_above(
         self,
-        shape: "fitz.Shape",
+        shape: fitz.Shape,
         rect: fitz.Rect,
         replacement_text: str,
         ink: tuple[float, float, float],
@@ -648,7 +648,7 @@ class DocumentProcessor:
 
     def _draw_connector(
         self,
-        shape: "fitz.Shape",
+        shape: fitz.Shape,
         rect: fitz.Rect,
         anchor: fitz.Point,
         ink: tuple[float, float, float],

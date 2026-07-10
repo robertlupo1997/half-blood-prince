@@ -119,7 +119,7 @@ class TestDocumentProcessorLoad:
             assert needle in page.text
 
     def test_load_raises_for_missing_file(self, processor: DocumentProcessor) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 - exception type is implementation detail
             processor.load(str(FIXTURES_DIR / "does_not_exist.pdf"))
 
 
@@ -643,7 +643,7 @@ class TestEdgeCases:
         # smoke-test add_margin_note()'s per-type/per-position branches.
         positions = ["margin_right", "margin_left", "inline", "between_lines"]
         annotations = []
-        for i, (atype, position) in enumerate(zip(list(AnnotationType), positions * 2)):
+        for i, (atype, position) in enumerate(zip(list(AnnotationType), positions * 2, strict=False)):
             annotations.append(
                 Annotation(
                     page=2,
@@ -679,7 +679,7 @@ class TestEdgeCases:
             doc.close()
 
     def test_confidence_out_of_bounds_rejected_by_model(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 - exception type is Pydantic implementation detail
             Annotation(
                 page=1,
                 target_text="x",

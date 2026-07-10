@@ -31,9 +31,8 @@ import html
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional, Union
 
 from halfblood.models import AnnotatedPage, Annotation, AnnotationPlan, AnnotationType
 
@@ -130,7 +129,7 @@ def _candidate_variants(text: str) -> list[str]:
     return unique
 
 
-def _find_target_span(haystack: str, target: str) -> Optional[tuple[int, int]]:
+def _find_target_span(haystack: str, target: str) -> tuple[int, int] | None:
     if not haystack or not target or not target.strip():
         return None
     for variant in _candidate_variants(target):
@@ -219,12 +218,8 @@ def _build_page_html(
                 pieces.append(_esc(original_text[cursor:start]))
             annotation = annotations[idx]
             pieces.append(
-                '<mark class="target type-{type}" data-ann-id="a{idx}" '
-                'data-type="{type}">{body}</mark>'.format(
-                    type=annotation.annotation_type.value,
-                    idx=idx,
-                    body=_esc(original_text[start:end]),
-                )
+                f'<mark class="target type-{annotation.annotation_type.value}" data-ann-id="a{idx}" '
+                f'data-type="{annotation.annotation_type.value}">{_esc(original_text[start:end])}</mark>'
             )
             cursor = end
         if cursor < p_end:
@@ -286,7 +281,7 @@ def _build_data(plan: AnnotationPlan) -> dict:
     return {
         "title": plan.title or "Untitled",
         "persona": plan.prince_persona or "",
-        "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "generated": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
         "pages": pages_payload,
         "types": types_payload,
         "totals": {
@@ -302,7 +297,7 @@ def _build_data(plan: AnnotationPlan) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _load_plan(plan: Union[AnnotationPlan, str, Path]) -> AnnotationPlan:
+def _load_plan(plan: AnnotationPlan | str | Path) -> AnnotationPlan:
     if isinstance(plan, AnnotationPlan):
         return plan
     path = Path(plan)
@@ -310,7 +305,7 @@ def _load_plan(plan: Union[AnnotationPlan, str, Path]) -> AnnotationPlan:
 
 
 def _fill_missing_text(
-    pages: list[AnnotatedPage], book_text: Optional[str]
+    pages: list[AnnotatedPage], book_text: str | None
 ) -> list[AnnotatedPage]:
     """Best-effort backfill of `AnnotatedPage.original_text` from a
     separately-supplied full book text, for plans whose pages don't already
@@ -341,7 +336,7 @@ def _fill_missing_text(
 # ---------------------------------------------------------------------------
 
 
-def _render(plan: AnnotationPlan, book_text: Optional[str]) -> tuple[str, dict]:
+def _render(plan: AnnotationPlan, book_text: str | None) -> tuple[str, dict]:
     pages = _fill_missing_text(list(plan.pages), book_text)
     plan = plan.model_copy(update={"pages": pages})
 
@@ -356,7 +351,7 @@ def _render(plan: AnnotationPlan, book_text: Optional[str]) -> tuple[str, dict]:
     return out, data
 
 
-def render_html(plan: Union[AnnotationPlan, str, Path], book_text: Optional[str] = None) -> str:
+def render_html(plan: AnnotationPlan | str | Path, book_text: str | None = None) -> str:
     """Render `plan` to a standalone HTML string, without writing a file.
 
     `plan` may be an :class:`AnnotationPlan` instance or a path to a
@@ -368,9 +363,9 @@ def render_html(plan: Union[AnnotationPlan, str, Path], book_text: Optional[str]
 
 
 def generate_preview(
-    plan: Union[AnnotationPlan, str, Path],
-    output_path: Union[str, Path],
-    book_text: Optional[str] = None,
+    plan: AnnotationPlan | str | Path,
+    output_path: str | Path,
+    book_text: str | None = None,
 ) -> PreviewResult:
     """Render `plan` into a single self-contained interactive HTML file.
 

@@ -1,11 +1,12 @@
 """Pydantic models for structured annotation data."""
 
+from enum import StrEnum
 from typing import Literal
+
 from pydantic import BaseModel, Field
-from enum import Enum
 
 
-class AnnotationType(str, Enum):
+class AnnotationType(StrEnum):
     CORRECTION = "correction"       # "No, no, no — you crush it, don't cut it"
     IMPROVEMENT = "improvement"     # "Add a clockwise stir after step 3"
     INSIGHT = "insight"             # "This is why most get it wrong"

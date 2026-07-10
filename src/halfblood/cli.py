@@ -18,7 +18,6 @@ import subprocess
 import sys
 import webbrowser
 from pathlib import Path
-from typing import Union
 
 import click
 from rich import box
@@ -29,10 +28,10 @@ from rich.table import Table
 from halfblood.annotation_generator import AnnotationGenerator
 from halfblood.document_processor import DocumentProcessor, PageContent
 from halfblood.epub_processor import EpubProcessor
-from halfblood.models import AnnotatedPage, AnnotationPlan, AnnotationType
+from halfblood.models import AnnotatedPage
 from halfblood.web_preview import generate_preview
 
-Processor = Union[DocumentProcessor, EpubProcessor]
+Processor = DocumentProcessor | EpubProcessor
 
 #: File extensions this CLI knows how to route to a processor.
 _SUPPORTED_SUFFIXES = {".pdf", ".epub"}

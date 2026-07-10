@@ -44,7 +44,7 @@ import logging
 import random
 import re
 import warnings
-from typing import Optional
+from typing import Any, cast
 
 import ebooklib
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag, XMLParsedAsHTMLWarning
@@ -169,7 +169,7 @@ _ANNOTATION_CSS = """
 def _rgb_to_hex(rgb: tuple[float, float, float]) -> str:
     """Convert an (r, g, b) triple of floats in [0, 1] to a ``#rrggbb`` string."""
     r, g, b = (max(0.0, min(1.0, c)) for c in rgb)
-    return "#{:02x}{:02x}{:02x}".format(round(r * 255), round(g * 255), round(b * 255))
+    return f"#{round(r * 255):02x}{round(g * 255):02x}{round(b * 255):02x}"
 
 
 class EpubProcessor:
@@ -181,7 +181,7 @@ class EpubProcessor:
     interchangeably.
     """
 
-    def __init__(self, seed: Optional[int] = None) -> None:
+    def __init__(self, seed: int | None = None) -> None:
         """
         Args:
             seed: Optional seed for the "organic" rotation jitter applied
@@ -221,7 +221,7 @@ class EpubProcessor:
         return pages
 
     @staticmethod
-    def _iter_spine_documents(book: "epub.EpubBook") -> list[tuple[int, "epub.EpubHtml"]]:
+    def _iter_spine_documents(book: epub.EpubBook) -> list[tuple[int, epub.EpubHtml]]:
         """Walk `book.spine` in reading order, returning `(index, item)`
         pairs for each document item (1-indexed).
 
@@ -232,7 +232,7 @@ class EpubProcessor:
         book's linear reading order. Without this, a nav document placed
         in the spine would count as "chapter 1".
         """
-        docs: list[tuple[int, "epub.EpubHtml"]] = []
+        docs: list[tuple[int, epub.EpubHtml]] = []
         index = 0
         for idref, linear in book.spine:
             if linear == "no":
@@ -327,14 +327,14 @@ class EpubProcessor:
         """
         for ancestor in node.parents:
             if isinstance(ancestor, Tag):
-                classes = ancestor.get("class") or []
+                classes = cast(list[str], ancestor.get("class") or [])  # HTML parser always returns list for multi-valued attrs
                 if any(c.startswith("hbp-") for c in classes):
                     return True
         return False
 
     def _locate_text(
         self, soup: BeautifulSoup, target_text: str
-    ) -> Optional[tuple[NavigableString, int, int]]:
+    ) -> tuple[NavigableString, int, int] | None:
         """Locate `target_text` among `soup`'s text nodes.
 
         Tries an exact (whitespace-normalized) match first, then falls
@@ -448,7 +448,7 @@ class EpubProcessor:
         )
         epub.write_epub(output_path, book)
 
-    def _ensure_toc_uids(self, toc) -> None:
+    def _ensure_toc_uids(self, toc: Any) -> None:
         """Backfill missing `uid` attributes on a book's table of contents.
 
         Works around an EbookLib quirk (observed in ebooklib 0.20) where
