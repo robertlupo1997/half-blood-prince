@@ -1,12 +1,12 @@
 """Pydantic models for structured annotation data."""
 
-from enum import StrEnum
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 
-class AnnotationType(StrEnum):
+class AnnotationType(str, Enum):  # noqa: UP042  # str() output differs under StrEnum; behavioral change deferred to audit
     CORRECTION = "correction"       # "No, no, no — you crush it, don't cut it"
     IMPROVEMENT = "improvement"     # "Add a clockwise stir after step 3"
     INSIGHT = "insight"             # "This is why most get it wrong"
