@@ -169,13 +169,15 @@ Built on verified ground, each with tests:
   short IP note (Snape persona framed as homage/parody, same posture as
   the Riddle project). Remove or relocate the `.docx` handoff and other
   non-portfolio artifacts.
-- **MUST (security, before any public push):** the committed
-  `.claude/settings.json` sets `"defaultMode": "bypassPermissions"`,
-  which anyone cloning the repo would inherit when running Claude Code
-  in it. Remove `defaultMode` (and re-audit the allow list) from the
-  committed file; Trey's personal bypass preference moves to gitignored
-  `.claude/settings.local.json`. Flagged by automated security review
-  2026-07-10.
+- **MUST (security, before any public push):** re-audit the committed
+  `.claude/settings.json`. The committed version is sane (`defaultMode:
+  "plan"`, Edit/Write under `ask`, PreToolUse safety hook), but on
+  2026-07-10 an unattributed in-session modification relaxed it
+  (bypassPermissions, hook deleted, ask→allow) before being caught by
+  automated security review and reverted; tampered copy preserved in
+  session scratchpad. Before public push: verify the committed file
+  still matches the sane baseline and decide whether `defaultMode`
+  belongs in a public repo at all (cloners inherit it).
 - **Launch drafts:** Show HN title + first comment, r/Python post, X
   thread — committed under `launch/`.
 
