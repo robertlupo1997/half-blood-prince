@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+fonts/*.ttf
+fonts/*.otf
+!fonts/README.md
+
+# Test/eval outputs
+*.annotated.pdf
+eval/results.json
+preview.html
+
+# Environment
+.env
+.env.local
+
+# Claude Code
+.claude/settings.local.json
+
+# Session artifacts
+thoughts/

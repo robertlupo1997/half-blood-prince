@@ -1,0 +1,77 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python -c:*)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(pip install:*)",
+      "Bash(pip list:*)",
+      "Bash(halfblood:*)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(find *)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr diff:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./secrets/**)",
+      "Bash(curl:*)",
+      "Bash(wget:*)"
+    ],
+    "ask": [
+      "Edit(**)",
+      "Write(**)",
+      "Bash(python:*)",
+      "Bash(pip uninstall:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr edit:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Block this command if it would: (1) delete the .env file or secrets directory, (2) run git reset --hard on main/master, (3) run rm -rf on the project root or home directory, (4) expose API keys in command arguments. Otherwise allow it.",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Session paused — remember to run pytest before committing'",
+            "timeout": 3000
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "code-simplifier@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true
+  },
+  "defaultMode": "plan",
+  "env": {
+    "MAX_THINKING_TOKENS": "32000"
+  }
+}

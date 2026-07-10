@@ -1,0 +1,325 @@
+# Half-Blood Prince — Claude Code Session Handoff
+
+## MISSION
+
+You are picking up a working but early-stage Python project called **Half-Blood Prince**. It takes any book (PDF or EPUB) and produces a new copy with AI-generated margin annotations in the style of Snape's scrawled-in Potions textbook from Harry Potter — terse corrections, sardonic commentary, shortcuts, warnings, and invented techniques, rendered in handwriting-style text with ink colors, rotation jitter, and connector arrows.
+
+Your job is to **adversarially review, test, validate the tech stack, and improve this project in every way you can find**. This is not a maintenance task — treat it as a thorough code review by a hostile but constructive senior engineer who wants to ship this as a real product.
+
+---
+
+## PROJECT STRUCTURE
+
+```
+half-blood-prince/
+├── pyproject.toml              # Hatchling build, entry point: halfblood = halfblood.cli:main
+├── README.md                   # User-facing docs, install, usage, architecture overview
+├── CLAUDE.md                   # This file
+├── .gitignore
+├── docs/
+│   └── ARCHITECTURE.md         # Deep technical architecture doc
+├── eval/
+│   └── eval_harness.py         # LLM-as-judge quality evaluation (standalone runnable)
+├── fonts/
+│   └── README.md               # Instructions to download Caveat Brush (not bundled, licensing)
+├── src/halfblood/
+│   ├── __init__.py
+│   ├── models.py               # Pydantic data models: Annotation, AnnotatedPage, AnnotationPlan, AnnotationType
+│   ├── document_processor.py   # PDF extraction + rendering via PyMuPDF (fitz)
+│   ├── annotation_generator.py # LLM annotation engine via direct Anthropic SDK
+│   ├── epub_processor.py       # EPUB extraction + rendering via ebooklib + BeautifulSoup
+│   ├── web_preview.py          # Self-contained interactive HTML viewer generator
+│   └── cli.py                  # Click CLI: annotate, preview, web-preview, eval
+└── tests/
+    ├── conftest.py
+    ├── test_pipeline.py        # 44 pytest tests (no API calls — all mocked/offline)
+    └── fixtures/
+        ├── make_potions_textbook.py  # Script to regenerate the test PDF
+        ├── potions_textbook.pdf      # 5-page "Advanced Potion-Making" test fixture
+        ├── sample_potions.pdf
+        └── annotated_output.pdf
+```
+
+---
+
+## HOW THE PIPELINE WORKS
+
+```
+PDF/EPUB in
+    → DocumentProcessor.load() / EpubProcessor.load()
+        → list[PageContent] (page_number, text, width, height)
+    → AnnotationGenerator.generate_for_document()
+        → for each page: build system+user prompt → call Claude with forced tool_use
+        → parse tool_use block → validate via Pydantic → AnnotationPlan
+    → DocumentProcessor.render_annotations() / EpubProcessor.render_annotations()
+        → find_text_rect() locates target passages on the PDF page
+        → add_margin_note() draws handwriting-style text via fitz.Shape with morph rotation
+        → _mark_target() adds native PDF annotations (underline/highlight/circle/strikeout)
+        → _draw_connector() draws bowed arrows from margin notes to target passages
+    → annotated PDF/EPUB out
+```
+
+**Key architectural decisions:**
+
+1. **Direct Anthropic SDK, no LangChain.** The task is a single stateless tool-forced call per page. No chains, no agents, no retrieval. The SDK call, tool schema, and parsing are all in one file (`annotation_generator.py`), fully auditable.
+
+2. **Forced tool_use for structured output.** `tool_choice={"type": "tool", "name": "record_annotations"}` guarantees a single schema-validated tool call. No prose parsing, no code fence stripping. The `_ANNOTATION_TOOL_SCHEMA` in `annotation_generator.py` mirrors the Pydantic `Annotation` model.
+
+3. **PyMuPDF (`fitz`) for everything PDF.** It uniquely provides text extraction with `search_for`, native PDF annotation objects, AND `Shape.insert_text(..., morph=...)` for per-glyph affine transforms (the rotation jitter).
+
+4. **Context windowing for cross-page continuity.** Each page gets the previous page's last 500 chars, next page's first 500 chars, and a rolling list of INVENTION/WARNING notes from prior pages. This is re-injected into the prompt — no conversation history, no state.
+
+5. **Progressive text matching.** LLM `target_text` rarely matches the PDF text layer byte-for-byte. `_search_variants()` tries: exact → 8-word prefix → 5-word → 3-word → longest single word. Plus whitespace/smart-quote normalization.
+
+---
+
+## DATA MODEL
+
+```python
+class AnnotationType(str, Enum):
+    CORRECTION, IMPROVEMENT, INSIGHT, INVENTION,
+    WARNING, SHORTCUT, CROSSED_OUT, DOODLE_NOTE
+
+class Annotation(BaseModel):
+    page: int                    # 1-indexed
+    target_text: str             # verbatim quote from the page
+    annotation_type: AnnotationType
+    content: str                 # the handwritten note text
+    confidence: float            # 0.0-1.0, drives ink opacity
+    position: Literal["margin_right", "margin_left", "inline", "between_lines"]
+
+class AnnotatedPage(BaseModel):
+    page_number: int
+    original_text: str
+    annotations: list[Annotation]
+
+class AnnotationPlan(BaseModel):
+    title: str
+    prince_persona: str
+    pages: list[AnnotatedPage]
+```
+
+---
+
+## TECH STACK TO VALIDATE
+
+Review whether each dependency is the right choice. Consider alternatives and document your reasoning.
+
+| Dependency | Purpose | Questions to investigate |
+|---|---|---|
+| **PyMuPDF (fitz)** | PDF text extraction, annotation rendering, Shape-based handwriting | Is this the best choice? Compare with reportlab, pypdf, pdfplumber. Key requirement: `morph` parameter on `insert_text` for rotation. |
+| **Anthropic SDK** | Direct LLM calls with forced tool_use | Is direct SDK the right call vs. LangChain/LlamaIndex for this use case? (Current answer: yes, but validate.) |
+| **Pydantic v2** | Data validation for Annotation models | Any issues with v2 vs v1? Serialization performance? |
+| **Click** | CLI framework | vs. Typer? Click is more established but Typer has better type hints. |
+| **ebooklib** | EPUB read/write | Known bugs (toc uid=None). Are there better EPUB libraries? |
+| **BeautifulSoup + lxml** | EPUB chapter HTML manipulation | vs. lxml directly? Performance? |
+| **Rich** | Progress bars and table output | Any concerns? |
+
+---
+
+## KNOWN ISSUES FROM PRIOR CODE REVIEW
+
+These were found during an adversarial review. Critical and High bugs were fixed. Medium and Low bugs remain. **Find more.**
+
+### Fixed (verify the fixes are correct):
+
+1. **CLI interface mismatch** — CLI was built by an agent that couldn't see actual module implementations. Method signatures, constructor args, and attribute names were all wrong. Rewritten entirely.
+
+2. **Null bytes in cli.py** — Write tool appended 7182 null bytes causing SyntaxError. Stripped.
+
+3. **Eval harness 3 stacked critical bugs** — (a) `PageContent(title=tc.title)` → `title` doesn't exist, needs `width`/`height`. (b) `generate_page` → should be `generate_for_page`. (c) Wrong argument types (object instead of string). All silently swallowed by `except Exception`. Fixed.
+
+4. **Unsafe `next()` without default** — `next(b for b in response.content if b.type == "tool_use")` would raise StopIteration. Fixed with `next((...), None)` + None check.
+
+5. **Connector arrows reversed** — Left-margin arrows pointed to right edge and vice versa. Swapped.
+
+6. **API key error surfacing as raw traceback** — Now caught and wrapped in `click.ClickException`.
+
+7. **Model name mismatch** — eval harness used a different model string than the rest of the codebase. Fixed.
+
+### Unfixed (Medium/Low — fix these):
+
+8. **No rate limiting or retry logic.** If Claude returns 429 or 500, the pipeline crashes. Need exponential backoff with jitter. `annotation_generator.py` catches `APIError` but just returns empty — it should retry.
+
+9. **No async/concurrent page processing.** Pages are processed sequentially. For a 300-page book, this is painfully slow. Consider `asyncio` with `anthropic.AsyncAnthropic` and a semaphore for rate limiting.
+
+10. **`_search_variants` can match the wrong passage.** If the longest single word in `target_text` appears multiple times on the page, the annotation anchors to the first occurrence, which may be wrong. No disambiguation.
+
+11. **Annotation overlap/collision detection.** Multiple annotations targeting nearby or overlapping passages can produce overlapping margin notes. No layout-level collision avoidance.
+
+12. **EPUB processor `_locate_text` only searches within single text nodes.** A target that spans an inline tag boundary (e.g., `<em>word</em> more words`) won't be found. Logged and skipped, but this could miss a lot of annotations in richly-formatted EPUBs.
+
+13. **Web preview `_find_target_span` regex can be slow on pathological input.** `_flexible_pattern` builds a regex from user-controlled (LLM-generated) text. Catastrophic backtracking is possible on certain patterns. Should add a timeout or limit pattern complexity.
+
+14. **No input validation on PDF paths.** Passing a non-PDF file with a `.pdf` extension will crash inside PyMuPDF with an unhelpful error. Should validate the file header (magic bytes).
+
+15. **Font fallback logging is noisy.** Every run without the Caveat font logs a WARNING with download instructions. Should log once, or make it INFO.
+
+---
+
+## TESTING INSTRUCTIONS
+
+### Run existing tests (no API key needed):
+
+```bash
+cd half-blood-prince
+pip install -e ".[dev]"
+pytest tests/ -v
+```
+
+All 44 tests should pass. They use mocked responses — no real API calls.
+
+### Run the eval harness (needs API key):
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+python eval/eval_harness.py
+python eval/eval_harness.py --list  # just list test cases
+```
+
+### End-to-end test (needs API key + a PDF):
+
+```bash
+# Use the bundled test fixture
+halfblood annotate tests/fixtures/potions_textbook.pdf -o /tmp/annotated.pdf --pages 1-3
+halfblood preview tests/fixtures/potions_textbook.pdf --pages 2-3
+
+# EPUB (need an EPUB file)
+halfblood annotate book.epub -o annotated.epub --pages 1-5
+```
+
+### What to test manually:
+
+1. **Font rendering** — With and without `fonts/CaveatBrush-Regular.ttf`. Verify fallback to Helvetica-Oblique works and notes are still readable.
+2. **Long books** — Try a 50+ page PDF. Watch for: rate limiting, memory usage, annotation quality degradation on later pages.
+3. **Dense text** — A page with very small margins. Do annotations overflow the page? Do connectors cross other annotations?
+4. **EPUB roundtrip** — `load()` → `render_annotations()` → re-open in an EPUB reader. Verify CSS doesn't break the reader.
+5. **Web preview** — Generate a `preview.html` and open in browser. Check: dark mode toggle, page navigation, connector SVGs, responsive layout below 1000px.
+6. **Custom personas** — Try a non-Snape persona. Does it actually change the voice? Does annotation quality hold?
+
+---
+
+## IMPROVEMENT AREAS
+
+### High Priority
+
+- **Add retry logic with exponential backoff** to `annotation_generator.py`. Use `tenacity` or hand-roll with `asyncio`. Handle 429, 500, 529.
+- **Add async page processing** with a configurable concurrency limit (default 3-5). Massive speedup on long books.
+- **Add annotation collision detection** in `document_processor.py`. Track occupied margin regions per page and shift notes that would overlap.
+- **Add proper error messages** when PyMuPDF can't open a file (validate magic bytes before passing to `fitz.open`).
+- **Add a `--dry-run` flag** to the CLI that generates annotations but doesn't render, outputting the `AnnotationPlan` as JSON. Useful for debugging persona/prompt issues without waiting for rendering.
+- **Add streaming progress** — currently `generate_for_document` blocks until all pages are done. Show per-page progress as annotations come back.
+
+### Medium Priority
+
+- **Prompt engineering improvements.** The `DEFAULT_PERSONA` is good but could be refined:
+  - Add few-shot examples directly in the system prompt (2-3 example annotations with target_text + content)
+  - Experiment with different `max_tokens` values — 2048 may be too generous, encouraging verbosity
+  - Test with `claude-haiku-4-5-20251001` for cost savings on the generation step (judge can stay on sonnet)
+- **EPUB cross-tag text matching.** `_locate_text` currently requires the target to be within a single `NavigableString`. Implement a multi-node matching strategy.
+- **PDF text extraction quality.** Some PDFs have weird text layer encodings. Consider adding OCR fallback via `page.get_text("text", flags=fitz.TEXT_PRESERVE_WHITESPACE)` or PyMuPDF's built-in OCR.
+- **Web preview improvements:**
+  - Add a "Copy JSON" button to export the annotation plan
+  - Add search/filter by annotation content
+  - Add annotation editing (modify content, delete, re-position)
+  - Server-sent events for live preview during generation
+
+### Low Priority / Nice-to-Have
+
+- **Configuration file support** — `.halfblood.toml` or similar for default persona, model, max-per-page, font path.
+- **Persona library** — A directory of pre-built persona files (`personas/chemist.txt`, `personas/philosopher.txt`) that `--persona-file` can load.
+- **Batch mode** — `halfblood annotate-batch *.pdf` processing multiple books.
+- **PDF-to-EPUB annotation transfer** — Generate annotations against a PDF, render into the corresponding EPUB.
+- **Annotation diff** — Compare two annotation plans (e.g., different models or personas) side by side.
+- **Token cost estimation** — Before running, estimate API cost based on page count and average tokens per page.
+- **Export formats** — Export annotations as standalone JSON, CSV, or Markdown (without the rendered PDF).
+
+---
+
+## CODE QUALITY CHECKLIST
+
+When reviewing, check each module for:
+
+- [ ] **Type annotations** — Are all public method signatures fully typed? Any `Any` that should be specific?
+- [ ] **Error handling** — Are exceptions caught at the right level? Any bare `except Exception`? (Known: eval harness has intentional broad catches at the case boundary.)
+- [ ] **Logging** — Is the logging level appropriate? Are log messages actionable? (Known: font fallback WARNING is noisy.)
+- [ ] **Docstrings** — Are all public classes and methods documented? Are the docstrings accurate after the bug fixes?
+- [ ] **Test coverage** — What's not tested? (Known gaps: EPUB processor has zero tests, web preview has zero tests, eval harness's real-pipeline path is only tested manually.)
+- [ ] **Import hygiene** — Any circular imports? Any unnecessary imports?
+- [ ] **Constants** — Any magic numbers that should be named constants? (Known: 500-char context window, 8-item running_notes cap.)
+- [ ] **Thread safety** — `random.Random` instance per `DocumentProcessor` is fine, but is there shared mutable state elsewhere?
+- [ ] **Memory** — For very large PDFs, does `load()` hold the entire `fitz.Document` open unnecessarily? (It doesn't — it closes in a `finally` block.)
+- [ ] **Security** — `web_preview.py` uses `html.escape` for all user-provided text. Verify no XSS vectors exist.
+
+---
+
+## CRITICAL FILES TO READ FIRST
+
+1. `src/halfblood/models.py` — The shared vocabulary. Small, read it all.
+2. `src/halfblood/annotation_generator.py` — The LLM integration. Pay special attention to `DEFAULT_PERSONA`, `_ANNOTATION_TOOL_SCHEMA`, `_build_system_prompt`, and the context windowing in `generate_for_document`.
+3. `src/halfblood/document_processor.py` — The PDF rendering engine. Focus on `add_margin_note`, `_write_margin_text`, `_draw_connector`, and the font resolution chain.
+4. `src/halfblood/cli.py` — The glue layer. Verify it correctly dispatches PDF vs EPUB and handles errors.
+5. `eval/eval_harness.py` — The quality gate. Understand the metrics, test cases, and judge prompt.
+6. `src/halfblood/epub_processor.py` — The EPUB renderer. Check the `_ensure_toc_uids` workaround and CSS injection.
+7. `src/halfblood/web_preview.py` — The HTML viewer. Large file (~1100 lines). Check the JS/CSS for correctness.
+
+---
+
+## COMMANDS
+
+```bash
+# Install
+pip install -e ".[dev]"
+
+# Run tests
+pytest tests/ -v
+
+# Lint (if you add ruff/mypy)
+ruff check src/ tests/ eval/
+mypy src/halfblood/
+
+# Type check
+python -c "from halfblood.cli import main; print('imports ok')"
+
+# Quick smoke test (no API key needed)
+python -c "
+from halfblood.document_processor import DocumentProcessor
+dp = DocumentProcessor()
+pages = dp.load('tests/fixtures/potions_textbook.pdf')
+print(f'{len(pages)} pages loaded')
+for p in pages:
+    print(f'  Page {p.page_number}: {len(p.text)} chars')
+"
+
+# Generate annotations (needs API key)
+export ANTHROPIC_API_KEY=sk-ant-...
+halfblood preview tests/fixtures/potions_textbook.pdf --pages 2-3
+
+# Full annotate
+halfblood annotate tests/fixtures/potions_textbook.pdf -o /tmp/annotated.pdf
+
+# Eval
+python eval/eval_harness.py --list
+python eval/eval_harness.py
+```
+
+---
+
+## INSPIRATION
+
+This project is a riff on [Riddle](https://github.com/MaximeRivest/riddle) (a Rust app for the reMarkable tablet that creates a Tom Riddle diary experience) and the "Half-Blood Prince" gag from Harry Potter. The core question: what if any book could have its own Prince in the margins?
+
+---
+
+## WHAT SUCCESS LOOKS LIKE
+
+After your session, this project should:
+
+1. Have all Medium/Low bugs fixed
+2. Have retry logic and basic rate limiting
+3. Have test coverage for EPUB processor and web preview
+4. Have linting configured (ruff + mypy)
+5. Have a validated tech stack with documented reasoning
+6. Have any new bugs you find fixed
+7. Have improved prompt engineering if you find weaknesses in annotation quality
+8. Be ready to push to GitHub as a v0.1.0

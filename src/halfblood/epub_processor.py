@@ -1,0 +1,598 @@
+"""EPUB processing for the Half-Blood Prince annotator.
+
+This module mirrors :class:`halfblood.document_processor.DocumentProcessor`'s
+public interface (``load`` / ``render_annotations``) but operates on EPUB
+files instead of PDFs. Parsing and container rewriting is done with
+`EbookLib <https://github.com/aerkalov/ebooklib>`_; each chapter's XHTML is
+manipulated with `BeautifulSoup <https://www.crummy.com/software/BeautifulSoup/>`_.
+
+EPUBs have no fixed page geometry -- content reflows to whatever the
+reading device decides. So this module treats each *spine item* (roughly:
+one chapter / section file) as one "page": :attr:`PageContent.page_number`
+is the 1-indexed position of that document within the book's reading
+order, and callers are expected to populate ``Annotation.page`` /
+``AnnotatedPage.page_number`` with that same chapter index -- exactly as
+they would with a PDF page number.
+
+Because e-reader apps vary wildly in their CSS support (many ignore
+``float``, some ignore ``position`` entirely), annotations are rendered
+as inline HTML/CSS rather than absolutely positioned margin notes:
+
+* The target passage is wrapped in a ``<span class="hbp-target ...">``
+  that gets an ink-colored underline/highlight/strikethrough depending on
+  :class:`~halfblood.models.AnnotationType`.
+* The Prince's commentary is written immediately after it, inside a
+  ``<span class="hbp-note ...">`` styled with a cursive "handwriting"
+  font, a slight per-note rotation (via CSS ``transform: rotate(...)``)
+  and an ink color/opacity that mirrors the PDF palette. Where the reader
+  supports floated inline elements, a CSS rule floats these notes to the
+  right so they read as sidenotes; otherwise they fall back to sitting
+  inline right after the marked passage.
+
+Font note
+---------
+Unlike the PDF pipeline, this module does not embed a font file -- EPUB
+readers apply their own fonts, and ``font-family: cursive`` (with a few
+named fallbacks) is used as a hint. Readers that honor embedded fonts
+and want a closer match to the PDF's "Caveat Brush" look can add that
+family to the CSS fallback list in :data:`_ANNOTATION_CSS`.
+"""
+
+from __future__ import annotations
+
+import logging
+import random
+import re
+import warnings
+from typing import Optional
+
+import ebooklib
+from bs4 import BeautifulSoup, Comment, NavigableString, Tag, XMLParsedAsHTMLWarning
+from ebooklib import epub
+
+from halfblood.document_processor import PageContent
+from halfblood.models import Annotation, AnnotationPlan, AnnotationType
+
+logger = logging.getLogger(__name__)
+
+
+# Chapter XHTML is technically XML, but real-world EPUBs frequently bend
+# the rules (unescaped entities, unclosed void elements, etc.). We
+# deliberately parse with BeautifulSoup's lenient HTML parser rather than
+# an XML parser so a slightly malformed chapter doesn't blow up the whole
+# render; this is the expected, intentional tradeoff, so silence the
+# warning bs4 raises about it.
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+
+
+# --------------------------------------------------------------------------
+# Styling constants
+# --------------------------------------------------------------------------
+
+#: "Old ink" palette per annotation type, as (r, g, b) floats in [0, 1].
+#: Kept in sync with ``halfblood.document_processor._INK_PALETTE`` so the
+#: EPUB and PDF outputs read as the same annotator's handwriting.
+_INK_PALETTE: dict[AnnotationType, tuple[float, float, float]] = {
+    AnnotationType.CORRECTION: (0.14, 0.13, 0.42),
+    AnnotationType.IMPROVEMENT: (0.11, 0.16, 0.38),
+    AnnotationType.INSIGHT: (0.16, 0.12, 0.40),
+    AnnotationType.INVENTION: (0.20, 0.10, 0.35),
+    AnnotationType.WARNING: (0.46, 0.07, 0.07),
+    AnnotationType.SHORTCUT: (0.13, 0.18, 0.36),
+    AnnotationType.CROSSED_OUT: (0.50, 0.14, 0.06),
+    AnnotationType.DOODLE_NOTE: (0.18, 0.15, 0.38),
+}
+_DEFAULT_INK = (0.13, 0.13, 0.40)
+
+#: Small glyph prefixed to certain note types so the intent reads at a
+#: glance even before the reader's eye reaches the styled text.
+_NOTE_PREFIX_BY_TYPE: dict[AnnotationType, str] = {
+    AnnotationType.WARNING: "⚠ ",  # warning sign
+    AnnotationType.CROSSED_OUT: "→ ",  # right arrow, "replace with..."
+}
+
+#: EPUBs are reflowable and have no fixed page size. These nominal
+#: dimensions exist only so `PageContent` (shared with the PDF pipeline)
+#: has *something* sane in `width` / `height`; nothing in this module
+#: relies on them for layout.
+_NOMINAL_PAGE_WIDTH = 600.0
+_NOMINAL_PAGE_HEIGHT = 800.0
+
+_STYLE_TAG_ID = "hbp-annotation-style"
+
+_ANNOTATION_CSS = """
+.hbp-target {
+    position: relative;
+}
+.hbp-target-correction {
+    border-bottom: 2px solid currentColor;
+}
+.hbp-target-warning {
+    background: rgba(216, 62, 27, 0.20);
+    font-weight: bold;
+}
+.hbp-target-crossed_out {
+    text-decoration: line-through;
+    text-decoration-color: currentColor;
+    text-decoration-thickness: 2px;
+}
+.hbp-target-doodle_note {
+    border-bottom: 1px dotted currentColor;
+}
+.hbp-target-improvement,
+.hbp-target-insight,
+.hbp-target-invention,
+.hbp-target-shortcut {
+    border-bottom: 1px solid currentColor;
+}
+
+.hbp-note {
+    font-family: "Caveat", "Bradley Hand", "Segoe Print", "Comic Sans MS", cursive;
+    display: inline-block;
+    margin: 0 0.4em;
+    line-height: 1.2;
+    white-space: normal;
+    vertical-align: baseline;
+}
+@supports (float: right) {
+    .hbp-note {
+        float: right;
+        clear: right;
+        width: 9em;
+        margin: 0.2em 0 0.6em 0.9em;
+        text-align: left;
+    }
+}
+.hbp-note-correction {
+    font-size: 1.05em;
+}
+.hbp-note-warning {
+    font-weight: bold;
+    font-size: 1.1em;
+}
+.hbp-note-crossed_out {
+    font-style: normal;
+}
+.hbp-note-doodle_note {
+    font-size: 0.85em;
+    font-style: italic;
+}
+.hbp-note-improvement,
+.hbp-note-insight,
+.hbp-note-invention,
+.hbp-note-shortcut {
+    font-size: 1em;
+}
+""".strip()
+
+
+def _rgb_to_hex(rgb: tuple[float, float, float]) -> str:
+    """Convert an (r, g, b) triple of floats in [0, 1] to a ``#rrggbb`` string."""
+    r, g, b = (max(0.0, min(1.0, c)) for c in rgb)
+    return "#{:02x}{:02x}{:02x}".format(round(r * 255), round(g * 255), round(b * 255))
+
+
+class EpubProcessor:
+    """Extracts text from EPUBs and renders Half-Blood-Prince-style
+    handwritten margin annotations back into them as styled HTML.
+
+    Mirrors the public shape of `halfblood.document_processor.DocumentProcessor`
+    (`load` / `render_annotations`) so the CLI can treat PDFs and EPUBs
+    interchangeably.
+    """
+
+    def __init__(self, seed: Optional[int] = None) -> None:
+        """
+        Args:
+            seed: Optional seed for the "organic" rotation jitter applied
+                to each note, so renders are reproducible in tests.
+                Defaults to a per-annotation deterministic seed derived
+                from its text (same behavior as `DocumentProcessor`).
+        """
+        self._seed = seed
+
+    # ----------------------------------------------------------------
+    # Extraction
+    # ----------------------------------------------------------------
+
+    def load(self, path: str) -> list[PageContent]:
+        """Extract plain text from every chapter of an EPUB.
+
+        Args:
+            path: Path to the source EPUB.
+
+        Returns:
+            One `PageContent` per spine document, 1-indexed via
+            `page_number` in reading order. `width` / `height` are
+            nominal placeholders (EPUBs are reflowable).
+        """
+        book = epub.read_epub(path)
+        pages: list[PageContent] = []
+        for index, item in self._iter_spine_documents(book):
+            text = self._html_to_text(item.get_content())
+            pages.append(
+                PageContent(
+                    page_number=index,
+                    text=text,
+                    width=_NOMINAL_PAGE_WIDTH,
+                    height=_NOMINAL_PAGE_HEIGHT,
+                )
+            )
+        return pages
+
+    @staticmethod
+    def _iter_spine_documents(book: "epub.EpubBook") -> list[tuple[int, "epub.EpubHtml"]]:
+        """Walk `book.spine` in reading order, returning `(index, item)`
+        pairs for each document item (1-indexed).
+
+        Skips anything in the spine that isn't an XHTML document (e.g. a
+        stray NCX ref), and skips items marked ``linear="no"`` -- the
+        standard EPUB3 convention for excluding supplementary content
+        (most commonly the generated navigation/TOC document) from the
+        book's linear reading order. Without this, a nav document placed
+        in the spine would count as "chapter 1".
+        """
+        docs: list[tuple[int, "epub.EpubHtml"]] = []
+        index = 0
+        for idref, linear in book.spine:
+            if linear == "no":
+                continue
+            item = book.get_item_with_id(idref)
+            if item is None or item.get_type() != ebooklib.ITEM_DOCUMENT:
+                continue
+            index += 1
+            docs.append((index, item))
+        return docs
+
+    @staticmethod
+    def _html_to_text(html: bytes | str) -> str:
+        """Strip tags from a chapter's HTML, returning clean, one-line-per-block text."""
+        soup = BeautifulSoup(html, "lxml")
+        for tag in soup(["script", "style"]):
+            tag.decompose()
+        raw = soup.get_text(separator="\n")
+        lines = [line.strip() for line in raw.splitlines()]
+        lines = [line for line in lines if line]
+        return "\n".join(lines)
+
+    # ----------------------------------------------------------------
+    # Locating annotation targets
+    # ----------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_search_text(text: str) -> str:
+        """Collapse whitespace/newlines and normalize "smart" punctuation
+        so LLM-generated `target_text` matches the chapter's rendered text.
+        """
+        text = text.strip()
+        text = re.sub(r"[‘’]", "'", text)
+        text = re.sub(r"[“”]", '"', text)
+        text = re.sub(r"[–—]", "-", text)
+        text = re.sub(r"\s+", " ", text)
+        return text
+
+    @staticmethod
+    def _search_variants(text: str) -> list[str]:
+        """Generate progressively looser variants of `text`, since LLM
+        output rarely matches the source byte-for-byte (same strategy as
+        `DocumentProcessor._search_variants`).
+        """
+        words = text.split(" ")
+        variants: list[str] = [text]
+        if len(words) > 8:
+            variants.append(" ".join(words[:8]))
+        if len(words) > 5:
+            variants.append(" ".join(words[:5]))
+        if len(words) > 3:
+            variants.append(" ".join(words[:3]))
+        longest = max((w.strip(".,;:!?\"'()") for w in words), key=len, default="")
+        if len(longest) >= 4:
+            variants.append(longest)
+        seen: set[str] = set()
+        unique: list[str] = []
+        for variant in variants:
+            if variant and variant not in seen:
+                seen.add(variant)
+                unique.append(variant)
+        return unique
+
+    @staticmethod
+    def _normalize_with_map(raw: str) -> tuple[str, list[int]]:
+        """Collapse whitespace runs in `raw` to single spaces, returning
+        the normalized string plus a list mapping each normalized-string
+        index back to its original index in `raw`.
+        """
+        out_chars: list[str] = []
+        index_map: list[int] = []
+        i = 0
+        n = len(raw)
+        while i < n:
+            ch = raw[i]
+            if ch.isspace():
+                out_chars.append(" ")
+                index_map.append(i)
+                while i < n and raw[i].isspace():
+                    i += 1
+            else:
+                out_chars.append(ch)
+                index_map.append(i)
+                i += 1
+        return "".join(out_chars), index_map
+
+    @staticmethod
+    def _is_own_markup(node: NavigableString) -> bool:
+        """True if `node` lives inside HTML this module already inserted
+        (an `hbp-*` span), so a later annotation's search doesn't
+        accidentally match text from an earlier note.
+        """
+        for ancestor in node.parents:
+            if isinstance(ancestor, Tag):
+                classes = ancestor.get("class") or []
+                if any(c.startswith("hbp-") for c in classes):
+                    return True
+        return False
+
+    def _locate_text(
+        self, soup: BeautifulSoup, target_text: str
+    ) -> Optional[tuple[NavigableString, int, int]]:
+        """Locate `target_text` among `soup`'s text nodes.
+
+        Tries an exact (whitespace-normalized) match first, then falls
+        back to shorter prefixes / the longest single word, mirroring
+        `DocumentProcessor.find_text_rect`. The match must lie entirely
+        within a single text node -- passages split across nested tags
+        (e.g. italics mid-sentence) won't be found; this is a deliberate
+        simplification, and such misses are logged and skipped rather
+        than crashing the render.
+
+        Returns:
+            `(node, start, end)` -- the `NavigableString` containing the
+            match and the `[start, end)` character offsets of the match
+            within that node's raw text -- or `None` if nothing matched.
+        """
+        normalized_target = self._normalize_search_text(target_text)
+        if not normalized_target:
+            return None
+
+        candidates = [
+            node
+            for node in soup.find_all(string=True)
+            if (
+                not isinstance(node, Comment)
+                and node.parent is not None
+                and node.parent.name not in ("script", "style")
+                and node.strip()
+                and not self._is_own_markup(node)
+            )
+        ]
+
+        for variant in self._search_variants(normalized_target):
+            for node in candidates:
+                raw = str(node)
+                normalized_node, index_map = self._normalize_with_map(raw)
+                pos = normalized_node.find(variant)
+                if pos == -1:
+                    pos = normalized_node.lower().find(variant.lower())
+                if pos == -1:
+                    continue
+                if len(variant) < len(normalized_target):
+                    logger.debug(
+                        "Exact match for %r not found; used fallback anchor %r",
+                        target_text,
+                        variant,
+                    )
+                start = index_map[pos]
+                end = index_map[pos + len(variant) - 1] + 1
+                return node, start, end
+
+        logger.warning("Could not locate target_text %r in chapter", target_text)
+        return None
+
+    # ----------------------------------------------------------------
+    # Rendering
+    # ----------------------------------------------------------------
+
+    def render_annotations(
+        self, input_path: str, annotations: list[Annotation], output_path: str
+    ) -> None:
+        """Render a full set of annotations into an EPUB and save the result.
+
+        Args:
+            input_path: Source EPUB path.
+            annotations: Annotations to render. `Annotation.page` is
+                1-indexed and refers to the spine-document ("chapter")
+                index, matching `PageContent.page_number` from `load`.
+            output_path: Where to write the annotated EPUB.
+        """
+        book = epub.read_epub(input_path)
+        self._ensure_toc_uids(book.toc)
+        spine_docs = dict(self._iter_spine_documents(book))
+
+        by_page: dict[int, list[Annotation]] = {}
+        for annotation in annotations:
+            by_page.setdefault(annotation.page, []).append(annotation)
+
+        rendered = 0
+        skipped = 0
+        for page_number in sorted(by_page):
+            item = spine_docs.get(page_number)
+            if item is None:
+                logger.warning(
+                    "Annotation references chapter %s but the EPUB spine only "
+                    "has %s document(s); skipping",
+                    page_number,
+                    len(spine_docs),
+                )
+                skipped += len(by_page[page_number])
+                continue
+
+            soup = BeautifulSoup(item.get_content(), "lxml")
+            self._ensure_style_embedded(soup)
+
+            for annotation in by_page[page_number]:
+                located = self._locate_text(soup, annotation.target_text)
+                if located is None:
+                    skipped += 1
+                    continue
+                node, start, end = located
+                self._wrap_and_annotate(soup, node, start, end, annotation)
+                rendered += 1
+
+            item.set_content(str(soup).encode("utf-8"))
+
+        logger.info(
+            "Rendered %s annotation(s), skipped %s (target text not found or "
+            "chapter out of range)",
+            rendered,
+            skipped,
+        )
+        epub.write_epub(output_path, book)
+
+    def _ensure_toc_uids(self, toc) -> None:
+        """Backfill missing `uid` attributes on a book's table of contents.
+
+        Works around an EbookLib quirk (observed in ebooklib 0.20) where
+        `Link`/`Section` entries parsed back out of an EPUB's NCX can
+        come back with ``uid=None`` -- which then crashes
+        `ebooklib.epub.write_epub` with a ``TypeError`` deep inside its
+        NCX serializer (``etree.SubElement`` refusing a `None` attribute
+        value). This is unrelated to annotation rendering: it reproduces
+        on a bare `read_epub` -> `write_epub` roundtrip with no
+        modifications at all, so we defensively patch it up here rather
+        than let a perfectly valid annotation render fail at the last
+        step. `toc` is mutated in place.
+        """
+        counter = 0
+        stack = list(toc)
+        while stack:
+            node = stack.pop()
+            if isinstance(node, tuple):
+                # (Section, children) pairs, per EbookLib's TOC structure.
+                section, children = node
+                if getattr(section, "uid", None) is None:
+                    counter += 1
+                    section.uid = f"hbp-toc-{counter}"
+                stack.extend(children)
+            elif getattr(node, "uid", None) is None:
+                counter += 1
+                node.uid = f"hbp-toc-{counter}"
+
+    def _ensure_style_embedded(self, soup: BeautifulSoup) -> None:
+        """Insert the `_ANNOTATION_CSS` stylesheet into `soup`'s `<head>`
+        once, creating a `<head>` if the chapter is missing one.
+        """
+        head = soup.find("head")
+        if head is None:
+            head = soup.new_tag("head")
+            html_tag = soup.find("html")
+            if html_tag is not None:
+                html_tag.insert(0, head)
+            else:
+                soup.insert(0, head)
+
+        if head.find("style", attrs={"id": _STYLE_TAG_ID}) is not None:
+            return
+
+        style_tag = soup.new_tag("style", attrs={"id": _STYLE_TAG_ID, "type": "text/css"})
+        style_tag.string = _ANNOTATION_CSS
+        head.append(style_tag)
+
+    def _wrap_and_annotate(
+        self,
+        soup: BeautifulSoup,
+        node: NavigableString,
+        start: int,
+        end: int,
+        annotation: Annotation,
+    ) -> None:
+        """Split `node` around `[start, end)`, wrap the matched slice in a
+        styled `hbp-target` span, and insert an `hbp-note` sidenote span
+        (the Prince's commentary) right after it.
+        """
+        raw = str(node)
+        before, matched, after = raw[:start], raw[start:end], raw[end:]
+
+        type_slug = annotation.annotation_type.value
+
+        mark_tag = soup.new_tag("span", attrs={"class": f"hbp-target hbp-target-{type_slug}"})
+        mark_tag.string = matched
+        mark_tag["style"] = f"color:{self._ink_hex(annotation.annotation_type)};"
+
+        note_tag = soup.new_tag(
+            "span",
+            attrs={
+                "class": f"hbp-note hbp-note-{type_slug}",
+                "style": self._note_style(annotation),
+                "title": f"{type_slug} (confidence {annotation.confidence:.2f})",
+            },
+        )
+        note_tag.string = self._format_note_text(annotation)
+
+        replacements: list[NavigableString | Tag] = []
+        if before:
+            replacements.append(NavigableString(before))
+        replacements.append(mark_tag)
+        if after:
+            replacements.append(NavigableString(after))
+
+        node.replace_with(*replacements)
+        mark_tag.insert_after(note_tag)
+
+    # ------------------------------------------------------------
+    # Small helpers
+    # ------------------------------------------------------------
+
+    @staticmethod
+    def _ink_hex(annotation_type: AnnotationType) -> str:
+        return _rgb_to_hex(_INK_PALETTE.get(annotation_type, _DEFAULT_INK))
+
+    @staticmethod
+    def _opacity(confidence: float) -> float:
+        """Map confidence [0, 1] to an ink opacity, so uncertain notes
+        look lighter/fainter and confident ones look bold (same curve as
+        `DocumentProcessor._opacity`).
+        """
+        confidence = max(0.0, min(1.0, confidence))
+        return 0.55 + 0.4 * confidence
+
+    def _organic_angle(self, seed_text: str) -> float:
+        """Deterministic-but-varied rotation angle in degrees for the
+        note's CSS ``transform: rotate(...)``, so notes look organically
+        scrawled rather than perfectly upright.
+        """
+        rnd = random.Random(self._seed if self._seed is not None else seed_text)
+        magnitude = rnd.uniform(1.0, 4.0)
+        sign = rnd.choice((-1, 1))
+        return magnitude * sign
+
+    def _note_style(self, annotation: Annotation) -> str:
+        ink_hex = self._ink_hex(annotation.annotation_type)
+        opacity = self._opacity(annotation.confidence)
+        angle = self._organic_angle(annotation.content or annotation.target_text)
+        return f"color:{ink_hex}; opacity:{opacity:.2f}; transform:rotate({angle:.1f}deg);"
+
+    @staticmethod
+    def _format_note_text(annotation: Annotation) -> str:
+        prefix = _NOTE_PREFIX_BY_TYPE.get(annotation.annotation_type, "")
+        return f"{prefix}{annotation.content}"
+
+    # ------------------------------------------------------------
+    # Convenience: flatten an AnnotationPlan
+    # ------------------------------------------------------------
+
+    @staticmethod
+    def annotations_from_plan(plan: AnnotationPlan) -> list[Annotation]:
+        """Flatten an `AnnotationPlan` into a single ordered list of
+        `Annotation` objects suitable for `render_annotations`.
+
+        Identical behavior to `DocumentProcessor.annotations_from_plan`;
+        provided here too so callers don't need to reach into the PDF
+        module just to flatten a plan when working with EPUBs.
+        """
+        flattened: list[Annotation] = []
+        for page in plan.pages:
+            for annotation in page.annotations:
+                if annotation.page != page.page_number:
+                    annotation = annotation.model_copy(update={"page": page.page_number})
+                flattened.append(annotation)
+        return flattened
