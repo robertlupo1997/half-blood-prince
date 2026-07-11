@@ -148,16 +148,34 @@ are in `.gitignore`; this handoff is force-added):
    (b) *P1-T5 SDK-vs-httpx* — the plan replaces the Anthropic SDK with a raw
    `httpx` adapter for uniform retry/timeout. Lower-risk alternative: keep the
    SDK for Anthropic and use `httpx` only for OpenAI-compatible. Decide before P1-T5.
+2. [ ] **RESEARCH SPIKE (run first next session; feeds decision 1b) — owner-requested.**
+   Two questions, each with the right tool:
+   - *Is raw-`httpx`-for-Anthropic (P1-T5) actually best?* Pure reasoning over the
+     codebase + general knowledge — hand to a **cheap, low-effort Codex run**
+     (`codex exec -m <cheaper-model> -c model_reasoning_effort=low`). Deliverable:
+     a short recommendation (raw-httpx for both / SDK-for-Anthropic + httpx-for-
+     OpenAI / hybrid) with concrete criteria: retry+timeout uniformity, auth &
+     versioning burden, error-type fidelity, test surface, maintenance.
+   - *How do similar products pick their LLM/API?* Study **Riddle**
+     (github.com/MaximeRivest/riddle — the Rust reMarkable "Tom Riddle diary" app
+     that inspired this) and 1–2 comparable tools: which provider/model, why,
+     direct SDK vs raw HTTP, structured-output method. **Needs web access** →
+     Codex's sandbox likely has no network, so do this half with Claude web tools
+     (fetch the repo's README + its LLM-calling source). Deliverable: a
+     `docs/superpowers/research/2026-*-provider-and-render-comparators.md` note.
+   Keep it a spike — no code changes; it informs decision 1b, and Phase 0 can
+   start in parallel since it doesn't depend on the outcome.
+3. [ ] **Start executing the plan at `P0-T1`** (harden Anthropic response handling
 2. [ ] **Start executing the plan at `P0-T1`** (harden Anthropic response handling
    + SDK-shaped tests; covers AUD-05/10/14/21/23 + L-1/L-3). Loop per task:
    controller writes the failing tests the task specifies → implementer writes
    code → run `ruff check src tests eval` + `mypy src/halfblood` + `pytest tests/ -q`
    → commit only when all green. Preserve `tests/test_config.py` +
    `tests/test_failure_handling.py`.
-3. [ ] Proceed down the plan's critical path (P0-T1 → P0-T2 → P0-T3/P0-T8 →
+4. [ ] Proceed down the plan's critical path (P0-T1 → P0-T2 → P0-T3/P0-T8 →
    P0-T12 → P1-T1 → …). Phase 0 closes the audit; Phase 1 delivers the
    cost-motivated "any cheap API" win independent of handwriting.
-4. [ ] **When `ANTHROPIC_API_KEY` exists** — run the prepared E2E commands (in
+5. [ ] **When `ANTHROPIC_API_KEY` exists** — run the prepared E2E commands (in
    `docs/audit/2026-07-10-adversarial-audit.md` "E2E results" + `.superpowers/sdd/audit/e2e_pdf.py`)
    now that the model is current; record cost/output. Handwriting (spec §5) and
    the full module restructure are later phases (spec §9 Phases 2–6) — do NOT
