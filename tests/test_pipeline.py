@@ -486,13 +486,10 @@ class TestParseResponse:
         }
         assert all(a.page == 5 for a in result)
 
-    def test_message_with_no_matching_tool_use_block_returns_empty(
-        self, generator: AnnotationGenerator
-    ) -> None:
-        other_block = types.SimpleNamespace(type="text", name=None, input=None)
-        fake_message = types.SimpleNamespace(content=[other_block])
-        result = generator._parse_response(fake_message, page_number=1)
-        assert result == []
+    # NOTE: the "no matching tool block -> []" case was removed here in P0-T1.
+    # Its contract changed: an absent tool block is now an explicit page
+    # failure (a valid empty array is the only empty success). That behavior is
+    # pinned in tests/test_annotation_generator.py against the real Message path.
 
     def test_generate_for_page_short_circuits_on_empty_text(
         self, generator: AnnotationGenerator

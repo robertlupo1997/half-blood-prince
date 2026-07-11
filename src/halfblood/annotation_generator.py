@@ -124,7 +124,7 @@ RULES
 
 _ANNOTATION_TOOL_NAME = "record_annotations"
 
-_ANNOTATION_TOOL_SCHEMA: dict[str, Any] = {
+_ANNOTATION_TOOL_SCHEMA: anthropic.types.ToolParam = {
     "name": _ANNOTATION_TOOL_NAME,
     "description": (
         "Record the margin annotations produced for this page. Call this "
@@ -174,6 +174,15 @@ _ANNOTATION_TOOL_SCHEMA: dict[str, Any] = {
         "required": ["annotations"],
     },
 }
+
+_ANNOTATION_TOOL_CHOICE: anthropic.types.ToolChoiceToolParam = {
+    "type": "tool",
+    "name": _ANNOTATION_TOOL_NAME,
+}
+
+
+class _MalformedResponseError(RuntimeError):
+    """Signal that an Anthropic Message cannot be treated as a page success."""
 
 
 class AnnotationGenerator:
@@ -322,7 +331,7 @@ class AnnotationGenerator:
         """Generate annotations, reporting (annotations, attempted, failed).
 
         ``attempted`` is False for a blank page (no API call is made);
-        ``failed`` is True when the API call raised ``anthropic.APIError``.
+        ``failed`` is True when the API call failed or returned an unusable Message.
         """
         if not page_text or not page_text.strip():
             logger.debug("Page %d has no text; skipping annotation.", page_number)
@@ -331,20 +340,31 @@ class AnnotationGenerator:
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(page_text, page_number, book_context)
 
+        tools: list[anthropic.types.ToolParam] = [_ANNOTATION_TOOL_SCHEMA]
+        messages: list[anthropic.types.MessageParam] = [
+            {"role": "user", "content": user_prompt}
+        ]
+
         try:
-            response = self.client.messages.create(  # type: ignore[call-overload]  # dicts match SDK TypedDicts at runtime
+            response = self.client.messages.create(
                 model=self.model,
                 max_tokens=2048,
                 system=system_prompt,
-                tools=[_ANNOTATION_TOOL_SCHEMA],
-                tool_choice={"type": "tool", "name": _ANNOTATION_TOOL_NAME},
-                messages=[{"role": "user", "content": user_prompt}],
+                tools=tools,
+                tool_choice=_ANNOTATION_TOOL_CHOICE,
+                messages=messages,
             )
         except anthropic.APIError as exc:
             logger.error("Anthropic API error while annotating page %d: %s", page_number, exc)
             return [], True, True
 
-        return self._parse_response(response, page_number, page_text=page_text), True, False
+        try:
+            annotations = self._parse_response(response, page_number, page_text=page_text)
+        except _MalformedResponseError as exc:
+            logger.error("Malformed Anthropic response for page %d: %s", page_number, exc)
+            return [], True, True
+
+        return annotations, True, False
 
     def generate_for_document(
         self, pages: list[PageContent], max_annotations_per_page: int = 5
@@ -536,26 +556,57 @@ class AnnotationGenerator:
         """
         # Case 1: raw anthropic.types.Message — look for the tool_use block.
         if hasattr(response, "content"):
-            for block in response.content:
-                if getattr(block, "type", None) == "tool_use" and getattr(
-                    block, "name", None
-                ) == _ANNOTATION_TOOL_NAME:
-                    tool_input = block.input or {}  # type: ignore[union-attr]  # guarded by getattr type check above
-                    result = tool_input.get("annotations", [])
-                    if isinstance(result, list):
-                        return result
-                    logger.warning(
-                        "Tool input 'annotations' was not a list on page %d: %r",
-                        page_number,
-                        result,
-                    )
-                    return []
+            if getattr(response, "stop_reason", None) == "max_tokens":
+                raise _MalformedResponseError("response was truncated at max_tokens")
 
-            logger.warning(
-                "No record_annotations tool_use block found in response for page %d.",
-                page_number,
-            )
-            return []
+            content = response.content
+            matching_inputs: list[object] = []
+            for block in content:
+                if isinstance(block, anthropic.types.ToolUseBlock):
+                    if block.name == _ANNOTATION_TOOL_NAME:
+                        matching_inputs.append(block.input)
+                    continue
+
+                # Test doubles and compatibility callers may provide SDK-shaped,
+                # duck-typed blocks rather than Pydantic SDK model instances.
+                if (
+                    getattr(block, "type", None) == "tool_use"
+                    and getattr(block, "name", None) == _ANNOTATION_TOOL_NAME
+                ):
+                    matching_inputs.append(getattr(block, "input", None))
+
+            if not matching_inputs:
+                raise _MalformedResponseError(
+                    "no record_annotations tool_use block was present"
+                )
+            if len(matching_inputs) != 1:
+                raise _MalformedResponseError(
+                    "multiple record_annotations tool_use blocks were present"
+                )
+            if len(content) != 1:
+                logger.warning(
+                    "Anthropic response for page %d included %d extra content block(s) "
+                    "alongside record_annotations.",
+                    page_number,
+                    len(content) - 1,
+                )
+
+            tool_input = matching_inputs[0]
+            if not isinstance(tool_input, dict):
+                raise _MalformedResponseError(
+                    "record_annotations input was not a JSON object"
+                )
+            if "annotations" not in tool_input:
+                raise _MalformedResponseError(
+                    "record_annotations input omitted the annotations key"
+                )
+
+            result = tool_input["annotations"]
+            if not isinstance(result, list):
+                raise _MalformedResponseError(
+                    "record_annotations annotations value was not a list"
+                )
+            return result
 
         # Case 2: plain string, expected to be JSON (object with
         # "annotations" key, or a bare array).
