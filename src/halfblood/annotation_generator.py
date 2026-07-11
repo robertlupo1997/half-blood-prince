@@ -31,6 +31,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "claude-sonnet-5"
 
 
+class AllPagesFailedError(RuntimeError):
+    """Raised when every page sent to the API failed to generate annotations.
+
+    Distinguishes a systemic failure (retired model, bad key, no network)
+    from a document that legitimately produced zero annotations.
+    """
+
+
 # --------------------------------------------------------------------------
 # Default persona: Severus Snape's Half-Blood Prince annotations
 # --------------------------------------------------------------------------
@@ -218,6 +226,7 @@ class AnnotationGenerator:
         self.client = anthropic.Anthropic(api_key=resolved_key)
         self.model = model
         self.persona = persona or DEFAULT_PERSONA
+        self.failed_pages: list[int] = []
 
     # ------------------------------------------------------------------
     # Prompt construction
@@ -302,9 +311,22 @@ class AnnotationGenerator:
             empty list if the page has no meaningful text or if generation
             fails after validation.
         """
+        annotations, _attempted, _failed = self._generate_for_page_tracked(
+            page_text, page_number, book_context
+        )
+        return annotations
+
+    def _generate_for_page_tracked(
+        self, page_text: str, page_number: int, book_context: str
+    ) -> tuple[list[Annotation], bool, bool]:
+        """Generate annotations, reporting (annotations, attempted, failed).
+
+        ``attempted`` is False for a blank page (no API call is made);
+        ``failed`` is True when the API call raised ``anthropic.APIError``.
+        """
         if not page_text or not page_text.strip():
             logger.debug("Page %d has no text; skipping annotation.", page_number)
-            return []
+            return [], False, False
 
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(page_text, page_number, book_context)
@@ -320,9 +342,9 @@ class AnnotationGenerator:
             )
         except anthropic.APIError as exc:
             logger.error("Anthropic API error while annotating page %d: %s", page_number, exc)
-            return []
+            return [], True, True
 
-        return self._parse_response(response, page_number, page_text=page_text)
+        return self._parse_response(response, page_number, page_text=page_text), True, False
 
     def generate_for_document(
         self, pages: list[PageContent], max_annotations_per_page: int = 5
@@ -355,6 +377,8 @@ class AnnotationGenerator:
         )
 
         running_notes: list[str] = []
+        attempted = 0
+        failed_pages: list[int] = []
         context_window_chars = 500
 
         for i, page in enumerate(pages):
@@ -383,11 +407,13 @@ class AnnotationGenerator:
 
             book_context = "\n\n".join(context_parts)
 
-            annotations = self.generate_for_page(
-                page_text=page.text,
-                page_number=page.page_number,
-                book_context=book_context,
+            annotations, attempted_call, failed = self._generate_for_page_tracked(
+                page.text, page.page_number, book_context
             )
+            if attempted_call:
+                attempted += 1
+                if failed:
+                    failed_pages.append(page.page_number)
 
             if len(annotations) > max_annotations_per_page:
                 annotations = sorted(
@@ -404,6 +430,13 @@ class AnnotationGenerator:
                     original_text=page.text,
                     annotations=annotations,
                 )
+            )
+
+        self.failed_pages = failed_pages
+        if attempted and len(failed_pages) == attempted:
+            raise AllPagesFailedError(
+                f"All {attempted} page(s) sent to the API failed; no annotations were "
+                "produced. Check the model name, your ANTHROPIC_API_KEY, and connectivity."
             )
 
         return plan

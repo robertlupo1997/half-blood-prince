@@ -14,6 +14,7 @@ type from its extension (``.pdf`` or ``.epub``) and dispatch to
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import sys
 import webbrowser
@@ -25,7 +26,11 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from halfblood.annotation_generator import DEFAULT_MODEL, AnnotationGenerator
+from halfblood.annotation_generator import (
+    DEFAULT_MODEL,
+    AllPagesFailedError,
+    AnnotationGenerator,
+)
 from halfblood.document_processor import DocumentProcessor, PageContent
 from halfblood.epub_processor import EpubProcessor
 from halfblood.models import AnnotatedPage
@@ -121,6 +126,7 @@ def _print_annotated_page(annotated_page: AnnotatedPage) -> None:
 @click.version_option(package_name="half-blood-prince")
 def main() -> None:
     """halfblood -- annotate any book like the Half-Blood Prince."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 
 @main.command()
@@ -171,7 +177,12 @@ def annotate(input_file: Path, output_file: Path, persona: str,
         except ValueError as exc:
             raise click.ClickException(str(exc)) from exc
         gen_task = progress.add_task("Generating annotations...", total=len(selected))
-        plan = generator.generate_for_document(selected, max_annotations_per_page=max_per_page)
+        try:
+            plan = generator.generate_for_document(
+                selected, max_annotations_per_page=max_per_page
+            )
+        except AllPagesFailedError as exc:
+            raise click.ClickException(str(exc)) from exc
         progress.update(gen_task, completed=len(selected))
 
         # Render
@@ -182,6 +193,12 @@ def annotate(input_file: Path, output_file: Path, persona: str,
             flat_annotations = [a for ap in plan.pages for a in ap.annotations]
         processor.render_annotations(str(input_file), flat_annotations, str(output_file))
         progress.update(render_task, completed=1)
+
+    if generator.failed_pages:
+        console.print(
+            f"[yellow]Warning:[/yellow] {len(generator.failed_pages)} page(s) failed "
+            f"and were left un-annotated: {generator.failed_pages}"
+        )
 
     console.print(
         f"[bold green]Done.[/bold green] {plan.total_annotations} annotations "
@@ -222,8 +239,19 @@ def preview(input_file: Path, pages: str, persona: str, model: str, max_per_page
         except ValueError as exc:
             raise click.ClickException(str(exc)) from exc
         gen_task = progress.add_task("Generating annotations...", total=len(selected))
-        plan = generator.generate_for_document(selected, max_annotations_per_page=max_per_page)
+        try:
+            plan = generator.generate_for_document(
+                selected, max_annotations_per_page=max_per_page
+            )
+        except AllPagesFailedError as exc:
+            raise click.ClickException(str(exc)) from exc
         progress.update(gen_task, completed=len(selected))
+
+    if generator.failed_pages:
+        console.print(
+            f"[yellow]Warning:[/yellow] {len(generator.failed_pages)} page(s) failed "
+            f"and were left un-annotated: {generator.failed_pages}"
+        )
 
     console.print()
     total = 0
