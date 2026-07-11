@@ -21,6 +21,7 @@ from pathlib import Path
 import fitz
 import pytest
 from click.testing import CliRunner
+from pydantic import ValidationError
 
 from halfblood.annotation_generator import AnnotationGenerator
 from halfblood.cli import main as cli_main
@@ -119,7 +120,9 @@ class TestDocumentProcessorLoad:
             assert needle in page.text
 
     def test_load_raises_for_missing_file(self, processor: DocumentProcessor) -> None:
-        with pytest.raises(Exception):  # noqa: B017 - exception type is implementation detail
+        # AUD-41: pin the actual exception type (PyMuPDF's FileNotFoundError,
+        # a RuntimeError subclass) so an unrelated crash cannot pass as green.
+        with pytest.raises(fitz.FileNotFoundError):
             processor.load(str(FIXTURES_DIR / "does_not_exist.pdf"))
 
 
@@ -404,6 +407,37 @@ class TestParseResponse:
         assert len(result) == 1
         assert result[0].annotation_type == AnnotationType.INSIGHT
 
+    def test_strips_fence_without_language_tag(self, generator: AnnotationGenerator) -> None:
+        # AUD-32: delimiter-aware fence handling must accept a bare ``` fence.
+        raw = (
+            "```\n"
+            '{"annotations": [{"target_text": "x", "annotation_type": "insight", '
+            '"content": "Predictable."}]}\n'
+            "```"
+        )
+        result = generator._parse_response(raw, page_number=1)
+        assert len(result) == 1
+        assert result[0].annotation_type == AnnotationType.INSIGHT
+
+    def test_backticks_inside_json_values_survive_fence_stripping(
+        self, generator: AnnotationGenerator
+    ) -> None:
+        # AUD-32: fence removal must be delimiter-aware, never a character strip
+        # that eats backticks belonging to a JSON string value.
+        content = "run `Sectumsempra` — my own"
+        import json as _json
+
+        raw = (
+            "```json\n"
+            + _json.dumps(
+                {"annotations": [{"target_text": "x", "annotation_type": "invention", "content": content}]}
+            )
+            + "\n```"
+        )
+        result = generator._parse_response(raw, page_number=1)
+        assert len(result) == 1
+        assert result[0].content == content
+
     def test_invalid_json_returns_empty_list(self, generator: AnnotationGenerator) -> None:
         result = generator._parse_response("{not valid json at all", page_number=1)
         assert result == []
@@ -486,13 +520,10 @@ class TestParseResponse:
         }
         assert all(a.page == 5 for a in result)
 
-    def test_message_with_no_matching_tool_use_block_returns_empty(
-        self, generator: AnnotationGenerator
-    ) -> None:
-        other_block = types.SimpleNamespace(type="text", name=None, input=None)
-        fake_message = types.SimpleNamespace(content=[other_block])
-        result = generator._parse_response(fake_message, page_number=1)
-        assert result == []
+    # NOTE: the "no matching tool block -> []" case was removed here in P0-T1.
+    # Its contract changed: an absent tool block is now an explicit page
+    # failure (a valid empty array is the only empty success). That behavior is
+    # pinned in tests/test_annotation_generator.py against the real Message path.
 
     def test_generate_for_page_short_circuits_on_empty_text(
         self, generator: AnnotationGenerator
@@ -542,21 +573,17 @@ class TestCli:
         assert "--json-out" in result.output
         assert "--list" in result.output
 
-    def test_version_flag(self) -> None:
-        # click.version_option(package_name=...) reads installed package
-        # metadata. In a source checkout that isn't pip-installed (e.g. this
-        # repo declares requires-python >= 3.11 and may be exercised from an
-        # older interpreter that pip refuses to editable-install into),
-        # Click raises a RuntimeError instead of printing a version -- that
-        # is expected, environment-dependent behavior, not a pipeline bug.
-        # Accept either outcome, but never an unexpected crash.
+    def test_version_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AUD-43: pin the exact Click-formatted version line against a known
+        # metadata value, instead of a loose match that absorbed unrelated
+        # RuntimeErrors as green.
+        import importlib.metadata as _metadata
+
+        monkeypatch.setattr(_metadata, "version", lambda _name: "9.9.9")
         runner = CliRunner()
         result = runner.invoke(cli_main, ["--version"])
-        if result.exit_code == 0:
-            assert "half-blood-prince" in result.output.lower() or result.output.strip()
-        else:
-            assert isinstance(result.exception, RuntimeError)
-            assert "not installed" in str(result.exception).lower()
+        assert result.exit_code == 0
+        assert result.output == "main, version 9.9.9\n"
 
     def test_annotate_requires_output_option(self, sample_pdf_path: Path) -> None:
         runner = CliRunner()
@@ -586,11 +613,17 @@ class TestEdgeCases:
         assert lines == [""]
 
     def test_wrap_text_on_very_long_single_word(self, processor: DocumentProcessor) -> None:
-        # A word with no spaces can't be split by the greedy word-wrapper;
-        # it should still come back as a single line rather than crashing.
+        # CONTRACT UPDATED for AUD-40 (P0-T5): a word wider than the column is
+        # split into nonempty chunks that each fit, instead of coming back as
+        # one over-wide line that renders off the page. Characters must be
+        # preserved in order.
         long_word = "supercalifragilisticexpialidocious" * 4
         lines = processor._wrap_text(long_word, max_width=50, fontsize=9)
-        assert lines == [long_word]
+        assert len(lines) > 1
+        assert all(line for line in lines)
+        assert "".join(lines) == long_word
+        for line in lines:
+            assert processor._measure_font.text_length(line, fontsize=9) <= 50.5
 
     def test_render_very_long_annotation_content(
         self, processor: DocumentProcessor, sample_pdf_path: Path, tmp_path: Path
@@ -659,14 +692,27 @@ class TestEdgeCases:
         assert output_path.is_file()
 
     def test_invalid_position_defaults_to_margin_right(
-        self, processor: DocumentProcessor, sample_pdf_path: Path
+        self,
+        processor: DocumentProcessor,
+        sample_pdf_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        # AUD-42: the test's own name promises margin_right dispatch — spy on
+        # the margin writer (delegating to the real one) and assert the
+        # out-of-vocabulary position actually routes there, exactly once.
+        requested_sides: list[str] = []
+        real_write = DocumentProcessor._write_margin_text
+
+        def spy(self, shape, page, rect, text, ink, angle, fontsize, opacity, side):  # type: ignore[no-untyped-def]
+            requested_sides.append(side)
+            return real_write(self, shape, page, rect, text, ink, angle, fontsize, opacity, side)
+
+        monkeypatch.setattr(DocumentProcessor, "_write_margin_text", spy)
         doc = fitz.open(str(sample_pdf_path))
         try:
             page = doc[1]
             rect = processor.find_text_rect(page, "Sopophorous bean")
             assert rect is not None
-            # Should not raise despite an out-of-vocabulary position value.
             processor.add_margin_note(
                 page,
                 rect,
@@ -677,9 +723,12 @@ class TestEdgeCases:
             )
         finally:
             doc.close()
+        assert requested_sides == ["right"]
 
     def test_confidence_out_of_bounds_rejected_by_model(self) -> None:
-        with pytest.raises(Exception):  # noqa: B017 - exception type is Pydantic implementation detail
+        # AUD-41: the rejection must be Pydantic validation AND locate the
+        # confidence field — any other exception is a different bug.
+        with pytest.raises(ValidationError) as excinfo:
             Annotation(
                 page=1,
                 target_text="x",
@@ -687,6 +736,7 @@ class TestEdgeCases:
                 content="y",
                 confidence=1.5,
             )
+        assert any(err["loc"] == ("confidence",) for err in excinfo.value.errors())
 
     def test_annotations_from_plan_flattens_and_fixes_page_mismatch(self) -> None:
         from halfblood.models import AnnotatedPage, AnnotationPlan

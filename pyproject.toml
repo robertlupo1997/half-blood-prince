@@ -3,19 +3,23 @@ name = "half-blood-prince"
 version = "0.1.0"
 description = "Turn any book into one annotated by the Half-Blood Prince"
 requires-python = ">=3.11"
+# Upper bounds are intentional (AUD-38): majors are excluded until reviewed.
+# anthropic stays <2 until Phase 1 moves provider traffic to httpx; ebooklib
+# is pre-1.0 (minor bumps are breaking, and the EPUB renderer depends on its
+# write-time head regeneration behavior), so it is capped at the tested minor.
 dependencies = [
-    "pymupdf>=1.24.0",
-    "anthropic>=0.30.0",
-    "click>=8.1.0",
-    "pydantic>=2.0.0",
-    "rich>=13.0.0",
-    "ebooklib>=0.18",
-    "beautifulsoup4>=4.12.0",
-    "lxml>=5.0.0",
+    "pymupdf>=1.24.0,<2",
+    "anthropic>=0.30.0,<2",
+    "click>=8.1.0,<9",
+    "pydantic>=2.0.0,<3",
+    "rich>=13.0.0,<16",
+    "ebooklib>=0.18,<0.21",
+    "beautifulsoup4>=4.12.0,<5",
+    "lxml>=5.0.0,<7",
 ]
 
 [project.optional-dependencies]
-eval = ["anthropic>=0.30.0", "rich>=13.0.0"]
+eval = ["anthropic>=0.30.0,<2", "rich>=13.0.0,<16"]
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.5.0",

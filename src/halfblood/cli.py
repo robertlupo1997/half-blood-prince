@@ -95,6 +95,31 @@ def _processor_for(path: Path) -> Processor:
     )
 
 
+def _validate_input_signature(path: Path) -> None:
+    """Reject files whose bytes do not match the routed input type."""
+    suffix = path.suffix.lower()
+    if suffix not in _SUPPORTED_SUFFIXES:
+        # Keep the unsupported-suffix error centralized in the router.
+        _processor_for(path)
+
+    with path.open("rb") as input_stream:
+        signature = input_stream.read(4)
+    expected = b"%PDF" if suffix == ".pdf" else b"PK\x03\x04"
+    if not signature.startswith(expected):
+        file_type = "PDF" if suffix == ".pdf" else "EPUB (ZIP)"
+        raise click.ClickException(
+            f"{path.name!r} does not appear to be a valid {file_type} file."
+        )
+
+
+def _refuse_existing_output(path: Path, force: bool) -> None:
+    """Require an explicit opt-in before replacing an output file."""
+    if path.exists() and not force:
+        raise click.ClickException(
+            f"Output file {path} already exists; use --force to overwrite it."
+        )
+
+
 def _print_annotated_page(annotated_page: AnnotatedPage) -> None:
     """Pretty-print one page's annotations."""
     if not annotated_page.annotations:
@@ -140,11 +165,15 @@ def main() -> None:
 @click.option("--model", default=DEFAULT_MODEL, show_default=True)
 @click.option("--max-per-page", default=5, show_default=True,
               help="Max annotations per page/chapter.")
+@click.option("--force", is_flag=True, help="Overwrite an existing output file.")
 def annotate(input_file: Path, output_file: Path, persona: str,
-             pages: str | None, model: str, max_per_page: int) -> None:
+             pages: str | None, model: str, max_per_page: int, force: bool) -> None:
     """Annotate INPUT_FILE (a .pdf or .epub) in the style of the Half-Blood Prince."""
     console.rule("[bold magenta]Half-Blood Prince -- Annotate[/bold magenta]")
 
+    _validate_input_signature(input_file)
+    _refuse_existing_output(output_file, force)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     processor = _processor_for(input_file)
     if output_file.suffix.lower() != input_file.suffix.lower():
         console.print(
@@ -217,6 +246,7 @@ def preview(input_file: Path, pages: str, persona: str, model: str, max_per_page
     (no annotated file is written)."""
     console.rule("[bold magenta]Half-Blood Prince -- Preview[/bold magenta]")
 
+    _validate_input_signature(input_file)
     processor = _processor_for(input_file)
 
     with Progress(
@@ -273,13 +303,19 @@ def preview(input_file: Path, pages: str, persona: str, model: str, max_per_page
                    "any pages missing embedded text (split on form-feed characters).")
 @click.option("--open", "open_browser", is_flag=True, default=False,
               help="Open the generated preview in your default browser when done.")
+@click.option("--force", is_flag=True, help="Overwrite an existing output file.")
 def web_preview(
-    plan_path: Path, output_path: Path, book_text_path: Path | None, open_browser: bool
+    plan_path: Path,
+    output_path: Path,
+    book_text_path: Path | None,
+    open_browser: bool,
+    force: bool,
 ) -> None:
     """Render PLAN_PATH (a JSON-serialized AnnotationPlan) as a self-contained,
     interactive HTML book preview with animated, hand-written margin notes."""
     console.rule("[bold magenta]Half-Blood Prince -- Web Preview[/bold magenta]")
 
+    _refuse_existing_output(output_path, force)
     book_text = book_text_path.read_text(encoding="utf-8") if book_text_path else None
 
     with console.status("[bold]Rendering interactive preview...[/bold]"):

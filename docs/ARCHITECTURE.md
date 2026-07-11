@@ -77,13 +77,22 @@ Owns everything that talks to Claude:
 
 It has no knowledge of PDF bytes, fonts, or rendering — its only output is `Annotation` / `AnnotatedPage` / `AnnotationPlan` objects built from `PageContent` input. This is the other half of the same boundary: generation doesn't need to know how its output will be drawn.
 
+### `epub_processor.py`
+
+`EpubProcessor` is the EPUB counterpart to `DocumentProcessor`. Its `load()` method walks reading-order spine XHTML items and emits one nominally sized `PageContent` per item, allowing the generator to treat EPUB chapters like PDF pages. Its `render_annotations()` method locates target text in those XHTML documents, injects styled annotation markup and CSS, and writes an annotated EPUB; unlike PDF rendering, its placement is naturally reflowable rather than fixed to page coordinates.
+
+### `web_preview.py`
+
+`web_preview.py` turns an `AnnotationPlan` (or its JSON serialization) into one self-contained offline HTML file. It embeds the plan, CSS, and JavaScript for a page-by-page viewer with target highlighting and connected margin notes, so the preview can be opened locally without a server.
+
 ### `cli.py`
 
-The `halfblood` Click group (`annotate`, `preview`, `eval`). Owns:
+The `halfblood` Click group (`annotate`, `preview`, `web-preview`, `eval`). Owns:
 
 - CLI option parsing and validation, including page-range parsing (`_parse_page_range`, `_filter_pages`).
 - Wiring `DocumentProcessor` → `AnnotationGenerator` → `DocumentProcessor` together with a `rich.Progress` UI.
 - Pretty-printing an `AnnotatedPage` as a table (`preview`, via `_print_annotated_page`).
+- Rendering a serialized annotation plan to the standalone HTML viewer (`web-preview`, via `web_preview.generate_preview`).
 - Shelling out to `eval/eval_harness.py` as a subprocess for the `eval` subcommand (kept as a separate process/script so the harness stays independently runnable without the package installed).
 
 ### `eval/eval_harness.py`
@@ -199,7 +208,7 @@ If `find_text_rect` fails to locate `target_text` on the page at all (LLM transc
 
 ## Extension points
 
-**EPUB (or other format) support.** `AnnotationGenerator` only depends on `PageContent` (page_number, text, width, height) and never imports `fitz` — so a new `EpubProcessor.load() -> list[PageContent]` slots into the exact same generation call with no changes there. The harder half is rendering: `render_annotations`/`add_margin_note` are written against `fitz.Page`/`fitz.Rect`/`fitz.Shape` specifically. Supporting EPUB rendering means either (a) converting EPUB → PDF first and reusing the existing PyMuPDF renderer unchanged, or (b) writing a parallel renderer against EPUB's XHTML/CSS content model (no page-fixed geometry, so "margin" placement would need to become CSS-based, e.g. an injected `<aside>` styled to look hand-annotated). Option (a) is the much smaller lift.
+**EPUB (and other format) support.** EPUB support is already implemented by `EpubProcessor`: it presents spine items to `AnnotationGenerator` as `PageContent`, then renders the resulting annotations into the EPUB's XHTML/CSS content. This mirrors `DocumentProcessor`'s `load` / `render_annotations` contract while respecting EPUB's reflowable layout instead of pretending it has fixed PDF geometry. A new format should follow the same boundary—adapt its input to `PageContent` and provide a renderer suited to its own layout model.
 
 **New annotation types.** Add the enum value to `AnnotationType` in `models.py`; add an ink entry to `_INK_PALETTE` and a size to `_FONT_SIZE_BY_TYPE` in `document_processor.py`; decide its `_mark_target` marking style (or add a new one — the four are underline/highlight/circle/strikeout, but nothing stops a new shape); and describe it in the persona text (`DEFAULT_PERSONA`'s numbered list) so personas actually invoke it. The JSON schema enum (`_ANNOTATION_TOOL_SCHEMA` in the generator, and the near-identical `GENERATION_TOOL` in the eval harness) is derived automatically from `[t.value for t in AnnotationType]`, so no manual schema edit is needed there.
 

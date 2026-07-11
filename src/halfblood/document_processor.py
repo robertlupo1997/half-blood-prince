@@ -50,6 +50,10 @@ from halfblood.models import (
 
 logger = logging.getLogger(__name__)
 
+# An absent auto-discovered font is an expected fallback, so avoid repeating
+# the same informational notice for every processor created in a batch.
+_missing_font_notice_logged = False
+
 
 # --------------------------------------------------------------------------
 # Data types
@@ -151,15 +155,23 @@ class DocumentProcessor:
                any weight/case).
             4. A short list of common system font install locations.
             5. Fallback: PDF standard font ``Helvetica-Oblique`` (no file
-               needed). A warning is logged with download instructions.
+               needed). An informational notice is logged once per process.
 
         Returns:
             (fontfile_path_or_None, fontname_alias, is_custom_font)
         """
-        candidates: list[Path] = []
-
         if explicit_font_path:
-            candidates.append(Path(explicit_font_path))
+            explicit_path = Path(explicit_font_path)
+            if explicit_path.is_file():
+                logger.debug("Using handwriting font: %s", explicit_path)
+                return str(explicit_path), "HBProseHand", True
+            logger.warning(
+                "Configured handwriting font does not exist: %s; "
+                "continuing with auto-discovery.",
+                explicit_font_path,
+            )
+
+        candidates: list[Path] = []
 
         fonts_dir = self._project_root / "fonts"
         candidates.append(fonts_dir / "CaveatBrush-Regular.ttf")
@@ -182,15 +194,14 @@ class DocumentProcessor:
                 logger.debug("Using handwriting font: %s", path)
                 return str(path), "HBProseHand", True
 
-        logger.warning(
-            "No handwriting font found (looked for %s and system Caveat installs). "
-            "Falling back to Helvetica-Oblique, which will look typeset rather "
-            "than handwritten. To fix this, download 'Caveat Brush' from "
-            "https://fonts.google.com/specimen/Caveat+Brush and save it as "
-            "%s",
-            fonts_dir / "CaveatBrush-Regular.ttf",
-            fonts_dir / "CaveatBrush-Regular.ttf",
-        )
+        global _missing_font_notice_logged
+        if not _missing_font_notice_logged:
+            logger.info(
+                "No handwriting font found (looked for %s and system Caveat installs). "
+                "Falling back to Helvetica-Oblique.",
+                fonts_dir / "CaveatBrush-Regular.ttf",
+            )
+            _missing_font_notice_logged = True
         return None, "Helvetica-Oblique", False
 
     def _load_measure_font(self) -> fitz.Font:
@@ -242,6 +253,11 @@ class DocumentProcessor:
         text = re.sub(r"[‘’]", "'", text)
         text = re.sub(r"[“”]", '"', text)
         text = re.sub(r"[–—]", "-", text)
+        # Standard PDF fonts can expose unsupported smart punctuation as a
+        # middle dot. Its position still distinguishes an apostrophe inside a
+        # word from a standalone dash.
+        text = re.sub(r"(?<=\w)·(?=\w)", "'", text)
+        text = text.replace("·", "-")
         text = re.sub(r"\s+", " ", text)
         return text
 
@@ -251,6 +267,56 @@ class DocumentProcessor:
         for rect in rects[1:]:
             union |= rect
         return union
+
+    @classmethod
+    def _first_contiguous_hit_group(cls, hits: Sequence[fitz.Rect]) -> fitz.Rect:
+        """Return the first deterministic passage represented by ``hits``.
+
+        ``Page.search_for`` returns one rectangle per occurrence, except that
+        a phrase wrapping onto the next line is returned as consecutive line
+        fragments. Keep those adjacent fragments together without spanning
+        later, distinct occurrences elsewhere on the page.
+        """
+        first_group = [hits[0]]
+        previous = hits[0]
+        for hit in hits[1:]:
+            same_line = hit.y0 < previous.y1 and previous.y0 < hit.y1
+            line_height = max(previous.height, hit.height)
+            vertical_gap = hit.y0 - previous.y1
+            if same_line or vertical_gap > line_height * 1.5:
+                break
+            first_group.append(hit)
+            previous = hit
+        return cls._union_rects(first_group)
+
+    def _find_normalized_word_rect(
+        self, page: fitz.Page, normalized_target: str
+    ) -> fitz.Rect | None:
+        """Find one punctuation-normalized substring in the page's words."""
+        words = page.get_text("words", sort=True)
+        if not words:
+            return None
+
+        normalized_words = [self._normalize_search_text(str(word[4])) for word in words]
+        page_text = " ".join(normalized_words)
+        start = page_text.find(normalized_target)
+        if start < 0:
+            return None
+
+        end = start + len(normalized_target)
+        matched_rects: list[fitz.Rect] = []
+        offset = 0
+        for word, normalized_word in zip(words, normalized_words, strict=True):
+            word_end = offset + len(normalized_word)
+            if word_end > start and offset < end:
+                matched_rects.append(fitz.Rect(word[:4]))
+            if offset >= end:
+                break
+            offset = word_end + 1
+
+        if not matched_rects:
+            return None
+        return self._union_rects(matched_rects)
 
     def _search_variants(self, text: str) -> list[str]:
         """Generate progressively looser variants of `text` to try against
@@ -303,7 +369,15 @@ class DocumentProcessor:
                         text,
                         variant,
                     )
-                return self._union_rects(hits)
+                return self._first_contiguous_hit_group(hits)
+
+        normalized_rect = self._find_normalized_word_rect(page, normalized)
+        if normalized_rect is not None:
+            logger.debug(
+                "Native search for %r failed; used normalized page-text match",
+                text,
+            )
+            return normalized_rect
 
         logger.warning("Could not locate target_text %r on page", text)
         return None
@@ -420,22 +494,21 @@ class DocumentProcessor:
         self._mark_target(page, rect, annotation_type, ink, opacity)
 
         if position == "margin_right":
-            anchor = self._write_margin_text(
-                shape, page, rect, text, ink, angle, fontsize, opacity, side="right"
+            anchor, resolved_side = self._write_margin_text(
+                shape, page, rect, text, ink, angle, fontsize, opacity, "right"
             )
-            self._draw_connector(shape, rect, anchor, ink, opacity, side="right")
+            self._draw_connector(shape, rect, anchor, ink, opacity, side=resolved_side)
         elif position == "margin_left":
-            anchor = self._write_margin_text(
-                shape, page, rect, text, ink, angle, fontsize, opacity, side="left"
+            anchor, resolved_side = self._write_margin_text(
+                shape, page, rect, text, ink, angle, fontsize, opacity, "left"
             )
-            self._draw_connector(shape, rect, anchor, ink, opacity, side="left")
+            self._draw_connector(shape, rect, anchor, ink, opacity, side=resolved_side)
         elif position == "inline":
             self._write_inline_text(shape, page, rect, text, ink, angle, fontsize, opacity)
+        elif annotation_type == AnnotationType.CROSSED_OUT:  # between_lines
+            self._write_replacement_above(shape, rect, text, ink, angle, fontsize, opacity)
         else:  # between_lines
             self._write_between_lines_text(shape, rect, text, ink, angle, fontsize, opacity)
-
-        if annotation_type == AnnotationType.CROSSED_OUT:
-            self._write_replacement_above(shape, rect, text, ink, angle, fontsize, opacity)
 
         shape.commit(overlay=True)
 
@@ -485,24 +558,49 @@ class DocumentProcessor:
         fontsize: float,
         opacity: float,
         side: str,
-    ) -> fitz.Point:
+    ) -> tuple[fitz.Point, str]:
         """Write wrapped margin text to the left or right of `rect`.
 
         Returns the anchor point nearest the target text, used to draw
         the connecting arrow.
         """
-        if side == "right":
-            available = page.rect.x1 - rect.x1 - _MARGIN_GAP - _PAGE_EDGE_PAD
-        else:
-            available = rect.x0 - page.rect.x0 - _MARGIN_GAP - _PAGE_EDGE_PAD
+        available_by_side = {
+            "right": page.rect.x1 - _PAGE_EDGE_PAD - (rect.x1 + _MARGIN_GAP),
+            "left": rect.x0 - _MARGIN_GAP - (page.rect.x0 + _PAGE_EDGE_PAD),
+        }
+        other_side = "left" if side == "right" else "right"
+        if available_by_side[side] < _MIN_MARGIN_WIDTH:
+            side = other_side
+        if available_by_side[side] <= 0:
+            side = max(available_by_side, key=available_by_side.__getitem__)
 
-        width = max(_MIN_MARGIN_WIDTH, min(available, _MAX_MARGIN_WIDTH))
+        width = min(available_by_side[side], _MAX_MARGIN_WIDTH)
+        # Extremely narrow pages / unusually wide targets can leave less than
+        # one glyph of margin. Scale just enough that character wrapping can
+        # still keep every emitted line within the real margin.
+        widest_glyph = max(
+            (self._measure_font.text_length(char, fontsize=fontsize) for char in text),
+            default=0.0,
+        )
+        if 0 < width < widest_glyph:
+            fontsize *= width / widest_glyph
+
         lines = self._wrap_text(text, width, fontsize)
         line_gap = fontsize * 1.3
+
+        # There must be room for the font ascent above the first baseline and
+        # for the final baseline itself. Drop trailing lines when a block is
+        # taller than the page; the remaining lines retain their order.
+        usable_height = max(0.0, page.rect.height - fontsize)
+        max_lines = max(1, math.floor(usable_height / line_gap) + 1)
+        lines = lines[:max_lines]
 
         # Vertically center the note block on the target passage.
         block_height = line_gap * len(lines)
         start_y = rect.y0 + (rect.height / 2) - (block_height / 2) + fontsize
+        first_baseline = page.rect.y0 + fontsize
+        last_start = page.rect.y1 - line_gap * (len(lines) - 1)
+        start_y = min(max(start_y, first_baseline), last_start)
 
         if side == "right":
             x = rect.x1 + _MARGIN_GAP
@@ -525,7 +623,7 @@ class DocumentProcessor:
 
         anchor_x = x if side == "right" else x + width
         anchor_y = rect.y0 + rect.height / 2
-        return fitz.Point(anchor_x, anchor_y)
+        return fitz.Point(anchor_x, anchor_y), side
 
     # ------------------------------------------------------------
     # Inline / between-lines text
@@ -591,9 +689,15 @@ class DocumentProcessor:
         lines = self._wrap_text(text, width, small_size)
         # Only the top line or two actually fit between two lines of body
         # text without colliding with the line above.
-        lines = lines[:2]
         line_gap = small_size * 1.05
-        top_y = max(small_size, rect.y0 - 2 - line_gap * (len(lines) - 1))
+        last_baseline = rect.y0 - 2
+        available_lines = max(
+            0, math.floor((last_baseline - small_size) / line_gap) + 1
+        )
+        lines = lines[: min(2, available_lines)]
+        if not lines:
+            return
+        top_y = last_baseline - line_gap * (len(lines) - 1)
 
         for i, line in enumerate(lines):
             point = fitz.Point(rect.x0, top_y + i * line_gap)
@@ -624,9 +728,16 @@ class DocumentProcessor:
         """
         small_size = max(6.5, fontsize - 0.5)
         width = max(rect.width, _MIN_MARGIN_WIDTH)
-        lines = self._wrap_text(replacement_text, width, small_size)[:2]
+        lines = self._wrap_text(replacement_text, width, small_size)
         line_gap = small_size * 1.1
-        top_y = max(small_size, rect.y0 - 3 - line_gap * (len(lines) - 1))
+        last_baseline = rect.y0 - 3
+        available_lines = max(
+            0, math.floor((last_baseline - small_size) / line_gap) + 1
+        )
+        lines = lines[: min(2, available_lines)]
+        if not lines:
+            return
+        top_y = last_baseline - line_gap * (len(lines) - 1)
 
         for i, line in enumerate(lines):
             point = fitz.Point(rect.x0, top_y + i * line_gap)
@@ -724,9 +835,28 @@ class DocumentProcessor:
         if not words:
             return [""]
 
+        def split_word(word: str) -> list[str]:
+            chunks: list[str] = []
+            current_chunk = ""
+            for char in word:
+                candidate = current_chunk + char
+                if (
+                    current_chunk
+                    and self._measure_font.text_length(candidate, fontsize=fontsize)
+                    > max_width
+                ):
+                    chunks.append(current_chunk)
+                    current_chunk = char
+                else:
+                    current_chunk = candidate
+            if current_chunk:
+                chunks.append(current_chunk)
+            return chunks
+
+        wrapped_words = [chunk for word in words for chunk in split_word(word)]
         lines: list[str] = []
-        current = words[0]
-        for word in words[1:]:
+        current = wrapped_words[0]
+        for word in wrapped_words[1:]:
             candidate = f"{current} {word}"
             if self._measure_font.text_length(candidate, fontsize=fontsize) <= max_width:
                 current = candidate

@@ -3,8 +3,8 @@
 This module turns an :class:`~halfblood.models.AnnotationPlan` into a single,
 self-contained HTML file: a page-by-page book viewer where the Prince's
 margin notes hover beside the text, connected to their target passage by a
-small hand-drawn line, and "write themselves" onto the page in a handwriting
-web font (Google Fonts "Caveat"), fading in and out like ink that hasn't
+small hand-drawn line, and "write themselves" onto the page in a locally
+available handwriting font, fading in and out like ink that hasn't
 quite dried -- an homage to the Riddle diary's self-writing pages.
 
 Everything -- CSS, JS, and the annotation data itself (as JSON) -- is
@@ -82,6 +82,7 @@ _QUOTE_CHARS = "'‘’′"
 _DQUOTE_CHARS = '"“”″'
 _DASH_CHARS = "-–—"
 _SPECIAL_CHARS = set(_QUOTE_CHARS + _DQUOTE_CHARS + _DASH_CHARS)
+_MAX_TARGET_LENGTH = 1500
 
 
 def _char_class_for(ch: str) -> str:
@@ -98,10 +99,14 @@ def _flexible_pattern(text: str) -> str:
     any of their "smart" typographic variants.
     """
     collapsed = re.sub(r"\s+", " ", text.strip())
-    escaped = re.escape(collapsed).replace(" ", r"\s+")
     out: list[str] = []
-    for ch in escaped:
-        out.append(_char_class_for(ch) if ch in _SPECIAL_CHARS else ch)
+    for ch in collapsed:
+        if ch == " ":
+            out.append(r"\s+")
+        elif ch in _SPECIAL_CHARS:
+            out.append(_char_class_for(ch))
+        else:
+            out.append(re.escape(ch))
     return "".join(out)
 
 
@@ -131,6 +136,8 @@ def _candidate_variants(text: str) -> list[str]:
 
 def _find_target_span(haystack: str, target: str) -> tuple[int, int] | None:
     if not haystack or not target or not target.strip():
+        return None
+    if len(target) > _MAX_TARGET_LENGTH:
         return None
     for variant in _candidate_variants(target):
         pattern = _flexible_pattern(variant)
@@ -341,7 +348,12 @@ def _render(plan: AnnotationPlan, book_text: str | None) -> tuple[str, dict]:
     plan = plan.model_copy(update={"pages": pages})
 
     data = _build_data(plan)
-    data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    data_json = (
+        json.dumps(data, ensure_ascii=False)
+        .replace("</", "<\\/")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
 
     out = _HTML_TEMPLATE
     out = out.replace("%%CSS%%", _CSS)
@@ -412,9 +424,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>%%PAGE_TITLE%% — Half-Blood Prince Preview</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet">
 <style>
 %%CSS%%
 </style>
@@ -492,8 +501,8 @@ _CSS = r"""
   --ink-crossed_out:#5a5a5a;        --ink-crossed_out-soft:rgba(90,90,90,.18);
   --ink-doodle_note:#17171a;        --ink-doodle_note-soft:rgba(23,23,26,.14);
 
-  --serif:'EB Garamond','Iowan Old Style',Georgia,'Times New Roman',serif;
-  --hand:'Caveat',cursive;
+  --serif:Georgia,'Times New Roman',serif;
+  --hand:'Caveat','Bradley Hand','Segoe Print','Comic Sans MS',cursive;
 }
 
 [data-theme="dark"]{

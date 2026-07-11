@@ -2,11 +2,11 @@
 
 *"This book is the property of the Half-Blood Prince."*
 
-Turn any PDF into a book someone brilliant, impatient, and a little bit dangerous has already annotated.
+Turn any PDF or EPUB into a book someone brilliant, impatient, and a little bit dangerous has already annotated.
 
 ## What it does
 
-Half-Blood Prince takes a PDF and hands it to Claude, page by page, in the voice of a specific persona — by default, a young Severus Snape scribbling corrections into his Potions textbook. The result is a new PDF with handwritten-style margin notes: corrections, shortcuts, warnings, and the occasional invented spell, rendered in ink color, rotated at a natural angle, and connected to the exact passage they're reacting to.
+Half-Blood Prince takes a PDF or EPUB and hands it to Claude, page by page or spine item by spine item, in the voice of a specific persona — by default, a young Severus Snape scribbling corrections into his Potions textbook. The result is a new PDF or EPUB with handwritten-style annotations: corrections, shortcuts, warnings, and the occasional invented spell, rendered in ink color and connected to the exact passage they're reacting to.
 
 It's the "Advanced Potion-Making" gag from *Harry Potter and the Half-Blood Prince*, generalized: any textbook, novel, or manual can get its own Prince in the margins — yours doesn't have to be a genius at potions, it can be a sardonic chemistry professor, a blunt line cook, or an impatient physicist.
 
@@ -20,6 +20,9 @@ halfblood annotate potions_textbook.pdf -o annotated.pdf
 
 # Preview just the first few pages without writing a PDF
 halfblood preview potions_textbook.pdf --pages 1-3
+
+# EPUB input is supported too
+halfblood annotate book.epub -o annotated.epub
 
 # Use a custom persona
 halfblood annotate cookbook.pdf -o annotated.pdf \
@@ -45,7 +48,13 @@ pip install -e ".[dev]"
 
 # for the eval harness
 pip install -e ".[eval]"
+
+# reproducible dev environment (exact pinned versions used in CI/testing)
+pip install -r requirements-dev.lock && pip install -e . --no-deps
 ```
+
+`requirements-dev.lock` is the checked-in pin set; regenerate it after an
+intentional dependency change with `pip freeze --exclude-editable`.
 
 ### Font setup (optional but recommended)
 
@@ -55,7 +64,7 @@ Annotations render in a handwriting font. It isn't bundled (font licensing), so 
 2. Download the family and extract `CaveatBrush-Regular.ttf`
 3. Drop it at `fonts/CaveatBrush-Regular.ttf` in the project root
 
-No font? The pipeline still runs — it silently falls back to `Helvetica-Oblique`, just less magical-looking. See `fonts/README.md` for details.
+The resolver also auto-discovers any `*aveat*` TTF/OTF variant in `fonts/`, so another Caveat family file can be used without configuration. No font? The pipeline still runs — it silently falls back to `Helvetica-Oblique`, just less magical-looking. See `fonts/README.md` for details.
 
 ### API key
 
@@ -69,18 +78,23 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 ### `halfblood annotate`
 
-Generate a fully annotated PDF.
+Generate a fully annotated PDF or EPUB. `INPUT_FILE` may end in `.pdf` or `.epub`.
 
 ```bash
-halfblood annotate INPUT_PDF -o OUTPUT_PDF [OPTIONS]
+halfblood annotate INPUT_FILE -o OUTPUT_FILE [OPTIONS]
 
 Options:
-  -o, --output PATH      Path to write the annotated PDF. [required]
+  -o, --output PATH      Path to write the annotated PDF or EPUB. [required]
   --persona TEXT         Annotator personality description.
   --pages TEXT           Page range, e.g. '1-5,8'. Default: all pages.
-  --model TEXT           Claude model to use. [default: claude-sonnet-4-20250514]
+  --model TEXT           Claude model to use. [default: claude-sonnet-5]
   --max-per-page INT     Max annotations kept per page. [default: 5]
+  --force                Overwrite an existing output file.
 ```
+
+For safety, `annotate` and `web-preview` refuse to replace an existing output
+file unless you pass `--force`. Missing output parent directories are created
+automatically.
 
 ```bash
 halfblood annotate advanced_potion_making.pdf -o annotated.pdf --pages 1-40
@@ -88,10 +102,10 @@ halfblood annotate advanced_potion_making.pdf -o annotated.pdf --pages 1-40
 
 ### `halfblood preview`
 
-Generate annotations and print them as a table — no PDF written. Useful for iterating on a persona quickly.
+Generate annotations and print them as a table — no file written. Useful for iterating on a persona quickly. `INPUT_FILE` may be a `.pdf` or `.epub`.
 
 ```bash
-halfblood preview INPUT_PDF [OPTIONS]
+halfblood preview INPUT_FILE [OPTIONS]
 
 Options:
   --pages TEXT           Page range to preview. [default: 1-3]
@@ -102,6 +116,14 @@ Options:
 
 ```bash
 halfblood preview textbook.pdf --pages 12-14 --persona "an impatient theoretical physicist"
+```
+
+### `halfblood web-preview`
+
+Render an annotation plan JSON file as one self-contained, offline HTML viewer.
+
+```bash
+halfblood web-preview annotated_plan.json -o preview.html
 ```
 
 ### `halfblood eval`
@@ -149,17 +171,20 @@ See `DEFAULT_PERSONA` in `src/halfblood/annotation_generator.py` for the full Sn
 ## Architecture
 
 ```
-PDF in --> DocumentProcessor.load()        (extract: PDF -> per-page plain text)
+PDF in  --> DocumentProcessor.load()        (extract: PDF -> per-page plain text)
+EPUB in --> EpubProcessor.load()            (extract: spine XHTML -> per-item plain text)
        --> AnnotationGenerator.generate_for_document()
                                             (generate: text -> AnnotationPlan via Claude tool-use)
-       --> DocumentProcessor.render_annotations()
-                                            (render: AnnotationPlan -> annotated PDF out)
+       --> DocumentProcessor/EpubProcessor.render_annotations()
+                                            (render: AnnotationPlan -> annotated PDF or EPUB out)
 ```
 
 - **`models.py`** — the shared Pydantic vocabulary (`Annotation`, `AnnotatedPage`, `AnnotationPlan`, `AnnotationType`) that every other module speaks.
 - **`document_processor.py`** — everything that touches PDF bytes: text extraction (PyMuPDF), locating target passages on the page, and drawing the handwritten margin notes back on.
 - **`annotation_generator.py`** — everything that talks to Claude: persona/system prompt construction, per-page and whole-document generation, forced tool-use structured output, and response validation.
-- **`cli.py`** — the `halfblood` command (`annotate`, `preview`, `eval`), wiring the two modules together with a Rich progress UI.
+- **`epub_processor.py`** — EPUB extraction and XHTML/CSS annotation rendering, with the same load/render interface as the PDF processor.
+- **`web_preview.py`** — renders an annotation plan into one self-contained offline HTML viewer.
+- **`cli.py`** — the `halfblood` command (`annotate`, `preview`, `web-preview`, `eval`), wiring the processors and generator together with a Rich progress UI.
 - **`eval/eval_harness.py`** — standalone LLM-as-judge quality evaluation, runnable independently of the CLI.
 
 See `docs/ARCHITECTURE.md` for the full technical write-up.
@@ -192,9 +217,9 @@ The harness prints a per-test-case table of scores and justifications, then a su
 3. Decide how it should mark the target passage in `DocumentProcessor._mark_target` (underline / highlight / circle / strikeout).
 4. Describe it in `DEFAULT_PERSONA`'s "WHAT YOUR ANNOTATIONS DO" list (and in any custom personas you maintain) so the model actually knows when to use it.
 
-**Adding a new document format (e.g. EPUB)**
+**The shipping EPUB pipeline**
 
-`DocumentProcessor` is the only module that knows about PDF bytes; `AnnotationGenerator` only ever sees plain `PageContent` (page number, text, width, height). To support a new format, add a loader that produces the same `PageContent` shape and a renderer that can place text/marks given a passage's bounding rect — the generation and CLI layers need no changes.
+`EpubProcessor` already implements the same `load` / `render_annotations` boundary as `DocumentProcessor`: it reads spine items into `PageContent` and writes annotations back into EPUB XHTML/CSS. `AnnotationGenerator` only ever sees `PageContent` (page number, text, width, height), so a future format can follow that established interface while supplying rendering appropriate to its layout model.
 
 **Adding eval test cases**
 
