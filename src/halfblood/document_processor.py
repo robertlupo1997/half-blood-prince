@@ -50,6 +50,10 @@ from halfblood.models import (
 
 logger = logging.getLogger(__name__)
 
+# An absent auto-discovered font is an expected fallback, so avoid repeating
+# the same informational notice for every processor created in a batch.
+_missing_font_notice_logged = False
+
 
 # --------------------------------------------------------------------------
 # Data types
@@ -151,15 +155,23 @@ class DocumentProcessor:
                any weight/case).
             4. A short list of common system font install locations.
             5. Fallback: PDF standard font ``Helvetica-Oblique`` (no file
-               needed). A warning is logged with download instructions.
+               needed). An informational notice is logged once per process.
 
         Returns:
             (fontfile_path_or_None, fontname_alias, is_custom_font)
         """
-        candidates: list[Path] = []
-
         if explicit_font_path:
-            candidates.append(Path(explicit_font_path))
+            explicit_path = Path(explicit_font_path)
+            if explicit_path.is_file():
+                logger.debug("Using handwriting font: %s", explicit_path)
+                return str(explicit_path), "HBProseHand", True
+            logger.warning(
+                "Configured handwriting font does not exist: %s; "
+                "continuing with auto-discovery.",
+                explicit_font_path,
+            )
+
+        candidates: list[Path] = []
 
         fonts_dir = self._project_root / "fonts"
         candidates.append(fonts_dir / "CaveatBrush-Regular.ttf")
@@ -182,15 +194,14 @@ class DocumentProcessor:
                 logger.debug("Using handwriting font: %s", path)
                 return str(path), "HBProseHand", True
 
-        logger.warning(
-            "No handwriting font found (looked for %s and system Caveat installs). "
-            "Falling back to Helvetica-Oblique, which will look typeset rather "
-            "than handwritten. To fix this, download 'Caveat Brush' from "
-            "https://fonts.google.com/specimen/Caveat+Brush and save it as "
-            "%s",
-            fonts_dir / "CaveatBrush-Regular.ttf",
-            fonts_dir / "CaveatBrush-Regular.ttf",
-        )
+        global _missing_font_notice_logged
+        if not _missing_font_notice_logged:
+            logger.info(
+                "No handwriting font found (looked for %s and system Caveat installs). "
+                "Falling back to Helvetica-Oblique.",
+                fonts_dir / "CaveatBrush-Regular.ttf",
+            )
+            _missing_font_notice_logged = True
         return None, "Helvetica-Oblique", False
 
     def _load_measure_font(self) -> fitz.Font:

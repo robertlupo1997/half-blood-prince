@@ -242,6 +242,28 @@ def test_unmatched_annotation_degrades_safely() -> None:
     assert data["totals"]["matched"] == 0
 
 
+def test_rendered_html_has_no_external_asset_references() -> None:
+    # P0-T10 / AUD-36: the file claims to be self-contained; it must not ask
+    # the viewer's browser to fetch anything. The only tolerated "http"
+    # occurrences are XML namespace identifiers (createElementNS), which are
+    # opaque strings, not requests.
+    out = render_html(_plan("Stir the cauldron.", [_ann("cauldron")]))
+    assert "fonts.googleapis" not in out
+    assert "fonts.gstatic" not in out
+    assert "@import" not in out
+    assert "preconnect" not in out
+    residue = out.replace("http://www.w3.org", "")
+    assert "https://" not in residue
+    assert "http://" not in residue
+
+
+def test_rendered_html_retains_fallback_font_css() -> None:
+    # Dropping the remote font must not drop the handwriting INTENT: the CSS
+    # still declares a cursive font stack for notes.
+    out = render_html(_plan("Stir the cauldron.", [_ann("cauldron")]))
+    assert "cursive" in out
+
+
 def test_generate_preview_writes_file_and_counts(tmp_path: Path) -> None:
     out_file = tmp_path / "preview.html"
     result = generate_preview(
