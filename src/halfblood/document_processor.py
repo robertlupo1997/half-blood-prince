@@ -253,6 +253,11 @@ class DocumentProcessor:
         text = re.sub(r"[‘’]", "'", text)
         text = re.sub(r"[“”]", '"', text)
         text = re.sub(r"[–—]", "-", text)
+        # Standard PDF fonts can expose unsupported smart punctuation as a
+        # middle dot. Its position still distinguishes an apostrophe inside a
+        # word from a standalone dash.
+        text = re.sub(r"(?<=\w)·(?=\w)", "'", text)
+        text = text.replace("·", "-")
         text = re.sub(r"\s+", " ", text)
         return text
 
@@ -262,6 +267,56 @@ class DocumentProcessor:
         for rect in rects[1:]:
             union |= rect
         return union
+
+    @classmethod
+    def _first_contiguous_hit_group(cls, hits: Sequence[fitz.Rect]) -> fitz.Rect:
+        """Return the first deterministic passage represented by ``hits``.
+
+        ``Page.search_for`` returns one rectangle per occurrence, except that
+        a phrase wrapping onto the next line is returned as consecutive line
+        fragments. Keep those adjacent fragments together without spanning
+        later, distinct occurrences elsewhere on the page.
+        """
+        first_group = [hits[0]]
+        previous = hits[0]
+        for hit in hits[1:]:
+            same_line = hit.y0 < previous.y1 and previous.y0 < hit.y1
+            line_height = max(previous.height, hit.height)
+            vertical_gap = hit.y0 - previous.y1
+            if same_line or vertical_gap > line_height * 1.5:
+                break
+            first_group.append(hit)
+            previous = hit
+        return cls._union_rects(first_group)
+
+    def _find_normalized_word_rect(
+        self, page: fitz.Page, normalized_target: str
+    ) -> fitz.Rect | None:
+        """Find one punctuation-normalized substring in the page's words."""
+        words = page.get_text("words", sort=True)
+        if not words:
+            return None
+
+        normalized_words = [self._normalize_search_text(str(word[4])) for word in words]
+        page_text = " ".join(normalized_words)
+        start = page_text.find(normalized_target)
+        if start < 0:
+            return None
+
+        end = start + len(normalized_target)
+        matched_rects: list[fitz.Rect] = []
+        offset = 0
+        for word, normalized_word in zip(words, normalized_words, strict=True):
+            word_end = offset + len(normalized_word)
+            if word_end > start and offset < end:
+                matched_rects.append(fitz.Rect(word[:4]))
+            if offset >= end:
+                break
+            offset = word_end + 1
+
+        if not matched_rects:
+            return None
+        return self._union_rects(matched_rects)
 
     def _search_variants(self, text: str) -> list[str]:
         """Generate progressively looser variants of `text` to try against
@@ -314,7 +369,15 @@ class DocumentProcessor:
                         text,
                         variant,
                     )
-                return self._union_rects(hits)
+                return self._first_contiguous_hit_group(hits)
+
+        normalized_rect = self._find_normalized_word_rect(page, normalized)
+        if normalized_rect is not None:
+            logger.debug(
+                "Native search for %r failed; used normalized page-text match",
+                text,
+            )
+            return normalized_rect
 
         logger.warning("Could not locate target_text %r on page", text)
         return None
@@ -432,21 +495,20 @@ class DocumentProcessor:
 
         if position == "margin_right":
             anchor, resolved_side = self._write_margin_text(
-                shape, page, rect, text, ink, angle, fontsize, opacity, side="right"
+                shape, page, rect, text, ink, angle, fontsize, opacity, "right"
             )
             self._draw_connector(shape, rect, anchor, ink, opacity, side=resolved_side)
         elif position == "margin_left":
             anchor, resolved_side = self._write_margin_text(
-                shape, page, rect, text, ink, angle, fontsize, opacity, side="left"
+                shape, page, rect, text, ink, angle, fontsize, opacity, "left"
             )
             self._draw_connector(shape, rect, anchor, ink, opacity, side=resolved_side)
         elif position == "inline":
             self._write_inline_text(shape, page, rect, text, ink, angle, fontsize, opacity)
+        elif annotation_type == AnnotationType.CROSSED_OUT:  # between_lines
+            self._write_replacement_above(shape, rect, text, ink, angle, fontsize, opacity)
         else:  # between_lines
             self._write_between_lines_text(shape, rect, text, ink, angle, fontsize, opacity)
-
-        if annotation_type == AnnotationType.CROSSED_OUT:
-            self._write_replacement_above(shape, rect, text, ink, angle, fontsize, opacity)
 
         shape.commit(overlay=True)
 
