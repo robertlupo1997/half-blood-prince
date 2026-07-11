@@ -443,6 +443,7 @@ class AnnotationGenerator:
             for ann in annotations:
                 if ann.annotation_type in (AnnotationType.INVENTION, AnnotationType.WARNING):
                     running_notes.append(f"(p.{page.page_number}) {ann.content}")
+            del running_notes[:-8]
 
             plan.pages.append(
                 AnnotatedPage(
