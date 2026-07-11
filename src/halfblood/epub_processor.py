@@ -41,6 +41,7 @@ family to the CSS fallback list in :data:`_ANNOTATION_CSS`.
 from __future__ import annotations
 
 import logging
+import posixpath
 import random
 import re
 import warnings
@@ -98,7 +99,7 @@ _NOTE_PREFIX_BY_TYPE: dict[AnnotationType, str] = {
 _NOMINAL_PAGE_WIDTH = 600.0
 _NOMINAL_PAGE_HEIGHT = 800.0
 
-_STYLE_TAG_ID = "hbp-annotation-style"
+_ANNOTATION_STYLESHEET_PATH = "style/hbp-annotations.css"
 
 _ANNOTATION_CSS = """
 .hbp-target {
@@ -298,9 +299,12 @@ class EpubProcessor:
 
     @staticmethod
     def _normalize_with_map(raw: str) -> tuple[str, list[int]]:
-        """Collapse whitespace runs in `raw` to single spaces, returning
-        the normalized string plus a list mapping each normalized-string
-        index back to its original index in `raw`.
+        """Fold smart punctuation and collapse whitespace runs in `raw`.
+
+        Returns the normalized string plus a list mapping each normalized-
+        string index back to its original index in `raw`. Every punctuation
+        replacement is one character, so the map continues to identify the
+        raw slice exactly and preserves the book's original typography.
         """
         out_chars: list[str] = []
         index_map: list[int] = []
@@ -314,6 +318,12 @@ class EpubProcessor:
                 while i < n and raw[i].isspace():
                     i += 1
             else:
+                if ch in "‘’":
+                    ch = "'"
+                elif ch in "“”":
+                    ch = '"'
+                elif ch in "–—":
+                    ch = "-"
                 out_chars.append(ch)
                 index_map.append(i)
                 i += 1
@@ -414,6 +424,7 @@ class EpubProcessor:
 
         rendered = 0
         skipped = 0
+        stylesheet: epub.EpubItem | None = None
         for page_number in sorted(by_page):
             item = spine_docs.get(page_number)
             if item is None:
@@ -427,7 +438,7 @@ class EpubProcessor:
                 continue
 
             soup = BeautifulSoup(item.get_content(), "lxml")
-            self._ensure_style_embedded(soup)
+            chapter_rendered = 0
 
             for annotation in by_page[page_number]:
                 located = self._locate_text(soup, annotation.target_text)
@@ -437,8 +448,13 @@ class EpubProcessor:
                 node, start, end = located
                 self._wrap_and_annotate(soup, node, start, end, annotation)
                 rendered += 1
+                chapter_rendered += 1
 
             item.set_content(str(soup).encode("utf-8"))
+            if chapter_rendered:
+                if stylesheet is None:
+                    stylesheet = self._ensure_annotation_stylesheet(book)
+                self._link_annotation_stylesheet(item, stylesheet)
 
         logger.info(
             "Rendered %s annotation(s), skipped %s (target text not found or "
@@ -477,25 +493,34 @@ class EpubProcessor:
                 counter += 1
                 node.uid = f"hbp-toc-{counter}"
 
-    def _ensure_style_embedded(self, soup: BeautifulSoup) -> None:
-        """Insert the `_ANNOTATION_CSS` stylesheet into `soup`'s `<head>`
-        once, creating a `<head>` if the chapter is missing one.
-        """
-        head = soup.find("head")
-        if head is None:
-            head = soup.new_tag("head")
-            html_tag = soup.find("html")
-            if html_tag is not None:
-                html_tag.insert(0, head)
-            else:
-                soup.insert(0, head)
+    @staticmethod
+    def _ensure_annotation_stylesheet(book: epub.EpubBook) -> epub.EpubItem:
+        """Add the annotation CSS to the EPUB manifest once and return it."""
+        existing = book.get_item_with_href(_ANNOTATION_STYLESHEET_PATH)
+        if existing is not None:
+            existing.content = _ANNOTATION_CSS.encode("utf-8")
+            return existing
 
-        if head.find("style", attrs={"id": _STYLE_TAG_ID}) is not None:
-            return
+        stylesheet = epub.EpubItem(
+            uid="hbp-annotation-style",
+            file_name=_ANNOTATION_STYLESHEET_PATH,
+            media_type="text/css",
+            content=_ANNOTATION_CSS.encode("utf-8"),
+        )
+        book.add_item(stylesheet)
+        return stylesheet
 
-        style_tag = soup.new_tag("style", attrs={"id": _STYLE_TAG_ID, "type": "text/css"})
-        style_tag.string = _ANNOTATION_CSS
-        head.append(style_tag)
+    @staticmethod
+    def _link_annotation_stylesheet(
+        chapter: epub.EpubHtml, stylesheet: epub.EpubItem
+    ) -> None:
+        """Link `stylesheet` once from a chapter using a relative EPUB path."""
+        chapter_dir = posixpath.dirname(chapter.get_name()) or "."
+        href = posixpath.relpath(stylesheet.get_name(), chapter_dir)
+        for link in chapter.get_links():
+            if link.get("rel") == "stylesheet" and link.get("href") == href:
+                return
+        chapter.add_link(href=href, rel="stylesheet", type="text/css")
 
     def _wrap_and_annotate(
         self,
