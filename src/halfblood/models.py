@@ -3,10 +3,10 @@
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class AnnotationType(str, Enum):  # noqa: UP042  # str() output differs under StrEnum; behavioral change deferred to audit
+class AnnotationType(str, Enum):  # noqa: UP042  # Deliberate: StrEnum changes the public str() contract.
     CORRECTION = "correction"       # "No, no, no — you crush it, don't cut it"
     IMPROVEMENT = "improvement"     # "Add a clockwise stir after step 3"
     INSIGHT = "insight"             # "This is why most get it wrong"
@@ -20,10 +20,15 @@ class AnnotationType(str, Enum):  # noqa: UP042  # str() output differs under St
 class Annotation(BaseModel):
     """A single margin annotation in the style of the Half-Blood Prince."""
 
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     page: int = Field(description="Page number this annotation belongs to")
-    target_text: str = Field(description="The specific text passage being annotated")
+    target_text: str = Field(
+        min_length=1,
+        description="The specific text passage being annotated",
+    )
     annotation_type: AnnotationType
-    content: str = Field(description="The handwritten margin note text")
+    content: str = Field(min_length=1, description="The handwritten margin note text")
     confidence: float = Field(
         ge=0.0, le=1.0, default=0.8,
         description="How confident the annotator is (affects ink boldness)"

@@ -404,6 +404,37 @@ class TestParseResponse:
         assert len(result) == 1
         assert result[0].annotation_type == AnnotationType.INSIGHT
 
+    def test_strips_fence_without_language_tag(self, generator: AnnotationGenerator) -> None:
+        # AUD-32: delimiter-aware fence handling must accept a bare ``` fence.
+        raw = (
+            "```\n"
+            '{"annotations": [{"target_text": "x", "annotation_type": "insight", '
+            '"content": "Predictable."}]}\n'
+            "```"
+        )
+        result = generator._parse_response(raw, page_number=1)
+        assert len(result) == 1
+        assert result[0].annotation_type == AnnotationType.INSIGHT
+
+    def test_backticks_inside_json_values_survive_fence_stripping(
+        self, generator: AnnotationGenerator
+    ) -> None:
+        # AUD-32: fence removal must be delimiter-aware, never a character strip
+        # that eats backticks belonging to a JSON string value.
+        content = "run `Sectumsempra` — my own"
+        import json as _json
+
+        raw = (
+            "```json\n"
+            + _json.dumps(
+                {"annotations": [{"target_text": "x", "annotation_type": "invention", "content": content}]}
+            )
+            + "\n```"
+        )
+        result = generator._parse_response(raw, page_number=1)
+        assert len(result) == 1
+        assert result[0].content == content
+
     def test_invalid_json_returns_empty_list(self, generator: AnnotationGenerator) -> None:
         result = generator._parse_response("{not valid json at all", page_number=1)
         assert result == []

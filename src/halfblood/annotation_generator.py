@@ -614,12 +614,20 @@ class AnnotationGenerator:
         if not text:
             return []
 
-        # Be forgiving of markdown code fences around the JSON.
-        if text.startswith("```"):
-            text = text.strip("`")
-            if text.lower().startswith("json"):
-                text = text[4:]
-            text = text.strip()
+        # Be forgiving of markdown code fences around the JSON. Remove only
+        # explicit delimiters so backticks in JSON string values survive.
+        fenced = False
+        if text.startswith("```json"):
+            text = text[len("```json"):]
+            fenced = True
+        elif text.startswith("```"):
+            text = text[len("```"):]
+            fenced = True
+
+        if fenced:
+            text = text.lstrip()
+            if text.endswith("```"):
+                text = text[:-len("```")].rstrip()
 
         try:
             parsed = json.loads(text)
