@@ -80,7 +80,11 @@ Options:
   --pages TEXT           Page range, e.g. '1-5,8'. Default: all pages.
   --model TEXT           Claude model to use. [default: claude-sonnet-4-20250514]
   --max-per-page INT     Max annotations kept per page. [default: 5]
+  --force                Overwrite an existing output file.
 ```
+
+For safety, `annotate` and `web-preview` refuse to replace an existing output
+file unless you pass `--force`.
 
 ```bash
 halfblood annotate advanced_potion_making.pdf -o annotated.pdf --pages 1-40
