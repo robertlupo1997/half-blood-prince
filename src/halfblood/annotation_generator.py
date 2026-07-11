@@ -28,6 +28,8 @@ from halfblood.models import AnnotatedPage, Annotation, AnnotationPlan, Annotati
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_MODEL = "claude-sonnet-5"
+
 
 # --------------------------------------------------------------------------
 # Default persona: Severus Snape's Half-Blood Prince annotations
@@ -189,7 +191,7 @@ class AnnotationGenerator:
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = DEFAULT_MODEL,
         persona: str | None = None,
     ) -> None:
         """Initialize the annotation generator.

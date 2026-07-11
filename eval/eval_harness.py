@@ -57,6 +57,7 @@ _SRC_DIR = _REPO_ROOT / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
+from halfblood.annotation_generator import DEFAULT_MODEL as _PIPELINE_DEFAULT_MODEL  # noqa: E402
 from halfblood.models import Annotation, AnnotationType  # noqa: E402
 
 try:
@@ -70,7 +71,7 @@ except ImportError:  # not implemented yet
     PageContent = None  # type: ignore[assignment,misc]
 
 
-DEFAULT_MODEL = os.environ.get("HALFBLOOD_EVAL_MODEL", "claude-sonnet-4-20250514")
+DEFAULT_MODEL = os.environ.get("HALFBLOOD_EVAL_MODEL", _PIPELINE_DEFAULT_MODEL)
 
 
 # ---------------------------------------------------------------------------

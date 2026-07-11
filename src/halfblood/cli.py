@@ -25,7 +25,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from halfblood.annotation_generator import AnnotationGenerator
+from halfblood.annotation_generator import DEFAULT_MODEL, AnnotationGenerator
 from halfblood.document_processor import DocumentProcessor, PageContent
 from halfblood.epub_processor import EpubProcessor
 from halfblood.models import AnnotatedPage
@@ -43,8 +43,6 @@ DEFAULT_PERSONA = (
     "help scrawling corrections and improvements in the margins. Terse. "
     "Impatient with mediocrity. Occasionally shows flashes of dark humor."
 )
-DEFAULT_MODEL = "claude-sonnet-4-20250514"
-
 
 def _parse_page_range(spec: str | None, total_pages: int) -> list[int]:
     """Parse ``"1-5,8,10-12"`` into a sorted list of 1-indexed page numbers."""
