@@ -48,7 +48,13 @@ pip install -e ".[dev]"
 
 # for the eval harness
 pip install -e ".[eval]"
+
+# reproducible dev environment (exact pinned versions used in CI/testing)
+pip install -r requirements-dev.lock && pip install -e . --no-deps
 ```
+
+`requirements-dev.lock` is the checked-in pin set; regenerate it after an
+intentional dependency change with `pip freeze --exclude-editable`.
 
 ### Font setup (optional but recommended)
 
