@@ -27,17 +27,6 @@
       "Read(./secrets/**)",
       "Bash(curl:*)",
       "Bash(wget:*)"
-    ],
-    "ask": [
-      "Edit(**)",
-      "Write(**)",
-      "Bash(python:*)",
-      "Bash(pip uninstall:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git push:*)",
-      "Bash(gh pr create:*)",
-      "Bash(gh pr edit:*)"
     ]
   },
   "hooks": {
