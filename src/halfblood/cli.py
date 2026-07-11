@@ -41,6 +41,33 @@ Processor = DocumentProcessor | EpubProcessor
 #: File extensions this CLI knows how to route to a processor.
 _SUPPORTED_SUFFIXES = {".pdf", ".epub"}
 
+_FONTS_DIR = Path(__file__).resolve().parents[2] / "fonts"
+
+#: PDF handwriting fonts understood by ``annotate --font``. Values are
+#: ``(display name, expected filename, download URL)``.
+REGISTERED_FONTS: dict[str, tuple[str, str, str]] = {
+    "caveat-brush": (
+        "Caveat Brush",
+        "CaveatBrush-Regular.ttf",
+        "https://fonts.google.com/specimen/Caveat+Brush",
+    ),
+    "homemade-apple": (
+        "Homemade Apple",
+        "HomemadeApple-Regular.ttf",
+        "https://fonts.google.com/specimen/Homemade+Apple",
+    ),
+    "just-me-again-down-here": (
+        "Just Me Again Down Here",
+        "JustMeAgainDownHere.ttf",
+        "https://fonts.google.com/specimen/Just+Me+Again+Down+Here",
+    ),
+    "mrs-saint-delafield": (
+        "Mrs Saint Delafield",
+        "MrsSaintDelafield-Regular.ttf",
+        "https://fonts.google.com/specimen/Mrs+Saint+Delafield",
+    ),
+}
+
 console = Console()
 
 DEFAULT_PERSONA = (
@@ -77,7 +104,7 @@ def _filter_pages(all_pages: list[PageContent], page_numbers: list[int]) -> list
     return [p for p in all_pages if p.page_number in wanted]
 
 
-def _processor_for(path: Path) -> Processor:
+def _processor_for(path: Path, font_path: Path | None = None) -> Processor:
     """Pick a `DocumentProcessor` (PDF) or `EpubProcessor` (EPUB) based on
     `path`'s extension.
 
@@ -86,12 +113,49 @@ def _processor_for(path: Path) -> Processor:
     """
     suffix = path.suffix.lower()
     if suffix == ".pdf":
+        if font_path is not None:
+            return DocumentProcessor(font_path=str(font_path))
         return DocumentProcessor()
     if suffix == ".epub":
         return EpubProcessor()
     raise click.ClickException(
         f"Unsupported file type {suffix!r} for {path.name!r}; "
         f"expected one of {sorted(_SUPPORTED_SUFFIXES)}."
+    )
+
+
+def _resolve_font_option(value: str, fonts_dir: Path | None = None) -> Path:
+    """Resolve a registered font name or an existing explicit font path.
+
+    Args:
+        value: Registered kebab-case name or path to a TTF/OTF file.
+        fonts_dir: Registry search directory, injectable for tests.
+
+    Raises:
+        click.ClickException: if the name is unknown or the requested file is absent.
+    """
+    candidate = Path(value).expanduser()
+    if candidate.is_file():
+        return candidate
+
+    font = REGISTERED_FONTS.get(value)
+    if font is not None:
+        display_name, filename, url = font
+        expected = (fonts_dir or _FONTS_DIR) / filename
+        if expected.is_file():
+            return expected
+        raise click.ClickException(
+            f"Font {display_name!r} is not installed. Expected {expected}. "
+            f"Download it from {url}."
+        )
+
+    looks_like_path = candidate.suffix.lower() in {".ttf", ".otf"} or candidate.parent != Path(".")
+    if looks_like_path:
+        raise click.ClickException(f"Font file does not exist: {candidate}")
+
+    names = ", ".join(REGISTERED_FONTS)
+    raise click.ClickException(
+        f"Unknown font {value!r}. Use an existing .ttf/.otf path or one of: {names}."
     )
 
 
@@ -154,7 +218,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 
-@main.command()
+@main.command(context_settings={"terminal_width": 120})
 @click.argument("input_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("-o", "--output", "output_file", required=True,
               type=click.Path(dir_okay=False, path_type=Path),
@@ -165,16 +229,31 @@ def main() -> None:
 @click.option("--model", default=DEFAULT_MODEL, show_default=True)
 @click.option("--max-per-page", default=5, show_default=True,
               help="Max annotations per page/chapter.")
+@click.option(
+    "--font",
+    default=None,
+    metavar="NAME|PATH",
+    help="PDF handwriting font. Registered names: " + ", ".join(REGISTERED_FONTS) + ".",
+)
 @click.option("--force", is_flag=True, help="Overwrite an existing output file.")
 def annotate(input_file: Path, output_file: Path, persona: str,
-             pages: str | None, model: str, max_per_page: int, force: bool) -> None:
+             pages: str | None, model: str, max_per_page: int,
+             font: str | None, force: bool) -> None:
     """Annotate INPUT_FILE (a .pdf or .epub) in the style of the Half-Blood Prince."""
     console.rule("[bold magenta]Half-Blood Prince -- Annotate[/bold magenta]")
 
     _validate_input_signature(input_file)
     _refuse_existing_output(output_file, force)
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    processor = _processor_for(input_file)
+    if input_file.suffix.lower() == ".epub" and font is not None:
+        console.print(
+            "[yellow]Warning:[/yellow] --font is ignored for EPUB input; "
+            "EPUB typography is controlled by reader/CSS fonts."
+        )
+        font_path = None
+    else:
+        font_path = _resolve_font_option(font) if font is not None else None
+    processor = _processor_for(input_file, font_path)
     if output_file.suffix.lower() != input_file.suffix.lower():
         console.print(
             f"[yellow]Warning:[/yellow] output extension {output_file.suffix!r} doesn't "
