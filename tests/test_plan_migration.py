@@ -10,11 +10,12 @@ import uuid
 from copy import deepcopy
 
 import pytest
+from pydantic import ValidationError
 
 # --- v1 (must keep working, byte-for-byte, unchanged) ----------------------
 from halfblood.models import (
-    Annotation,
     AnnotatedPage,
+    Annotation,
     AnnotationPlan,
     AnnotationType,
 )
@@ -22,11 +23,15 @@ from halfblood.models import (
 # --- v2 (new, this task) ----------------------------------------------------
 from halfblood.models.annotations import (
     Annotation as AnnotationV2,
+)
+from halfblood.models.annotations import (
     MarkIntent,
     TargetSelector,
 )
 from halfblood.models.documents import (
     AnnotationPlan as AnnotationPlanV2,
+)
+from halfblood.models.documents import (
     GenerationProvenance,
     SourceInfo,
     Unit,
@@ -141,7 +146,7 @@ def test_v1_compat_imports_still_construct_and_validate():
     assert plan.pages[0].annotations[0].confidence == 0.8
     assert plan.total_annotations == 1
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Annotation(
             page=1,
             target_text="x",
