@@ -15,16 +15,16 @@ import json
 from copy import deepcopy
 
 import pytest
+from pydantic import ValidationError
+
+import halfblood.annotation_generator as ag_module
+from halfblood.annotation_generator import AnnotationGenerator
 from halfblood.generation.schema import (
     AnnotationDraft,
     RecordAnnotations,
     generate_annotation_schema,
     schema_hash,
 )
-from pydantic import ValidationError
-
-import halfblood.annotation_generator as ag_module
-from halfblood.annotation_generator import AnnotationGenerator
 from halfblood.models import AnnotationType
 from halfblood.models.documents import canonical_json
 
@@ -108,6 +108,23 @@ def test_schema_preserves_enum_bounds_and_min_length():
     assert props["confidence"]["maximum"] == 1.0
     assert props["target_text"]["minLength"] == 1
     assert props["content"]["minLength"] == 1
+
+
+def test_schema_preserves_per_field_llm_guidance():
+    """The old hand-written schema explained each field to the model in prose
+    (e.g. what each ``position`` value means -- guidance that exists nowhere
+    else in the system prompt). The Pydantic-generated schema must not lose
+    this: every draft field needs a non-empty ``description``."""
+    schema = generate_annotation_schema()
+    props = schema["properties"]["annotations"]["items"]["properties"]
+
+    for field_name in (
+        "target_text", "annotation_type", "content", "confidence", "position",
+    ):
+        description = props[field_name].get("description", "")
+        assert isinstance(description, str) and description.strip(), (
+            f"{field_name!r} has no LLM-facing description"
+        )
 
 
 # --- 4. server-owned fields absent ---------------------------------------
