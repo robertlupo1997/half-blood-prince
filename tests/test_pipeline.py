@@ -614,11 +614,17 @@ class TestEdgeCases:
         assert lines == [""]
 
     def test_wrap_text_on_very_long_single_word(self, processor: DocumentProcessor) -> None:
-        # A word with no spaces can't be split by the greedy word-wrapper;
-        # it should still come back as a single line rather than crashing.
+        # CONTRACT UPDATED for AUD-40 (P0-T5): a word wider than the column is
+        # split into nonempty chunks that each fit, instead of coming back as
+        # one over-wide line that renders off the page. Characters must be
+        # preserved in order.
         long_word = "supercalifragilisticexpialidocious" * 4
         lines = processor._wrap_text(long_word, max_width=50, fontsize=9)
-        assert lines == [long_word]
+        assert len(lines) > 1
+        assert all(line for line in lines)
+        assert "".join(lines) == long_word
+        for line in lines:
+            assert processor._measure_font.text_length(line, fontsize=9) <= 50.5
 
     def test_render_very_long_annotation_content(
         self, processor: DocumentProcessor, sample_pdf_path: Path, tmp_path: Path

@@ -431,15 +431,15 @@ class DocumentProcessor:
         self._mark_target(page, rect, annotation_type, ink, opacity)
 
         if position == "margin_right":
-            anchor = self._write_margin_text(
+            anchor, resolved_side = self._write_margin_text(
                 shape, page, rect, text, ink, angle, fontsize, opacity, side="right"
             )
-            self._draw_connector(shape, rect, anchor, ink, opacity, side="right")
+            self._draw_connector(shape, rect, anchor, ink, opacity, side=resolved_side)
         elif position == "margin_left":
-            anchor = self._write_margin_text(
+            anchor, resolved_side = self._write_margin_text(
                 shape, page, rect, text, ink, angle, fontsize, opacity, side="left"
             )
-            self._draw_connector(shape, rect, anchor, ink, opacity, side="left")
+            self._draw_connector(shape, rect, anchor, ink, opacity, side=resolved_side)
         elif position == "inline":
             self._write_inline_text(shape, page, rect, text, ink, angle, fontsize, opacity)
         else:  # between_lines
@@ -496,24 +496,49 @@ class DocumentProcessor:
         fontsize: float,
         opacity: float,
         side: str,
-    ) -> fitz.Point:
+    ) -> tuple[fitz.Point, str]:
         """Write wrapped margin text to the left or right of `rect`.
 
         Returns the anchor point nearest the target text, used to draw
         the connecting arrow.
         """
-        if side == "right":
-            available = page.rect.x1 - rect.x1 - _MARGIN_GAP - _PAGE_EDGE_PAD
-        else:
-            available = rect.x0 - page.rect.x0 - _MARGIN_GAP - _PAGE_EDGE_PAD
+        available_by_side = {
+            "right": page.rect.x1 - _PAGE_EDGE_PAD - (rect.x1 + _MARGIN_GAP),
+            "left": rect.x0 - _MARGIN_GAP - (page.rect.x0 + _PAGE_EDGE_PAD),
+        }
+        other_side = "left" if side == "right" else "right"
+        if available_by_side[side] < _MIN_MARGIN_WIDTH:
+            side = other_side
+        if available_by_side[side] <= 0:
+            side = max(available_by_side, key=available_by_side.__getitem__)
 
-        width = max(_MIN_MARGIN_WIDTH, min(available, _MAX_MARGIN_WIDTH))
+        width = min(available_by_side[side], _MAX_MARGIN_WIDTH)
+        # Extremely narrow pages / unusually wide targets can leave less than
+        # one glyph of margin. Scale just enough that character wrapping can
+        # still keep every emitted line within the real margin.
+        widest_glyph = max(
+            (self._measure_font.text_length(char, fontsize=fontsize) for char in text),
+            default=0.0,
+        )
+        if 0 < width < widest_glyph:
+            fontsize *= width / widest_glyph
+
         lines = self._wrap_text(text, width, fontsize)
         line_gap = fontsize * 1.3
+
+        # There must be room for the font ascent above the first baseline and
+        # for the final baseline itself. Drop trailing lines when a block is
+        # taller than the page; the remaining lines retain their order.
+        usable_height = max(0.0, page.rect.height - fontsize)
+        max_lines = max(1, math.floor(usable_height / line_gap) + 1)
+        lines = lines[:max_lines]
 
         # Vertically center the note block on the target passage.
         block_height = line_gap * len(lines)
         start_y = rect.y0 + (rect.height / 2) - (block_height / 2) + fontsize
+        first_baseline = page.rect.y0 + fontsize
+        last_start = page.rect.y1 - line_gap * (len(lines) - 1)
+        start_y = min(max(start_y, first_baseline), last_start)
 
         if side == "right":
             x = rect.x1 + _MARGIN_GAP
@@ -536,7 +561,7 @@ class DocumentProcessor:
 
         anchor_x = x if side == "right" else x + width
         anchor_y = rect.y0 + rect.height / 2
-        return fitz.Point(anchor_x, anchor_y)
+        return fitz.Point(anchor_x, anchor_y), side
 
     # ------------------------------------------------------------
     # Inline / between-lines text
@@ -602,9 +627,15 @@ class DocumentProcessor:
         lines = self._wrap_text(text, width, small_size)
         # Only the top line or two actually fit between two lines of body
         # text without colliding with the line above.
-        lines = lines[:2]
         line_gap = small_size * 1.05
-        top_y = max(small_size, rect.y0 - 2 - line_gap * (len(lines) - 1))
+        last_baseline = rect.y0 - 2
+        available_lines = max(
+            0, math.floor((last_baseline - small_size) / line_gap) + 1
+        )
+        lines = lines[: min(2, available_lines)]
+        if not lines:
+            return
+        top_y = last_baseline - line_gap * (len(lines) - 1)
 
         for i, line in enumerate(lines):
             point = fitz.Point(rect.x0, top_y + i * line_gap)
@@ -635,9 +666,16 @@ class DocumentProcessor:
         """
         small_size = max(6.5, fontsize - 0.5)
         width = max(rect.width, _MIN_MARGIN_WIDTH)
-        lines = self._wrap_text(replacement_text, width, small_size)[:2]
+        lines = self._wrap_text(replacement_text, width, small_size)
         line_gap = small_size * 1.1
-        top_y = max(small_size, rect.y0 - 3 - line_gap * (len(lines) - 1))
+        last_baseline = rect.y0 - 3
+        available_lines = max(
+            0, math.floor((last_baseline - small_size) / line_gap) + 1
+        )
+        lines = lines[: min(2, available_lines)]
+        if not lines:
+            return
+        top_y = last_baseline - line_gap * (len(lines) - 1)
 
         for i, line in enumerate(lines):
             point = fitz.Point(rect.x0, top_y + i * line_gap)
@@ -735,9 +773,28 @@ class DocumentProcessor:
         if not words:
             return [""]
 
+        def split_word(word: str) -> list[str]:
+            chunks: list[str] = []
+            current_chunk = ""
+            for char in word:
+                candidate = current_chunk + char
+                if (
+                    current_chunk
+                    and self._measure_font.text_length(candidate, fontsize=fontsize)
+                    > max_width
+                ):
+                    chunks.append(current_chunk)
+                    current_chunk = char
+                else:
+                    current_chunk = candidate
+            if current_chunk:
+                chunks.append(current_chunk)
+            return chunks
+
+        wrapped_words = [chunk for word in words for chunk in split_word(word)]
         lines: list[str] = []
-        current = words[0]
-        for word in words[1:]:
+        current = wrapped_words[0]
+        for word in wrapped_words[1:]:
             candidate = f"{current} {word}"
             if self._measure_font.text_length(candidate, fontsize=fontsize) <= max_width:
                 current = candidate
