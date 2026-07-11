@@ -137,23 +137,23 @@ These were found during an adversarial review. Critical and High bugs were fixed
 
 7. **Model name mismatch** — eval harness used a different model string than the rest of the codebase. Fixed.
 
+8. **Web-preview target matching bounded** — `_find_target_span` now limits target length before constructing its flexible regex, preventing the previously reported pathological-input concern.
+
+9. **PDF input validation** — PDF paths are checked for the expected magic bytes before PyMuPDF opens them, so mislabeled files receive a useful error.
+
+10. **Font fallback logging** — the missing-font fallback is now quiet enough for normal runs rather than emitting the former noisy warning.
+
 ### Unfixed (Medium/Low — fix these):
 
-8. **No rate limiting or retry logic.** If Claude returns 429 or 500, the pipeline crashes. Need exponential backoff with jitter. `annotation_generator.py` catches `APIError` but just returns empty — it should retry.
+11. **Retry ownership during the provider transition.** The Anthropic SDK already retries 429, 408, 409, and 5xx responses twice with backoff. Per architecture spec §4.6, Phase 1's httpx provider transport becomes the **sole retry owner**; until that transition, do not add a second retry layer around the SDK.
 
-9. **No async/concurrent page processing.** Pages are processed sequentially. For a 300-page book, this is painfully slow. Consider `asyncio` with `anthropic.AsyncAnthropic` and a semaphore for rate limiting.
+12. **No async/concurrent page processing.** Pages are processed sequentially. For a 300-page book, this is painfully slow. Consider `asyncio` with `anthropic.AsyncAnthropic` and a semaphore for rate limiting.
 
-10. **`_search_variants` can match the wrong passage.** If the longest single word in `target_text` appears multiple times on the page, the annotation anchors to the first occurrence, which may be wrong. No disambiguation.
+13. **`_search_variants` can match the wrong passage.** If the longest single word in `target_text` appears multiple times on the page, the annotation anchors to the first occurrence, which may be wrong. No disambiguation.
 
-11. **Annotation overlap/collision detection.** Multiple annotations targeting nearby or overlapping passages can produce overlapping margin notes. No layout-level collision avoidance.
+14. **Annotation overlap/collision detection.** Multiple annotations targeting nearby or overlapping passages can produce overlapping margin notes. No layout-level collision avoidance.
 
-12. **EPUB processor `_locate_text` only searches within single text nodes.** A target that spans an inline tag boundary (e.g., `<em>word</em> more words`) won't be found. Logged and skipped, but this could miss a lot of annotations in richly-formatted EPUBs.
-
-13. **Web preview `_find_target_span` regex can be slow on pathological input.** `_flexible_pattern` builds a regex from user-controlled (LLM-generated) text. Catastrophic backtracking is possible on certain patterns. Should add a timeout or limit pattern complexity.
-
-14. **No input validation on PDF paths.** Passing a non-PDF file with a `.pdf` extension will crash inside PyMuPDF with an unhelpful error. Should validate the file header (magic bytes).
-
-15. **Font fallback logging is noisy.** Every run without the Caveat font logs a WARNING with download instructions. Should log once, or make it INFO.
+15. **EPUB processor `_locate_text` only searches within single text nodes.** A target that spans an inline tag boundary (e.g., `<em>word</em> more words`) won't be found. Logged and skipped, but this could miss a lot of annotations in richly-formatted EPUBs.
 
 ---
 
@@ -203,7 +203,7 @@ halfblood annotate book.epub -o annotated.epub --pages 1-5
 
 ### High Priority
 
-- **Add retry logic with exponential backoff** to `annotation_generator.py`. Use `tenacity` or hand-roll with `asyncio`. Handle 429, 500, 529.
+- **Keep retry ownership singular during the provider transition.** The SDK retries currently cover transient responses; per architecture spec §4.6, Phase 1's httpx provider transport becomes the **sole retry owner**. Do not wrap the SDK in another retry layer meanwhile.
 - **Add async page processing** with a configurable concurrency limit (default 3-5). Massive speedup on long books.
 - **Add annotation collision detection** in `document_processor.py`. Track occupied margin regions per page and shift notes that would overlap.
 - **Add proper error messages** when PyMuPDF can't open a file (validate magic bytes before passing to `fitz.open`).
@@ -316,7 +316,7 @@ This project is a riff on [Riddle](https://github.com/MaximeRivest/riddle) (a Ru
 After your session, this project should:
 
 1. Have all Medium/Low bugs fixed
-2. Have retry logic and basic rate limiting
+2. Preserve the SDK's existing retries until Phase 1's httpx provider transport is the **sole retry owner**, with no duplicate retry layer
 3. Have test coverage for EPUB processor and web preview
 4. Have linting configured (ruff + mypy)
 5. Have a validated tech stack with documented reasoning
