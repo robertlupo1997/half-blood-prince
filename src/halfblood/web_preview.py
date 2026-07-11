@@ -82,6 +82,7 @@ _QUOTE_CHARS = "'‘’′"
 _DQUOTE_CHARS = '"“”″'
 _DASH_CHARS = "-–—"
 _SPECIAL_CHARS = set(_QUOTE_CHARS + _DQUOTE_CHARS + _DASH_CHARS)
+_MAX_TARGET_LENGTH = 1500
 
 
 def _char_class_for(ch: str) -> str:
@@ -98,10 +99,14 @@ def _flexible_pattern(text: str) -> str:
     any of their "smart" typographic variants.
     """
     collapsed = re.sub(r"\s+", " ", text.strip())
-    escaped = re.escape(collapsed).replace(" ", r"\s+")
     out: list[str] = []
-    for ch in escaped:
-        out.append(_char_class_for(ch) if ch in _SPECIAL_CHARS else ch)
+    for ch in collapsed:
+        if ch == " ":
+            out.append(r"\s+")
+        elif ch in _SPECIAL_CHARS:
+            out.append(_char_class_for(ch))
+        else:
+            out.append(re.escape(ch))
     return "".join(out)
 
 
@@ -131,6 +136,8 @@ def _candidate_variants(text: str) -> list[str]:
 
 def _find_target_span(haystack: str, target: str) -> tuple[int, int] | None:
     if not haystack or not target or not target.strip():
+        return None
+    if len(target) > _MAX_TARGET_LENGTH:
         return None
     for variant in _candidate_variants(target):
         pattern = _flexible_pattern(variant)
@@ -341,7 +348,12 @@ def _render(plan: AnnotationPlan, book_text: str | None) -> tuple[str, dict]:
     plan = plan.model_copy(update={"pages": pages})
 
     data = _build_data(plan)
-    data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    data_json = (
+        json.dumps(data, ensure_ascii=False)
+        .replace("</", "<\\/")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
 
     out = _HTML_TEMPLATE
     out = out.replace("%%CSS%%", _CSS)
