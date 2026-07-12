@@ -148,12 +148,19 @@ def test_all_pages_failed_error_is_a_runtime_error() -> None:
     assert isinstance(AllPagesFailedError(report), RuntimeError)
 
 
-def test_generation_report_all_pages_failed_error_is_distinct_from_legacy() -> None:
+def test_generation_report_all_pages_failed_error_is_reconciled_with_legacy() -> None:
+    """P1-T4 pinned these two classes as unrelated siblings, with the module
+    docstring noting they'd be "unified during a later phase's cutover when
+    AnnotationGenerator migrates onto this report." That cutover is P1-T5:
+    the legacy class is now a real subclass (not a lookalike copy), so a
+    caller catching either type sees the same event and gets a real
+    ``.report`` -- while remaining a distinct, more specific type with its
+    own message-first constructor contract (see the test directly below)."""
     from halfblood.annotation_generator import AllPagesFailedError as LegacyError
 
     assert AllPagesFailedError is not LegacyError
     assert not issubclass(AllPagesFailedError, LegacyError)
-    assert not issubclass(LegacyError, AllPagesFailedError)
+    assert issubclass(LegacyError, AllPagesFailedError)
 
 
 def test_legacy_all_pages_failed_error_still_takes_a_plain_message() -> None:

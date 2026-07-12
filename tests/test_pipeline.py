@@ -5,17 +5,22 @@ Covers:
     - PageContent field correctness
     - DocumentProcessor.find_text_rect() against known passages
     - DocumentProcessor.render_annotations() with synthetic annotations
-    - AnnotationGenerator._parse_response() against mocked/fake Claude
-      responses (no real API calls are made anywhere in this file)
+    - AnnotationGenerator.generate_for_page()'s blank-page short-circuit
     - The CLI's --help surface via Click's CliRunner
     - A grab-bag of edge cases: empty text, very long content, special
       characters, and invalid annotations that should be dropped rather
       than raising.
+
+As of P1-T5, response parsing (tool-block extraction, per-item validation
+drop, malformed-input handling) lives entirely in
+``AnthropicProvider``/``AnnotationDraft`` and is covered by
+tests/test_anthropic_provider.py against raw HTTP JSON fixtures -- this file
+no longer tests ``AnnotationGenerator._parse_response()``, which P1-T5
+deleted along with the direct Anthropic SDK call it parsed.
 """
 
 from __future__ import annotations
 
-import types
 from pathlib import Path
 
 import fitz
@@ -68,26 +73,9 @@ def pages(processor: DocumentProcessor, sample_pdf_path: Path) -> list[PageConte
 def generator() -> AnnotationGenerator:
     # A syntactically valid but fake key is enough: none of the tests in
     # this file trigger a real network call, since we exercise
-    # _parse_response() / generate_for_page("") directly rather than
-    # generate_for_page() with real page text.
+    # generate_for_page("") directly rather than generate_for_page() with
+    # real page text.
     return AnnotationGenerator(api_key="sk-ant-test-fake-key-not-real")
-
-
-def _fake_tool_use_message(annotations: list[dict]) -> types.SimpleNamespace:
-    """Build a minimal fake `anthropic.types.Message`-shaped object.
-
-    `AnnotationGenerator._extract_raw_annotations` only relies on duck
-    typing (`hasattr(response, "content")`, `block.type`, `block.name`,
-    `block.input`), so a SimpleNamespace stand-in avoids depending on
-    anthropic's internal pydantic model construction while still
-    exercising the real (non-string) code path.
-    """
-    block = types.SimpleNamespace(
-        type="tool_use",
-        name="record_annotations",
-        input={"annotations": annotations},
-    )
-    return types.SimpleNamespace(content=[block])
 
 
 # ---------------------------------------------------------------------------
@@ -355,183 +343,30 @@ class TestRenderAnnotations:
 
 
 # ---------------------------------------------------------------------------
-# AnnotationGenerator._parse_response()
+# AnnotationGenerator.generate_for_page() blank-page short-circuit
 # ---------------------------------------------------------------------------
+#
+# NOTE: this section previously held a `TestParseResponse` class exercising
+# `AnnotationGenerator._parse_response()` -- a plain-JSON-string parsing
+# fallback (with markdown-fence stripping, bare-array support, etc.) plus a
+# fake-SDK-Message parsing path. P1-T5 deleted `_parse_response` entirely:
+# all response parsing now happens inside `AnthropicProvider` against real
+# HTTP JSON, and no caller in the new architecture ever hands it a
+# pre-extracted string (the fallback's original purpose). The parsing
+# guarantees those tests pinned -- tool-block extraction, per-item
+# validation drop (including non-dict items and out-of-range fields),
+# invalid-enum drop, fence-stripping was httpx/JSON-body-only and has no
+# equivalent -- now live in tests/test_anthropic_provider.py, tested against
+# raw HTTP JSON fixtures instead of hand-built SDK-shaped doubles. Only the
+# blank-page short-circuit below survived unchanged, since it never touched
+# `_parse_response` at all.
 
 
-class TestParseResponse:
-    def test_parses_json_string_with_annotations_key(self, generator: AnnotationGenerator) -> None:
-        raw = """
-        {
-            "annotations": [
-                {
-                    "target_text": "Sopophorous bean",
-                    "annotation_type": "correction",
-                    "content": "Crush it, don't cut it.",
-                    "confidence": 0.9,
-                    "position": "margin_right"
-                }
-            ]
-        }
-        """
-        result = generator._parse_response(raw, page_number=2, page_text="...Sopophorous bean...")
-        assert len(result) == 1
-        ann = result[0]
-        assert isinstance(ann, Annotation)
-        assert ann.page == 2
-        assert ann.annotation_type == AnnotationType.CORRECTION
-        assert ann.target_text == "Sopophorous bean"
-        assert ann.confidence == pytest.approx(0.9)
-
-    def test_parses_bare_json_array(self, generator: AnnotationGenerator) -> None:
-        raw = """
-        [
-            {"target_text": "wormwood", "annotation_type": "doodle_note", "content": "Obviously."}
-        ]
-        """
-        result = generator._parse_response(raw, page_number=2)
-        assert len(result) == 1
-        assert result[0].content == "Obviously."
-        # confidence/position fall back to model defaults
-        assert result[0].confidence == pytest.approx(0.8)
-        assert result[0].position == "margin_right"
-
-    def test_strips_markdown_code_fence(self, generator: AnnotationGenerator) -> None:
-        raw = (
-            "```json\n"
-            '{"annotations": [{"target_text": "x", "annotation_type": "insight", '
-            '"content": "Predictable."}]}\n'
-            "```"
-        )
-        result = generator._parse_response(raw, page_number=1)
-        assert len(result) == 1
-        assert result[0].annotation_type == AnnotationType.INSIGHT
-
-    def test_strips_fence_without_language_tag(self, generator: AnnotationGenerator) -> None:
-        # AUD-32: delimiter-aware fence handling must accept a bare ``` fence.
-        raw = (
-            "```\n"
-            '{"annotations": [{"target_text": "x", "annotation_type": "insight", '
-            '"content": "Predictable."}]}\n'
-            "```"
-        )
-        result = generator._parse_response(raw, page_number=1)
-        assert len(result) == 1
-        assert result[0].annotation_type == AnnotationType.INSIGHT
-
-    def test_backticks_inside_json_values_survive_fence_stripping(
-        self, generator: AnnotationGenerator
-    ) -> None:
-        # AUD-32: fence removal must be delimiter-aware, never a character strip
-        # that eats backticks belonging to a JSON string value.
-        content = "run `Sectumsempra` — my own"
-        import json as _json
-
-        raw = (
-            "```json\n"
-            + _json.dumps(
-                {"annotations": [{"target_text": "x", "annotation_type": "invention", "content": content}]}
-            )
-            + "\n```"
-        )
-        result = generator._parse_response(raw, page_number=1)
-        assert len(result) == 1
-        assert result[0].content == content
-
-    def test_invalid_json_returns_empty_list(self, generator: AnnotationGenerator) -> None:
-        result = generator._parse_response("{not valid json at all", page_number=1)
-        assert result == []
-
-    def test_empty_string_returns_empty_list(self, generator: AnnotationGenerator) -> None:
-        assert generator._parse_response("", page_number=1) == []
-
-    def test_unexpected_json_shape_returns_empty_list(self, generator: AnnotationGenerator) -> None:
-        result = generator._parse_response('{"totally": "unrelated"}', page_number=1)
-        assert result == []
-
-    def test_invalid_individual_annotation_is_dropped_not_fatal(
-        self, generator: AnnotationGenerator
-    ) -> None:
-        raw = {
-            "annotations": [
-                {
-                    "target_text": "good one",
-                    "annotation_type": "warning",
-                    "content": "This one is fine.",
-                    "confidence": 0.5,
-                },
-                {
-                    # confidence out of [0, 1] range -> fails Pydantic validation
-                    "target_text": "bad confidence",
-                    "annotation_type": "warning",
-                    "content": "This one should be dropped.",
-                    "confidence": 42.0,
-                },
-                "not-even-a-dict",
-            ]
-        }
-        import json as _json
-
-        result = generator._parse_response(_json.dumps(raw), page_number=7)
-        assert len(result) == 1
-        assert result[0].content == "This one is fine."
-
-    def test_unknown_annotation_type_falls_back_gracefully(
-        self, generator: AnnotationGenerator
-    ) -> None:
-        raw = {
-            "annotations": [
-                {
-                    "target_text": "mystery step",
-                    "annotation_type": "sarcastic_eyebrow_raise",  # not a real enum value
-                    "content": "N/A",
-                }
-            ]
-        }
-        import json as _json
-
-        result = generator._parse_response(_json.dumps(raw), page_number=3)
-        # Invalid enum value -> Pydantic validation fails -> annotation dropped.
-        assert result == []
-
-    def test_parses_fake_tool_use_message(self, generator: AnnotationGenerator) -> None:
-        fake_message = _fake_tool_use_message(
-            [
-                {
-                    "target_text": "Golpalott's Third Law",
-                    "annotation_type": "insight",
-                    "content": "This is where everyone loses marks. The book won't say why.",
-                    "confidence": 0.88,
-                    "position": "margin_left",
-                },
-                {
-                    "target_text": "keep a bezoar within reach",
-                    "annotation_type": "warning",
-                    "content": "Always. No exceptions.",
-                    "confidence": 1.0,
-                },
-            ]
-        )
-        result = generator._parse_response(fake_message, page_number=5, page_text="")
-        assert len(result) == 2
-        assert {a.annotation_type for a in result} == {
-            AnnotationType.INSIGHT,
-            AnnotationType.WARNING,
-        }
-        assert all(a.page == 5 for a in result)
-
-    # NOTE: the "no matching tool block -> []" case was removed here in P0-T1.
-    # Its contract changed: an absent tool block is now an explicit page
-    # failure (a valid empty array is the only empty success). That behavior is
-    # pinned in tests/test_annotation_generator.py against the real Message path.
-
-    def test_generate_for_page_short_circuits_on_empty_text(
-        self, generator: AnnotationGenerator
-    ) -> None:
-        # No network call should occur: the empty/whitespace-only guard in
-        # generate_for_page() returns before touching self.client.
-        assert generator.generate_for_page("", page_number=1) == []
-        assert generator.generate_for_page("   \n\t  ", page_number=1) == []
+def test_generate_for_page_short_circuits_on_empty_text(generator: AnnotationGenerator) -> None:
+    # No provider call should occur: the empty/whitespace-only guard in
+    # generate_for_page() returns before touching self._provider.
+    assert generator.generate_for_page("", page_number=1) == []
+    assert generator.generate_for_page("   \n\t  ", page_number=1) == []
 
 
 # ---------------------------------------------------------------------------
