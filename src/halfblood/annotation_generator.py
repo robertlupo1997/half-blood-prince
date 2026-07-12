@@ -24,6 +24,7 @@ from typing import Any
 import anthropic
 
 from halfblood.document_processor import PageContent
+from halfblood.generation.schema import generate_annotation_schema
 from halfblood.models import AnnotatedPage, Annotation, AnnotationPlan, AnnotationType
 
 logger = logging.getLogger(__name__)
@@ -130,49 +131,7 @@ _ANNOTATION_TOOL_SCHEMA: anthropic.types.ToolParam = {
         "Record the margin annotations produced for this page. Call this "
         "exactly once with the complete list of annotations for the page."
     ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "annotations": {
-                "type": "array",
-                "description": "The margin annotations for this page, in reading order.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "target_text": {
-                            "type": "string",
-                            "description": (
-                                "The exact, verbatim passage from the page text "
-                                "that this annotation is attached to."
-                            ),
-                        },
-                        "annotation_type": {
-                            "type": "string",
-                            "enum": [t.value for t in AnnotationType],
-                            "description": "The category of this annotation.",
-                        },
-                        "content": {
-                            "type": "string",
-                            "description": "The handwritten margin note itself, in character.",
-                        },
-                        "confidence": {
-                            "type": "number",
-                            "minimum": 0.0,
-                            "maximum": 1.0,
-                            "description": "How certain the annotator is (0.0-1.0).",
-                        },
-                        "position": {
-                            "type": "string",
-                            "enum": ["margin_right", "margin_left", "inline", "between_lines"],
-                            "description": "Where the note should be placed relative to the text.",
-                        },
-                    },
-                    "required": ["target_text", "annotation_type", "content"],
-                },
-            }
-        },
-        "required": ["annotations"],
-    },
+    "input_schema": generate_annotation_schema(),
 }
 
 _ANNOTATION_TOOL_CHOICE: anthropic.types.ToolChoiceToolParam = {
