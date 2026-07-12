@@ -11,6 +11,7 @@ No network calls anywhere in this file.
 import logging
 
 import pytest
+
 from halfblood.config import (
     PROVIDER_PRESETS,
     ProviderConfigurationError,
@@ -84,20 +85,35 @@ def test_provider_presets_match_architecture_table():
 
 
 def test_provider_precedence_full_chain(tmp_path):
+    """Every step resolves to a real, fully-satisfiable provider (its required
+    API key, if any, is present in environ) -- this test exercises precedence
+    ordering ONLY, not the missing-key path (see test_hosted_provider_missing_key_raises
+    for that). A provider resolved via ANY layer with its key absent must still
+    raise, unconditionally -- do not special-case project/user-sourced providers."""
     project_toml = "[generation]\nprovider = \"openrouter\"\n"
     user_toml = "[generation]\nprovider = \"openai\"\n"
 
     # user only -> user wins (nothing above it)
-    result = _resolve(tmp_path, user_toml=user_toml, provider=None)
+    result = _resolve(
+        tmp_path,
+        user_toml=user_toml,
+        provider=None,
+        environ={"OPENAI_API_KEY": "sk-fake"},
+    )
     assert result.provider == "openai"
     assert result.sources["provider"] == "user_config"
 
     # project + user -> project wins
-    result = _resolve(tmp_path, project_toml=project_toml, user_toml=user_toml)
+    result = _resolve(
+        tmp_path,
+        project_toml=project_toml,
+        user_toml=user_toml,
+        environ={"OPENROUTER_API_KEY": "sk-fake"},
+    )
     assert result.provider == "openrouter"
     assert result.sources["provider"] == "project_config"
 
-    # + environment -> environment wins
+    # + environment -> environment wins (ollama needs no key)
     result = _resolve(
         tmp_path,
         project_toml=project_toml,
@@ -107,7 +123,7 @@ def test_provider_precedence_full_chain(tmp_path):
     assert result.provider == "ollama"
     assert result.sources["provider"] == "environment"
 
-    # + CLI -> CLI wins
+    # + CLI -> CLI wins (lmstudio needs no key)
     result = _resolve(
         tmp_path,
         project_toml=project_toml,
@@ -117,6 +133,14 @@ def test_provider_precedence_full_chain(tmp_path):
     )
     assert result.provider == "lmstudio"
     assert result.sources["provider"] == "cli"
+
+
+def test_provider_from_project_config_still_requires_its_key(tmp_path):
+    """The missing-key check must apply unconditionally, regardless of which
+    layer selected the provider -- project/user TOML is not a special case."""
+    project_toml = "[generation]\nprovider = \"openai\"\n"
+    with pytest.raises(ProviderConfigurationError):
+        _resolve(tmp_path, project_toml=project_toml, environ={})
 
 
 def test_provider_defaults_to_anthropic_when_unset(tmp_path):
