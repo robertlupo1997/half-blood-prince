@@ -6,19 +6,15 @@ Codex builds against -- do not edit them to make an implementation pass.
 
 Field-name decision: AnnotationDraft keeps the wire/Python field named ``position``
 (NOT v2's ``requested_placement``) -- see the brief's "Pinned interface" section for
-the full rationale. This preserves annotation_generator.py's existing parse path
-unchanged, which the safety-net test below exercises directly.
+the full rationale.
 """
 
 import hashlib
-import json
 from copy import deepcopy
 
 import pytest
 from pydantic import ValidationError
 
-import halfblood.annotation_generator as ag_module
-from halfblood.annotation_generator import AnnotationGenerator
 from halfblood.generation.schema import (
     AnnotationDraft,
     RecordAnnotations,
@@ -228,33 +224,17 @@ def test_annotation_draft_rejects_invalid_payloads(override):
 
 
 # --- 7. single source of truth; forced-tool path unaffected --------------
-
-
-def test_legacy_tool_schema_is_generated_not_hand_maintained():
-    assert ag_module._ANNOTATION_TOOL_SCHEMA["input_schema"] == generate_annotation_schema()
-
-
-def test_parse_response_still_reads_position_key_unchanged():
-    """Safety net for the field-name decision above: the wire key stays
-    ``position``, so the existing parse path (annotation_generator.py:526)
-    needs no change. A non-default value must survive parsing, not be
-    silently reset to the "margin_right" fallback."""
-    gen = AnnotationGenerator(api_key="sk-ant-test-fake-key-not-real")
-    raw = json.dumps(
-        {
-            "annotations": [
-                {
-                    "target_text": "hello",
-                    "annotation_type": "warning",
-                    "content": "careful",
-                    "confidence": 0.9,
-                    "position": "between_lines",
-                }
-            ]
-        }
-    )
-
-    result = gen._parse_response(raw, page_number=1, page_text="hello world")
-
-    assert len(result) == 1
-    assert result[0].position == "between_lines"
+#
+# NOTE: two tests previously lived here, both exercising annotation_generator
+# internals that P1-T5 deleted -- ``_ANNOTATION_TOOL_SCHEMA`` (a module
+# constant) and ``_parse_response()`` (a method). Both were removed when
+# AnnotationGenerator's SDK call was replaced by the injectable
+# AnthropicProvider seam; the schema/tool-shape logic they guarded now lives
+# in ``AnthropicProvider._build_body``/``_parse_success``. Their invariants
+# are preserved by tests/test_anthropic_provider.py:
+#   - test_legacy_tool_schema_is_generated_not_hand_maintained's concern
+#     (the wire tool schema IS generate_annotation_schema(), not a hand-
+#     maintained copy) -> test_request_url_headers_and_payload_shape.
+#   - test_parse_response_still_reads_position_key_unchanged's concern (a
+#     non-default ``position`` value survives parsing unchanged) ->
+#     test_non_default_position_value_survives_parsing.

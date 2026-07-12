@@ -16,14 +16,15 @@ validation, page-by-page orchestration).
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-from typing import Any
-
-import anthropic
 
 from halfblood.document_processor import PageContent
+from halfblood.generation.errors import ProviderError
+from halfblood.generation.providers.anthropic import AnthropicProvider
+from halfblood.generation.providers.base import GenerationRequest, GenerationResult, LLMProvider
+from halfblood.generation.report import AllPagesFailedError as _ReportAllPagesFailedError
+from halfblood.generation.report import GenerationReport, PageGenerationStatus
 from halfblood.generation.schema import generate_annotation_schema
 from halfblood.models import AnnotatedPage, Annotation, AnnotationPlan, AnnotationType
 
@@ -32,12 +33,16 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "claude-sonnet-5"
 
 
-class AllPagesFailedError(RuntimeError):
+class AllPagesFailedError(_ReportAllPagesFailedError):
     """Raised when every page sent to the API failed to generate annotations.
 
-    Distinguishes a systemic failure (retired model, bad key, no network)
-    from a document that legitimately produced zero annotations.
+    This preserves the legacy message-first construction contract while
+    reconciling the exception with the provider report model.
     """
+
+    def __init__(self, message: str, *, report: GenerationReport | None = None) -> None:
+        self.report = report if report is not None else GenerationReport(statuses=())
+        RuntimeError.__init__(self, message)
 
 
 # --------------------------------------------------------------------------
@@ -119,31 +124,6 @@ RULES
 """
 
 
-# --------------------------------------------------------------------------
-# Tool schema used to force structured output from Claude
-# --------------------------------------------------------------------------
-
-_ANNOTATION_TOOL_NAME = "record_annotations"
-
-_ANNOTATION_TOOL_SCHEMA: anthropic.types.ToolParam = {
-    "name": _ANNOTATION_TOOL_NAME,
-    "description": (
-        "Record the margin annotations produced for this page. Call this "
-        "exactly once with the complete list of annotations for the page."
-    ),
-    "input_schema": generate_annotation_schema(),
-}
-
-_ANNOTATION_TOOL_CHOICE: anthropic.types.ToolChoiceToolParam = {
-    "type": "tool",
-    "name": _ANNOTATION_TOOL_NAME,
-}
-
-
-class _MalformedResponseError(RuntimeError):
-    """Signal that an Anthropic Message cannot be treated as a page success."""
-
-
 class AnnotationGenerator:
     """Generates Half-Blood-Prince-style margin annotations via Claude.
 
@@ -169,6 +149,7 @@ class AnnotationGenerator:
         api_key: str | None = None,
         model: str = DEFAULT_MODEL,
         persona: str | None = None,
+        provider: LLMProvider | None = None,
     ) -> None:
         """Initialize the annotation generator.
 
@@ -184,17 +165,19 @@ class AnnotationGenerator:
             ValueError: If no API key is provided and none is found in the
                 environment.
         """
-        resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if not resolved_key:
-            raise ValueError(
-                "No Anthropic API key provided. Pass api_key explicitly or "
-                "set the ANTHROPIC_API_KEY environment variable."
-            )
-
-        self.client = anthropic.Anthropic(api_key=resolved_key)
         self.model = model
         self.persona = persona or DEFAULT_PERSONA
         self.failed_pages: list[int] = []
+        if provider is not None:
+            self._provider: LLMProvider = provider
+        else:
+            resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+            if not resolved_key:
+                raise ValueError(
+                    "No Anthropic API key provided. Pass api_key explicitly or "
+                    "set the ANTHROPIC_API_KEY environment variable."
+                )
+            self._provider = AnthropicProvider(api_key=resolved_key)
 
     # ------------------------------------------------------------------
     # Prompt construction
@@ -279,51 +262,55 @@ class AnnotationGenerator:
             empty list if the page has no meaningful text or if generation
             fails after validation.
         """
-        annotations, _attempted, _failed = self._generate_for_page_tracked(
+        annotations, _attempted, _failed, _error = self._generate_for_page_tracked(
             page_text, page_number, book_context
         )
         return annotations
 
     def _generate_for_page_tracked(
         self, page_text: str, page_number: int, book_context: str
-    ) -> tuple[list[Annotation], bool, bool]:
-        """Generate annotations, reporting (annotations, attempted, failed).
+    ) -> tuple[list[Annotation], bool, bool, ProviderError | None]:
+        """Generate annotations and track whether the provider call failed.
 
         ``attempted`` is False for a blank page (no API call is made);
-        ``failed`` is True when the API call failed or returned an unusable Message.
+        ``failed`` is True when the provider call failed.
         """
         if not page_text or not page_text.strip():
             logger.debug("Page %d has no text; skipping annotation.", page_number)
-            return [], False, False
+            return [], False, False, None
 
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(page_text, page_number, book_context)
 
-        tools: list[anthropic.types.ToolParam] = [_ANNOTATION_TOOL_SCHEMA]
-        messages: list[anthropic.types.MessageParam] = [
-            {"role": "user", "content": user_prompt}
-        ]
+        request = GenerationRequest(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            schema=generate_annotation_schema(),
+            model=self.model,
+            max_tokens=2048,
+        )
 
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=2048,
-                system=system_prompt,
-                tools=tools,
-                tool_choice=_ANNOTATION_TOOL_CHOICE,
-                messages=messages,
+            result = self._provider.complete(request)
+        except ProviderError as exc:
+            logger.error("Provider error while annotating page %d: %s", page_number, exc)
+            return [], True, True, exc
+
+        annotations = self._to_annotations(result, page_number)
+        return annotations, True, False, None
+
+    def _to_annotations(self, result: GenerationResult, page_number: int) -> list[Annotation]:
+        return [
+            Annotation(
+                page=page_number,
+                target_text=draft.target_text,
+                annotation_type=draft.annotation_type,
+                content=draft.content,
+                confidence=draft.confidence,
+                position=draft.position,
             )
-        except anthropic.APIError as exc:
-            logger.error("Anthropic API error while annotating page %d: %s", page_number, exc)
-            return [], True, True
-
-        try:
-            annotations = self._parse_response(response, page_number, page_text=page_text)
-        except _MalformedResponseError as exc:
-            logger.error("Malformed Anthropic response for page %d: %s", page_number, exc)
-            return [], True, True
-
-        return annotations, True, False
+            for draft in result.parsed.annotations
+        ]
 
     def generate_for_document(
         self, pages: list[PageContent], max_annotations_per_page: int = 5
@@ -358,6 +345,7 @@ class AnnotationGenerator:
         running_notes: list[str] = []
         attempted = 0
         failed_pages: list[int] = []
+        statuses: list[PageGenerationStatus] = []
         context_window_chars = 500
 
         for i, page in enumerate(pages):
@@ -386,13 +374,39 @@ class AnnotationGenerator:
 
             book_context = "\n\n".join(context_parts)
 
-            annotations, attempted_call, failed = self._generate_for_page_tracked(
+            annotations, attempted_call, failed, error = self._generate_for_page_tracked(
                 page.text, page.page_number, book_context
             )
             if attempted_call:
                 attempted += 1
                 if failed:
                     failed_pages.append(page.page_number)
+                    statuses.append(
+                        PageGenerationStatus(
+                            unit_id=str(page.page_number),
+                            ordinal=page.page_number,
+                            status="failed",
+                            attempts=getattr(error, "attempts", 1) if error else 1,
+                            error=error,
+                        )
+                    )
+                else:
+                    statuses.append(
+                        PageGenerationStatus(
+                            unit_id=str(page.page_number),
+                            ordinal=page.page_number,
+                            status="success",
+                            attempts=1,
+                        )
+                    )
+            else:
+                statuses.append(
+                    PageGenerationStatus(
+                        unit_id=str(page.page_number),
+                        ordinal=page.page_number,
+                        status="skipped",
+                    )
+                )
 
             if len(annotations) > max_annotations_per_page:
                 annotations = sorted(
@@ -414,201 +428,11 @@ class AnnotationGenerator:
 
         self.failed_pages = failed_pages
         if attempted and len(failed_pages) == attempted:
+            report = GenerationReport(statuses=tuple(statuses))
             raise AllPagesFailedError(
                 f"All {attempted} page(s) sent to the API failed; no annotations were "
-                "produced. Check the model name, your ANTHROPIC_API_KEY, and connectivity."
+                "produced. Check the model name, your ANTHROPIC_API_KEY, and connectivity.",
+                report=report,
             )
 
         return plan
-
-    # ------------------------------------------------------------------
-    # Response parsing
-    # ------------------------------------------------------------------
-
-    def _parse_response(
-        self,
-        response_text: anthropic.types.Message | str,
-        page_number: int,
-        page_text: str = "",
-    ) -> list[Annotation]:
-        """Parse a Claude response into a list of validated annotations.
-
-        Accepts either a raw ``anthropic.types.Message`` object (the
-        typical case, when called from :meth:`generate_for_page`) or a
-        plain JSON string (useful for testing or if a caller has already
-        extracted the tool input as text). In the ``Message`` case, this
-        looks for the ``record_annotations`` tool_use block; in the string
-        case, it expects a JSON object with an ``annotations`` key, or a
-        bare JSON array of annotation objects.
-
-        Any individual annotation that fails Pydantic validation is
-        skipped and logged rather than aborting the whole page.
-
-        Args:
-            response_text: The Claude API response, or a raw JSON string.
-            page_number: The page number to stamp onto each annotation.
-            page_text: The original page text, used to verify that each
-                annotation's ``target_text`` actually appears on the page.
-                If empty, this check is skipped.
-
-        Returns:
-            A list of validated :class:`Annotation` objects.
-        """
-        raw_items = self._extract_raw_annotations(response_text, page_number)
-
-        annotations: list[Annotation] = []
-        for item in raw_items:
-            if not isinstance(item, dict):
-                logger.warning(
-                    "Skipping non-object annotation entry on page %d: %r",
-                    page_number,
-                    item,
-                )
-                continue
-
-            target_text = item.get("target_text", "")
-            if page_text and target_text and target_text not in page_text:
-                logger.debug(
-                    "Annotation target_text not found verbatim on page %d; "
-                    "keeping anyway (model may have normalized whitespace): %r",
-                    page_number,
-                    target_text,
-                )
-
-            try:
-                annotation = Annotation(
-                    page=page_number,
-                    target_text=target_text,
-                    annotation_type=item.get("annotation_type", AnnotationType.DOODLE_NOTE),
-                    content=item.get("content", ""),
-                    confidence=item.get("confidence", 0.8),
-                    position=item.get("position", "margin_right"),
-                )
-            except Exception as exc:  # pydantic.ValidationError, etc.
-                logger.warning(
-                    "Dropping invalid annotation on page %d: %s (raw=%r)",
-                    page_number,
-                    exc,
-                    item,
-                )
-                continue
-
-            annotations.append(annotation)
-
-        return annotations
-
-    @staticmethod
-    def _extract_raw_annotations(
-        response: anthropic.types.Message | str, page_number: int
-    ) -> list[dict[str, Any]]:
-        """Extract the raw annotation dicts from a Claude response.
-
-        Handles the ``Message`` (tool_use) case and the plain-string (JSON)
-        fallback case described in :meth:`_parse_response`.
-
-        Args:
-            response: The Claude API response or a raw JSON string.
-            page_number: Used only for log messages.
-
-        Returns:
-            A list of raw annotation dicts (unvalidated). Empty list if
-            nothing usable was found.
-        """
-        # Case 1: raw anthropic.types.Message — look for the tool_use block.
-        if hasattr(response, "content"):
-            if getattr(response, "stop_reason", None) == "max_tokens":
-                raise _MalformedResponseError("response was truncated at max_tokens")
-
-            content = response.content
-            matching_inputs: list[object] = []
-            for block in content:
-                if isinstance(block, anthropic.types.ToolUseBlock):
-                    if block.name == _ANNOTATION_TOOL_NAME:
-                        matching_inputs.append(block.input)
-                    continue
-
-                # Test doubles and compatibility callers may provide SDK-shaped,
-                # duck-typed blocks rather than Pydantic SDK model instances.
-                if (
-                    getattr(block, "type", None) == "tool_use"
-                    and getattr(block, "name", None) == _ANNOTATION_TOOL_NAME
-                ):
-                    matching_inputs.append(getattr(block, "input", None))
-
-            if not matching_inputs:
-                raise _MalformedResponseError(
-                    "no record_annotations tool_use block was present"
-                )
-            if len(matching_inputs) != 1:
-                raise _MalformedResponseError(
-                    "multiple record_annotations tool_use blocks were present"
-                )
-            if len(content) != 1:
-                logger.warning(
-                    "Anthropic response for page %d included %d extra content block(s) "
-                    "alongside record_annotations.",
-                    page_number,
-                    len(content) - 1,
-                )
-
-            tool_input = matching_inputs[0]
-            if not isinstance(tool_input, dict):
-                raise _MalformedResponseError(
-                    "record_annotations input was not a JSON object"
-                )
-            if "annotations" not in tool_input:
-                raise _MalformedResponseError(
-                    "record_annotations input omitted the annotations key"
-                )
-
-            result = tool_input["annotations"]
-            if not isinstance(result, list):
-                raise _MalformedResponseError(
-                    "record_annotations annotations value was not a list"
-                )
-            return result
-
-        # Case 2: plain string, expected to be JSON (object with
-        # "annotations" key, or a bare array).
-        text = str(response).strip()
-        if not text:
-            return []
-
-        # Be forgiving of markdown code fences around the JSON. Remove only
-        # explicit delimiters so backticks in JSON string values survive.
-        fenced = False
-        if text.startswith("```json"):
-            text = text[len("```json"):]
-            fenced = True
-        elif text.startswith("```"):
-            text = text[len("```"):]
-            fenced = True
-
-        if fenced:
-            text = text.lstrip()
-            if text.endswith("```"):
-                text = text[:-len("```")].rstrip()
-
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError as exc:
-            logger.error(
-                "Failed to parse JSON annotation response for page %d: %s",
-                page_number,
-                exc,
-            )
-            return []
-
-        if isinstance(parsed, list):
-            return parsed
-        if isinstance(parsed, dict):
-            result = parsed.get("annotations", [])
-            if isinstance(result, list):
-                return result
-
-        logger.warning(
-            "Unexpected JSON shape in annotation response for page %d: %r",
-            page_number,
-            parsed,
-        )
-        return []

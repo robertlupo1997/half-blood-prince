@@ -1,9 +1,12 @@
 """P0-T12 — dependency bounds, dev reproducibility, and audit-ledger closure.
 
 AUD-38: floor-only dependency specifiers permit silent breaking upgrades.
-Every runtime dependency must carry an intentional compatible upper bound —
-at minimum ``anthropic<2`` until Phase 1 replaces the SDK with httpx — and
-development installs must be reproducible from a checked-in lock artifact.
+Every runtime dependency must carry an intentional compatible upper bound,
+and development installs must be reproducible from a checked-in lock
+artifact. ``anthropic`` was capped below 2 as a core dependency until P1-T5
+replaced the SDK with a native ``httpx`` adapter; it now lives only in the
+``eval`` extra (still bounded — see ``test_eval_extra_is_present_and_bounded``
+and ``test_anthropic_is_absent_from_core_dependencies`` below).
 
 Ledger closure: every audit finding (AUD-01…AUD-44, L-1…L-3) must have an
 explicit disposition in the Phase 0 closure report — merged, fixed in a P0
@@ -37,10 +40,16 @@ def test_every_runtime_dependency_has_an_upper_bound(pyproject: dict) -> None:
         assert "<" in spec, f"floor-only dependency permits breaking upgrades: {spec!r}"
 
 
-def test_anthropic_is_capped_below_two(pyproject: dict) -> None:
-    spec = next(
-        s for s in pyproject["project"]["dependencies"] if s.startswith("anthropic")
-    )
+def test_anthropic_is_absent_from_core_dependencies(pyproject: dict) -> None:
+    """P1-T5: production Anthropic traffic moved to a native ``httpx``
+    adapter, so the ``anthropic`` SDK is no longer a core runtime
+    dependency. It still ships, bounded, in the ``eval`` extra --
+    ``test_eval_extra_is_present_and_bounded`` covers that bound generically."""
+    deps = pyproject["project"]["dependencies"]
+    assert not any(spec.startswith("anthropic") for spec in deps), deps
+
+    eval_extra = pyproject["project"]["optional-dependencies"]["eval"]
+    spec = next(s for s in eval_extra if s.startswith("anthropic"))
     assert re.search(r"<\s*2\b", spec), spec
 
 
