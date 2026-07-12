@@ -75,6 +75,17 @@ def test_schema_top_level_shape():
     assert schema["properties"]["annotations"]["type"] == "array"
 
 
+def test_schema_annotations_array_explains_reading_order():
+    """The old hand-written schema told the model annotations should be "in
+    reading order" -- real guidance (order is preserved through to rendering
+    and the running-notes continuity signal unless a page's annotation count
+    exceeds the confidence-sorted cap). Nothing else in the prompt says this."""
+    schema = generate_annotation_schema()
+    description = schema["properties"]["annotations"].get("description", "")
+
+    assert "reading order" in description.lower()
+
+
 def test_schema_every_annotation_field_is_required():
     schema = generate_annotation_schema()
     item_schema = schema["properties"]["annotations"]["items"]
