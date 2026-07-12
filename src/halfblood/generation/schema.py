@@ -57,7 +57,9 @@ class RecordAnnotations(BaseModel):
 
     model_config = ConfigDict(extra="forbid", title="record_annotations")
 
-    annotations: list[AnnotationDraft]
+    annotations: list[AnnotationDraft] = Field(
+        description="The margin annotations for this page, in reading order."
+    )
 
 
 def _inline_references(value: Any, definitions: dict[str, Any]) -> Any:
