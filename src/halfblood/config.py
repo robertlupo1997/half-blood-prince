@@ -19,6 +19,8 @@ from urllib.parse import parse_qsl, urlsplit
 
 from platformdirs import user_config_dir
 
+from halfblood.generation.errors import ProviderConfigurationError
+
 logger = logging.getLogger(__name__)
 
 _SOURCE_CLI = "cli"
@@ -53,13 +55,6 @@ _GENERATION_FIELDS = {
 _PROVIDER_FIELDS = {"base_url", "api_key_env", "timeout_seconds"}
 _SECRET_QUERY_NAMES = {"key", "api_key", "apikey", "token", "secret", "access_token"}
 _STRUCTURED_OUTPUT_MODES = {"auto", "tool", "function", "json-schema", "prompt"}
-
-
-class ProviderConfigurationError(ValueError):
-    """An unsafe or unresolvable provider configuration.
-
-    Configuration errors are never retryable.
-    """
 
 
 @dataclass(frozen=True)
