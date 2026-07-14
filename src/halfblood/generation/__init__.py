@@ -22,6 +22,14 @@ from halfblood.generation.providers.base import (
     LLMProvider,
     ProviderCapabilities,
 )
+from halfblood.generation.providers.openai_compat import OpenAICompatibleProvider
+from halfblood.generation.registry import (
+    PROVIDER_PROFILES,
+    AdapterKind,
+    ProviderProfile,
+    build_provider,
+    get_profile,
+)
 from halfblood.generation.report import (
     AllPagesFailedError,
     GenerationReport,
@@ -39,6 +47,7 @@ from halfblood.generation.structured_output import (
 )
 
 __all__ = [
+    "AdapterKind",
     "AllPagesFailedError",
     "AnnotationValidationError",
     "DEFAULT_PARSE_LIMITS",
@@ -48,14 +57,17 @@ __all__ = [
     "GenerationUsage",
     "IncompleteResponseError",
     "LLMProvider",
+    "OpenAICompatibleProvider",
     "PageGenerationStatus",
     "ParseLimits",
+    "PROVIDER_PROFILES",
     "ProviderAuthenticationError",
     "ProviderCapabilities",
     "ProviderCapabilityError",
     "ProviderConfigurationError",
     "ProviderError",
     "ProviderNotFoundError",
+    "ProviderProfile",
     "ProviderRateLimitError",
     "ProviderSafetyRefusal",
     "ProviderTransientError",
@@ -63,7 +75,9 @@ __all__ = [
     "StructuredOutputPolicy",
     "TOOL_NAME",
     "bounded_json_decode",
+    "build_provider",
     "classify_status_code",
+    "get_profile",
     "parse_json_schema_mode",
     "parse_prompt_mode",
     "parse_tool_mode",
