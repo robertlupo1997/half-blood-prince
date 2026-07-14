@@ -27,10 +27,21 @@ from halfblood.generation.report import (
     GenerationReport,
     PageGenerationStatus,
 )
+from halfblood.generation.structured_output import (
+    DEFAULT_PARSE_LIMITS,
+    TOOL_NAME,
+    ParseLimits,
+    StructuredOutputPolicy,
+    bounded_json_decode,
+    parse_json_schema_mode,
+    parse_prompt_mode,
+    parse_tool_mode,
+)
 
 __all__ = [
     "AllPagesFailedError",
     "AnnotationValidationError",
+    "DEFAULT_PARSE_LIMITS",
     "GenerationReport",
     "GenerationRequest",
     "GenerationResult",
@@ -38,6 +49,7 @@ __all__ = [
     "IncompleteResponseError",
     "LLMProvider",
     "PageGenerationStatus",
+    "ParseLimits",
     "ProviderAuthenticationError",
     "ProviderCapabilities",
     "ProviderCapabilityError",
@@ -48,6 +60,12 @@ __all__ = [
     "ProviderSafetyRefusal",
     "ProviderTransientError",
     "StructuredOutputError",
+    "StructuredOutputPolicy",
+    "TOOL_NAME",
+    "bounded_json_decode",
     "classify_status_code",
+    "parse_json_schema_mode",
+    "parse_prompt_mode",
+    "parse_tool_mode",
     "redact_secrets",
 ]
