@@ -15,6 +15,7 @@ type from its extension (``.pdf`` or ``.epub``) and dispatch to
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
 import webbrowser
@@ -31,8 +32,13 @@ from halfblood.annotation_generator import (
     AllPagesFailedError,
     AnnotationGenerator,
 )
+from halfblood.config import resolve_generation_config
 from halfblood.document_processor import DocumentProcessor, PageContent
 from halfblood.epub_processor import EpubProcessor
+from halfblood.generation.errors import ProviderConfigurationError, ProviderError
+from halfblood.generation.providers.base import GenerationRequest
+from halfblood.generation.registry import build_provider
+from halfblood.generation.schema import generate_annotation_schema
 from halfblood.models import AnnotatedPage
 from halfblood.web_preview import generate_preview
 
@@ -432,6 +438,66 @@ def eval_cmd(model: str | None, json_out: Path | None, list_only: bool) -> None:
         cmd += ["--list"]
 
     raise SystemExit(subprocess.run(cmd).returncode)
+
+
+@main.group("providers")
+def providers() -> None:
+    """Provider management and diagnostics."""
+
+
+@providers.command("doctor")
+@click.option(
+    "--provider", "provider_name", default=None, help="Provider to check (overrides config)."
+)
+@click.option("--model", "model_name", default=None, help="Model name (overrides config).")
+@click.option(
+    "--offline", is_flag=True, default=False, help="Skip the live request; print config only."
+)
+def doctor(provider_name: str | None, model_name: str | None, offline: bool) -> None:
+    """Diagnose provider configuration and connectivity."""
+    cli_overrides: dict[str, object] = {}
+    if provider_name is not None:
+        cli_overrides["provider"] = provider_name
+    if model_name is not None:
+        cli_overrides["model"] = model_name
+
+    try:
+        config = resolve_generation_config(cli_overrides or None)
+    except ProviderConfigurationError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    click.echo(config.safe_repr())
+    if offline:
+        return
+
+    api_key = os.environ.get(config.api_key_env) if config.api_key_env else None
+    try:
+        provider = build_provider(config, api_key=api_key)
+    except ProviderConfigurationError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    request = GenerationRequest(
+        system_prompt="Diagnostic connectivity check.",
+        user_prompt="Return an empty annotations list.",
+        schema=generate_annotation_schema(),
+        model=config.model,
+        max_tokens=64,
+    )
+
+    try:
+        result = provider.complete(request)
+    except ProviderError as exc:
+        raise click.ClickException(f"{type(exc).__name__}: {exc}") from exc
+
+    click.echo(f"request_id: {result.request_id}")
+    click.echo(f"latency: {result.latency_seconds:.3f}s")
+    click.echo(f"finish_reason: {result.finish_reason}")
+    capabilities = provider.capabilities
+    click.echo(
+        f"capabilities: tool_calling={capabilities.supports_tool_calling},"
+        f" json_schema={capabilities.supports_json_schema},"
+        f" strict_json_schema={capabilities.supports_strict_json_schema}"
+    )
 
 
 if __name__ == "__main__":
