@@ -11,6 +11,11 @@ get_profile, build_provider), per-profile capabilities — see p1-t7-brief.md.
 from __future__ import annotations
 
 import pytest
+
+from halfblood.config import ResolvedConfig
+from halfblood.generation.errors import ProviderConfigurationError
+from halfblood.generation.providers.anthropic import AnthropicProvider
+from halfblood.generation.providers.base import ProviderCapabilities
 from halfblood.generation.providers.openai_compat import OpenAICompatibleProvider
 from halfblood.generation.registry import (
     PROVIDER_PROFILES,
@@ -19,11 +24,6 @@ from halfblood.generation.registry import (
     build_provider,
     get_profile,
 )
-
-from halfblood.config import ResolvedConfig
-from halfblood.generation.errors import ProviderConfigurationError
-from halfblood.generation.providers.anthropic import AnthropicProvider
-from halfblood.generation.providers.base import ProviderCapabilities
 
 # ---------------------------------------------------------------------------
 # PROVIDER_PROFILES completeness

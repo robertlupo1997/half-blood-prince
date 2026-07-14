@@ -28,7 +28,6 @@ import json
 
 import httpx
 import pytest
-from halfblood.generation.providers.openai_compat import OpenAICompatibleProvider
 
 from halfblood.generation.errors import (
     IncompleteResponseError,
@@ -42,6 +41,7 @@ from halfblood.generation.errors import (
     StructuredOutputError,
 )
 from halfblood.generation.providers.base import GenerationRequest, ProviderCapabilities
+from halfblood.generation.providers.openai_compat import OpenAICompatibleProvider
 from halfblood.generation.schema import generate_annotation_schema
 
 API_KEY = "sk-test-fake-key-not-real"

@@ -16,7 +16,6 @@ from typing import Any
 
 import httpx
 import pytest
-from halfblood.generation.providers.openai_compat import OpenAICompatibleProvider
 
 from halfblood.generation.providers.anthropic import AnthropicProvider
 from halfblood.generation.providers.base import (
@@ -26,6 +25,7 @@ from halfblood.generation.providers.base import (
     LLMProvider,
     ProviderCapabilities,
 )
+from halfblood.generation.providers.openai_compat import OpenAICompatibleProvider
 from halfblood.generation.schema import RecordAnnotations, generate_annotation_schema
 
 # ---------------------------------------------------------------------------
