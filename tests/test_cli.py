@@ -27,12 +27,67 @@ import pytest
 from click.testing import CliRunner
 
 import halfblood.cli as cli_module
+from halfblood.config import ResolvedConfig
 from halfblood.document_processor import PageContent
 from halfblood.models import AnnotatedPage, AnnotationPlan
 from halfblood.web_preview import PreviewResult
 
 _PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n%%EOF\n"
 _ZIP_BYTES = b"PK\x03\x04" + b"\x00" * 32
+
+# ---------------------------------------------------------------------------
+# Fake config + provider injected by the `fakes` fixture so that after Codex
+# wires the provider seam, existing tests keep passing without needing a real
+# API key or model env var.
+# ---------------------------------------------------------------------------
+
+_FAKE_CLI_SOURCES: dict[str, str] = {
+    "provider": "default",
+    "model": "cli",
+    "base_url": "preset",
+    "api_key_env": "preset",
+    "structured_output": "preset",
+    "timeout_seconds": "default",
+    "max_retries": "default",
+    "concurrency": "phase1",
+    "allow_insecure_http": "default",
+}
+
+_FAKE_CLI_CONFIG = ResolvedConfig(
+    provider="anthropic",
+    model="claude-sonnet-5",
+    base_url="https://api.anthropic.com",
+    api_key_env="ANTHROPIC_API_KEY",
+    structured_output="tool",
+    timeout_seconds=60.0,
+    max_retries=0,
+    concurrency=1,
+    allow_insecure_http=False,
+    sources=_FAKE_CLI_SOURCES,
+)
+
+
+class _FakeCliProvider:
+    """Minimal LLMProvider double for the fakes fixture.
+
+    .complete() raises immediately — if it is ever called, the test fails because
+    the full AnnotationGenerator is also faked, so no provider call should occur.
+    """
+
+    @property
+    def capabilities(self):
+        from halfblood.generation.providers.base import ProviderCapabilities
+
+        return ProviderCapabilities(
+            supports_tool_calling=True,
+            supports_json_schema=False,
+            supports_strict_json_schema=False,
+        )
+
+    def complete(self, request):
+        raise AssertionError(
+            "direct provider.complete() called — AnnotationGenerator should be faked"
+        )
 
 
 class _FakePdfProcessor:
@@ -67,7 +122,14 @@ class _FakeEpubProcessor:
 class _FakeGenerator:
     calls: int = 0
 
-    def __init__(self, persona: str | None = None, model: str | None = None) -> None:
+    def __init__(
+        self,
+        persona: str | None = None,
+        model: str | None = None,
+        provider: object | None = None,
+    ) -> None:
+        # No **kwargs — any unexpected keyword from cli.py will raise TypeError,
+        # surfacing a signature mismatch rather than hiding it.
         self.failed_pages: list[int] = []
 
     def generate_for_document(
@@ -94,6 +156,11 @@ def fakes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli_module, "DocumentProcessor", _FakePdfProcessor)
     monkeypatch.setattr(cli_module, "EpubProcessor", _FakeEpubProcessor)
     monkeypatch.setattr(cli_module, "AnnotationGenerator", _FakeGenerator)
+    # After Codex wires the provider seam, annotate and preview will call
+    # resolve_generation_config and build_provider.  Patch them here so the
+    # existing tests keep passing without a real API key or model env var.
+    monkeypatch.setattr(cli_module, "resolve_generation_config", lambda *a, **k: _FAKE_CLI_CONFIG)
+    monkeypatch.setattr(cli_module, "build_provider", lambda *a, **k: _FakeCliProvider())
 
 
 @pytest.fixture()
