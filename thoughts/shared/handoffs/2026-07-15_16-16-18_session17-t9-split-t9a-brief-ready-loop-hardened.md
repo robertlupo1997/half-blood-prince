@@ -48,8 +48,14 @@ type: handoff
 
 ## Recent changes
 
-**Nothing committed. `main` is untouched at `8b58383`.** All work is uncommitted on branch
-`phase1-t9a` plus the never-commit set.
+**No product code has been built.** `main` carries only docs commits; the T9a tests are
+committed (WIP, red by design) on branch `phase1-t9a`.
+
+- `main` @ `9e099f9` — `docs:` this handoff + pointer. Parent `8b58383` (Session 16 handoff)
+  is the last commit before this session; product code on `main` is unchanged since then.
+- `phase1-t9a` @ `b082337` — `test:` the 37 failing T9a tests (WIP; **Codex NOT dispatched**).
+  Branches from `8b58383`, so it does NOT contain this handoff — that is expected; the branch
+  never touches `HANDOFF.md`, so the eventual merge keeps `main`'s pointer with no conflict.
 
 - `.claude/skills/goal/SKILL.md:57` — new `## Tripwire (controller-owned tests/)` section.
 - `.claude/skills/goal/SKILL.md:93` — step 1 rewritten (task-scoped dirty check).
@@ -110,8 +116,11 @@ type: handoff
 
 | Claim | Command run this session | Result |
 |---|---|---|
-| `main` untouched, nothing built | `git rev-parse main` | `8b583837557dae167b50f1c45bf3b9b7e05fb071` |
-| On branch phase1-t9a | `git rev-parse --abbrev-ref HEAD` | `phase1-t9a` |
+| No product code built; `main` product code unchanged since Session 16 | `git log --oneline -2 main` | `9e099f9 docs: Session 17 handoff` → `8b58383 docs: Session 16 handoff` — both `docs:` only |
+| T9a tests committed (durable, not just in the working tree) | `git log --oneline -2 phase1-t9a` | `b082337 test: failing tests for the P1-T9a provider seam (WIP…)` → `8b58383` |
+| T9a branch tree clean (nothing left unsaved) | `git status --porcelain -- src tests eval` | empty |
+| Merge won't clobber the pointer | `git diff --name-only 8b58383 phase1-t9a -- HANDOFF.md` | empty — branch never touched it |
+| Brief is gitignored scratch (survives sessions on disk; `git clean -xfd` WOULD destroy it) | `git check-ignore -v .superpowers/sdd/p1-t9a-brief.md` | `.gitignore:51:.superpowers/` |
 | Nothing pushed (no remote) | `git remote -v` | empty |
 | Tripwire section exists | `grep -n "^## Tripwire" .claude/skills/goal/SKILL.md` | `57:## Tripwire (controller-owned \`tests/\`)` |
 | Step-1 fix in place | `grep -n "task-scoped paths" .claude/skills/goal/SKILL.md` | `93:1. **Orient.** Git must be clean **of task-scoped paths**…` |
@@ -137,8 +146,8 @@ type: handoff
 - `.superpowers/sdd/p1-t9a-brief.md` — the Codex-ready pinned interface (gitignored scratch).
 - `.superpowers/sdd/p1-t9a-subdriver-spec.md` — Opus scope spec + WITHDRAWN/corrected
   decisions with rationale (gitignored scratch).
-- `tests/test_cli_provider_seam.py` — NEW, uncommitted on `phase1-t9a`.
-- `tests/test_cli.py` — extended, uncommitted on `phase1-t9a`.
+- `tests/test_cli_provider_seam.py` — NEW, **committed** on `phase1-t9a` @ `b082337`.
+- `tests/test_cli.py` — extended, **committed** on `phase1-t9a` @ `b082337`.
 - `.claude/skills/goal/SKILL.md` — hardened (never auto-committed).
 - Rollback tags: `pre-overnight-2026-07-15` @ `8b58383` (newest), `pre-overnight-2026-07-14`
   @ `09e57c7`, `pre-overnight-2026-07-13` @ `51bc017`.
@@ -146,10 +155,13 @@ type: handoff
 ## Action Items & Next Steps
 
 1. **Dispatch Codex for T9a** — the brief is ready and the tests are red for the right
-   reasons. `codex exec --sandbox workspace-write -C <repo> -m gpt-5.6-sol -c
+   reasons. `git checkout phase1-t9a` first (the tests live there @ `b082337`; `main` does
+   not have them). **Then run TRIPWIRE-SNAPSHOT** (SKILL.md:57) — it has NOT been taken yet.
+   Then: `codex exec --sandbox workspace-write -C <repo> -m gpt-5.6-sol -c
    model_reasoning_effort=high -o .superpowers/sdd/p1-t9a-report.md <
-   .superpowers/sdd/p1-t9a-brief.md`. **First run TRIPWIRE-SNAPSHOT** (SKILL.md:57) — it has
-   NOT been taken yet.
+   .superpowers/sdd/p1-t9a-brief.md`.
+   **Do NOT open with a bare `/goal`** — it is the entry point for a FRESH task and would
+   re-branch from `main`, skipping the T9a work entirely. Resume from this handoff instead.
 2. **At the Opus gate review, specifically check:** (a) `cli.py` contains ZERO provider-setting
    validation (the whole point of Correction 5); (b) `AnnotationGenerator.__init__` still has
    `model: str = DEFAULT_MODEL` and `cli.DEFAULT_MODEL` still exists (merged guards); (c) only
