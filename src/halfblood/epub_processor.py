@@ -43,7 +43,6 @@ from __future__ import annotations
 import logging
 import posixpath
 import random
-import re
 import warnings
 from typing import Any, cast
 
@@ -52,6 +51,7 @@ from bs4 import BeautifulSoup, Comment, NavigableString, Tag, XMLParsedAsHTMLWar
 from ebooklib import epub
 
 from halfblood.document_processor import PageContent
+from halfblood.documents import normalize
 from halfblood.models import Annotation, AnnotationPlan, AnnotationType
 
 logger = logging.getLogger(__name__)
@@ -265,12 +265,7 @@ class EpubProcessor:
         """Collapse whitespace/newlines and normalize "smart" punctuation
         so LLM-generated `target_text` matches the chapter's rendered text.
         """
-        text = text.strip()
-        text = re.sub(r"[‘’]", "'", text)
-        text = re.sub(r"[“”]", '"', text)
-        text = re.sub(r"[–—]", "-", text)
-        text = re.sub(r"\s+", " ", text)
-        return text
+        return normalize(text).strip()
 
     @staticmethod
     def _search_variants(text: str) -> list[str]:
