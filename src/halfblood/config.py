@@ -23,6 +23,8 @@ from halfblood.generation.errors import ProviderConfigurationError
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_ANTHROPIC_MODEL: str = "claude-sonnet-5"
+
 _SOURCE_CLI = "cli"
 _SOURCE_ENVIRONMENT = "environment"
 _SOURCE_PROJECT = "project_config"
@@ -65,11 +67,16 @@ class ProviderPreset:
     default_base_url: str | None
     default_key_env: str | None
     default_structured_output: str
+    default_model: str | None = None
 
 
 PROVIDER_PRESETS: dict[str, ProviderPreset] = {
     "anthropic": ProviderPreset(
-        "anthropic", "https://api.anthropic.com", "ANTHROPIC_API_KEY", "tool"
+        "anthropic",
+        "https://api.anthropic.com",
+        "ANTHROPIC_API_KEY",
+        "tool",
+        default_model=DEFAULT_ANTHROPIC_MODEL,
     ),
     "openai": ProviderPreset(
         "openai", "https://api.openai.com/v1", "OPENAI_API_KEY", "function"
@@ -339,9 +346,14 @@ def resolve_generation_config(
 
     model_setting = explicit("model")
     if model_setting is None:
-        raise ProviderConfigurationError("model must be explicitly configured")
-    model = _require_nonempty_string(model_setting[0], "model")
-    sources["model"] = model_setting[1]
+        if preset.default_model is not None:
+            model = preset.default_model
+            sources["model"] = "preset"
+        else:
+            raise ProviderConfigurationError("model must be explicitly configured")
+    else:
+        model = _require_nonempty_string(model_setting[0], "model")
+        sources["model"] = model_setting[1]
 
     allow_setting = explicit("allow_insecure_http")
     if allow_setting is None:

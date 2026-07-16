@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import os
 
+from halfblood.config import DEFAULT_ANTHROPIC_MODEL as DEFAULT_MODEL
 from halfblood.document_processor import PageContent
 from halfblood.generation.errors import ProviderError
 from halfblood.generation.providers.anthropic import AnthropicProvider
@@ -29,8 +30,6 @@ from halfblood.generation.schema import generate_annotation_schema
 from halfblood.models import AnnotatedPage, Annotation, AnnotationPlan, AnnotationType
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_MODEL = "claude-sonnet-5"
 
 
 class AllPagesFailedError(_ReportAllPagesFailedError):
@@ -171,6 +170,15 @@ class AnnotationGenerator:
         if provider is not None:
             self._provider: LLMProvider = provider
         else:
+            if api_key is not None:
+                import warnings
+
+                warnings.warn(
+                    "api_key= is deprecated; pass provider= (an LLMProvider) instead. "
+                    "The api_key= path will be removed in the next minor release.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
             resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
             if not resolved_key:
                 raise ValueError(

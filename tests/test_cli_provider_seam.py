@@ -567,12 +567,15 @@ def test_anthropic_preset_provides_default_model(tmp_path: Path) -> None:
     code raises ProviderConfigurationError("model must be explicitly configured") for
     every provider including anthropic.
 
-    Uses a hermetic real resolver: empty environ, nonexistent config paths, so no
-    machine-local file can influence the result.
+    Uses a hermetic real resolver: injected environ, nonexistent config paths, so no
+    machine-local file can influence the result. The environ carries ONLY the API key the
+    merged contract requires for hosted providers (config.py raises "Environment variable
+    ANTHROPIC_API_KEY is required" downstream of the model tier) — it deliberately carries
+    no model, so the model must still come from the preset for this test to pass.
     """
     config = resolve_generation_config(
         {"provider": "anthropic"},
-        environ={},
+        environ={"ANTHROPIC_API_KEY": "sk-ant-test-not-a-real-key"},
         project_config_path=tmp_path / "nonexistent_project.toml",
         user_config_path=tmp_path / "nonexistent_user.toml",
     )
