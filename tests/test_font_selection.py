@@ -77,7 +77,7 @@ class _FakeGenerator:
 
 
 @pytest.fixture()
-def pipeline_fakes(monkeypatch: pytest.MonkeyPatch) -> None:
+def pipeline_fakes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _RecordingPdfProcessor.constructor_kwargs = []
     _RecordingEpubProcessor.constructor_calls = 0
     _FakeGenerator.calls = 0
@@ -91,6 +91,14 @@ def pipeline_fakes(monkeypatch: pytest.MonkeyPatch) -> None:
     # reaches DocumentProcessor.  No model is set — the anthropic preset supplies it — and
     # the built provider is never called, because the generator itself is faked.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-not-a-real-key")
+    # Hermeticity.  These tests reach the REAL resolver through CliRunner and cannot pass
+    # it the `project_config_path`/`user_config_path` kwargs the seam tests use, so it
+    # falls back to `Path.cwd()/halfblood.toml` and the platformdirs user config dir.
+    # Both are real machine paths.  Point them at an empty tmp dir: arch §4.4 ships an
+    # example `halfblood.toml` (with `concurrency = 3`), so a developer trying that example
+    # at the repo root would otherwise silently steer these font tests.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-empty"))
 
 
 def _invoke_annotate(
