@@ -19,7 +19,9 @@ import os
 import subprocess
 import sys
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any, TypeVar
 
 import click
 from rich import box
@@ -28,15 +30,17 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 from rich.table import Table
 
 from halfblood.annotation_generator import (
-    DEFAULT_MODEL,
+    DEFAULT_MODEL as _ANNOTATION_DEFAULT_MODEL,
+)
+from halfblood.annotation_generator import (
     AllPagesFailedError,
     AnnotationGenerator,
 )
-from halfblood.config import resolve_generation_config
+from halfblood.config import ResolvedConfig, resolve_generation_config
 from halfblood.document_processor import DocumentProcessor, PageContent
 from halfblood.epub_processor import EpubProcessor
 from halfblood.generation.errors import ProviderConfigurationError, ProviderError
-from halfblood.generation.providers.base import GenerationRequest
+from halfblood.generation.providers.base import GenerationRequest, LLMProvider
 from halfblood.generation.registry import build_provider
 from halfblood.generation.schema import generate_annotation_schema
 from halfblood.models import AnnotatedPage
@@ -76,11 +80,100 @@ REGISTERED_FONTS: dict[str, tuple[str, str, str]] = {
 
 console = Console()
 
+# Backward-compatible module export; the CLI no longer supplies this as a flag default.
+DEFAULT_MODEL = _ANNOTATION_DEFAULT_MODEL
+
 DEFAULT_PERSONA = (
     "A brilliant, sardonic expert who has mastered this subject and can't "
     "help scrawling corrections and improvements in the margins. Terse. "
     "Impatient with mediocrity. Occasionally shows flashes of dark humor."
 )
+
+_CommandFunction = TypeVar("_CommandFunction", bound=Callable[..., Any])
+
+
+def _provider_options(command: _CommandFunction) -> _CommandFunction:
+    """Apply the shared provider/configuration options to a CLI command."""
+    options = (
+        click.option(
+            "--provider",
+            type=click.Choice(
+                (
+                    "anthropic",
+                    "openai",
+                    "openrouter",
+                    "ollama",
+                    "lmstudio",
+                    "openai-compatible",
+                )
+            ),
+            default=None,
+        ),
+        click.option("--model", type=str, default=None),
+        click.option("--base-url", type=str, default=None),
+        click.option("--api-key-env", type=str, default=None),
+        click.option(
+            "--structured-output",
+            type=click.Choice(("auto", "tool", "json-schema", "prompt")),
+            default=None,
+        ),
+        click.option("--timeout", type=float, default=None),
+        click.option("--max-retries", type=int, default=None),
+        click.option("--concurrency", type=int, default=None),
+        click.option("--allow-insecure-http", is_flag=True, default=False),
+        click.option(
+            "--config",
+            "config_path",
+            type=click.Path(dir_okay=False, path_type=Path),
+            default=None,
+        ),
+    )
+    for option in reversed(options):
+        command = option(command)
+    return command
+
+
+def _resolve_provider_and_build(
+    provider: str | None,
+    model: str | None,
+    base_url: str | None,
+    api_key_env: str | None,
+    structured_output: str | None,
+    timeout: float | None,
+    max_retries: int | None,
+    concurrency: int | None,
+    allow_insecure_http: bool,
+    config_path: Path | None,
+) -> tuple[ResolvedConfig, LLMProvider]:
+    """Resolve provider settings and construct the selected provider adapter."""
+    cli_overrides = {
+        key: value
+        for key, value in {
+            "provider": provider,
+            "model": model,
+            "base_url": base_url,
+            "api_key_env": api_key_env,
+            "structured_output": structured_output,
+            "timeout_seconds": timeout,
+            "max_retries": max_retries,
+            "concurrency": concurrency,
+            "allow_insecure_http": allow_insecure_http or None,
+        }.items()
+        if value is not None
+    }
+
+    try:
+        config = resolve_generation_config(
+            cli_overrides,
+            project_config_path=config_path,
+        )
+        api_key = os.environ.get(config.api_key_env) if config.api_key_env else None
+        provider_obj = build_provider(config, api_key=api_key)
+    except ProviderError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    return config, provider_obj
+
 
 def _parse_page_range(spec: str | None, total_pages: int) -> list[int]:
     """Parse ``"1-5,8,10-12"`` into a sorted list of 1-indexed page numbers."""
@@ -224,7 +317,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 
-@main.command(context_settings={"terminal_width": 120})
+@main.command(context_settings={"terminal_width": 160})
 @click.argument("input_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("-o", "--output", "output_file", required=True,
               type=click.Path(dir_okay=False, path_type=Path),
@@ -232,7 +325,6 @@ def main() -> None:
 @click.option("--persona", default=DEFAULT_PERSONA, show_default=False,
               help="Annotator personality description.")
 @click.option("--pages", default=None, help="Page/chapter range, e.g. '1-5,8'. Default: all.")
-@click.option("--model", default=DEFAULT_MODEL, show_default=True)
 @click.option("--max-per-page", default=5, show_default=True,
               help="Max annotations per page/chapter.")
 @click.option(
@@ -242,9 +334,26 @@ def main() -> None:
     help="PDF handwriting font. Registered names: " + ", ".join(REGISTERED_FONTS) + ".",
 )
 @click.option("--force", is_flag=True, help="Overwrite an existing output file.")
-def annotate(input_file: Path, output_file: Path, persona: str,
-             pages: str | None, model: str, max_per_page: int,
-             font: str | None, force: bool) -> None:
+@_provider_options
+def annotate(
+    input_file: Path,
+    output_file: Path,
+    persona: str,
+    pages: str | None,
+    max_per_page: int,
+    font: str | None,
+    force: bool,
+    provider: str | None,
+    model: str | None,
+    base_url: str | None,
+    api_key_env: str | None,
+    structured_output: str | None,
+    timeout: float | None,
+    max_retries: int | None,
+    concurrency: int | None,
+    allow_insecure_http: bool,
+    config_path: Path | None,
+) -> None:
     """Annotate INPUT_FILE (a .pdf or .epub) in the style of the Half-Blood Prince."""
     console.rule("[bold magenta]Half-Blood Prince -- Annotate[/bold magenta]")
 
@@ -267,6 +376,27 @@ def annotate(input_file: Path, output_file: Path, persona: str,
             f"{input_file.suffix.lower()}-formatted content to {output_file} regardless."
         )
 
+    config, provider_obj = _resolve_provider_and_build(
+        provider,
+        model,
+        base_url,
+        api_key_env,
+        structured_output,
+        timeout,
+        max_retries,
+        concurrency,
+        allow_insecure_http,
+        config_path,
+    )
+    generator = AnnotationGenerator(
+        persona=persona,
+        model=config.model,
+        provider=provider_obj,
+    )
+    console.print(
+        f"Provider: {config.provider} | Model: {config.model} | Mode: {config.structured_output}"
+    )
+
     with Progress(
         SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
         BarColumn(), TextColumn("{task.completed}/{task.total}"),
@@ -286,16 +416,12 @@ def annotate(input_file: Path, output_file: Path, persona: str,
         selected = _filter_pages(all_pages, page_numbers)
 
         # Generate
-        try:
-            generator = AnnotationGenerator(persona=persona, model=model)
-        except ValueError as exc:
-            raise click.ClickException(str(exc)) from exc
         gen_task = progress.add_task("Generating annotations...", total=len(selected))
         try:
             plan = generator.generate_for_document(
                 selected, max_annotations_per_page=max_per_page
             )
-        except AllPagesFailedError as exc:
+        except (AllPagesFailedError, ProviderError) as exc:
             raise click.ClickException(str(exc)) from exc
         progress.update(gen_task, completed=len(selected))
 
@@ -324,15 +450,51 @@ def annotate(input_file: Path, output_file: Path, persona: str,
 @click.argument("input_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--pages", default="1-3", show_default=True, help="Page/chapter range to preview.")
 @click.option("--persona", default=DEFAULT_PERSONA, show_default=False)
-@click.option("--model", default=DEFAULT_MODEL, show_default=True)
 @click.option("--max-per-page", default=5, show_default=True)
-def preview(input_file: Path, pages: str, persona: str, model: str, max_per_page: int) -> None:
+@_provider_options
+def preview(
+    input_file: Path,
+    pages: str,
+    persona: str,
+    max_per_page: int,
+    provider: str | None,
+    model: str | None,
+    base_url: str | None,
+    api_key_env: str | None,
+    structured_output: str | None,
+    timeout: float | None,
+    max_retries: int | None,
+    concurrency: int | None,
+    allow_insecure_http: bool,
+    config_path: Path | None,
+) -> None:
     """Generate annotations for INPUT_FILE (a .pdf or .epub) and print them
     (no annotated file is written)."""
     console.rule("[bold magenta]Half-Blood Prince -- Preview[/bold magenta]")
 
     _validate_input_signature(input_file)
     processor = _processor_for(input_file)
+
+    config, provider_obj = _resolve_provider_and_build(
+        provider,
+        model,
+        base_url,
+        api_key_env,
+        structured_output,
+        timeout,
+        max_retries,
+        concurrency,
+        allow_insecure_http,
+        config_path,
+    )
+    generator = AnnotationGenerator(
+        persona=persona,
+        model=config.model,
+        provider=provider_obj,
+    )
+    console.print(
+        f"Provider: {config.provider} | Model: {config.model} | Mode: {config.structured_output}"
+    )
 
     with Progress(
         SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
@@ -349,16 +511,12 @@ def preview(input_file: Path, pages: str, persona: str, model: str, max_per_page
             console.print("[yellow]No pages matched.[/yellow]")
             raise SystemExit(1)
 
-        try:
-            generator = AnnotationGenerator(persona=persona, model=model)
-        except ValueError as exc:
-            raise click.ClickException(str(exc)) from exc
         gen_task = progress.add_task("Generating annotations...", total=len(selected))
         try:
             plan = generator.generate_for_document(
                 selected, max_annotations_per_page=max_per_page
             )
-        except AllPagesFailedError as exc:
+        except (AllPagesFailedError, ProviderError) as exc:
             raise click.ClickException(str(exc)) from exc
         progress.update(gen_task, completed=len(selected))
 

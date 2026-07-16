@@ -51,7 +51,15 @@ class _RecordingEpubProcessor:
 class _FakeGenerator:
     calls = 0
 
-    def __init__(self, persona: str | None = None, model: str | None = None) -> None:
+    def __init__(
+        self,
+        persona: str | None = None,
+        model: str | None = None,
+        provider: object | None = None,
+    ) -> None:
+        # No **kwargs — any unexpected keyword from cli.py raises TypeError, surfacing a
+        # signature mismatch rather than hiding it.  `provider=` arrived with the P1-T9a
+        # seam: annotate/preview now build a provider and inject it here.
         self.failed_pages: list[int] = []
 
     def generate_for_document(
@@ -76,6 +84,13 @@ def pipeline_fakes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli_module, "DocumentProcessor", _RecordingPdfProcessor)
     monkeypatch.setattr(cli_module, "EpubProcessor", _RecordingEpubProcessor)
     monkeypatch.setattr(cli_module, "AnnotationGenerator", _FakeGenerator)
+    # The P1-T9a seam makes annotate/preview resolve config and build a provider BEFORE
+    # constructing the (faked) generator, so the merged "hosted providers require a key
+    # env var" contract (config.py) now fires ahead of the fake.  These tests are about
+    # font plumbing, not provider resolution: give the REAL resolver a throwaway key so it
+    # reaches DocumentProcessor.  No model is set — the anthropic preset supplies it — and
+    # the built provider is never called, because the generator itself is faked.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-not-a-real-key")
 
 
 def _invoke_annotate(

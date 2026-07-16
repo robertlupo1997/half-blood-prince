@@ -160,6 +160,10 @@ generator = AnnotationGenerator(
 )
 ```
 
+The legacy `AnnotationGenerator(api_key=...)` keyword remains available for one minor
+release but is deprecated. Build an `LLMProvider` and pass it with `provider=` instead;
+the `api_key=` compatibility path will be removed in the next minor release.
+
 A good persona description covers:
 
 - **Domain expertise** — what they're actually an expert in, so annotations stay specific and plausible rather than generic.
