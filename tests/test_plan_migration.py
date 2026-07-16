@@ -382,3 +382,84 @@ def test_load_annotation_plan_rejects_unknown_future_major_version():
 
     with pytest.raises(UnsupportedSchemaVersionError):
         load_annotation_plan(data)
+
+
+# --- P2-T2 (re-scoped): selector additions are read-time views only ---------
+# The P2-T2 normalization accessors and the start<=end validator must NOT change
+# migration output. These guards pin that: byte-frozen serialization, no
+# normalized_* leakage into any migrated selector, ordered offsets, and
+# exact-only selectors for targets absent from their source text (no invented
+# context). Ground truth: architecture SS5.5/6.1; p2-t2-brief.md.
+
+# Captured byte-for-byte from pre-P2-T2 HEAD (27c70e2). Any drift is a break.
+GOLDEN_V2_DEFAULTS_JSON = (
+    '{"schema_version":"2.0","id":"4be707ca-6459-587a-8385-ca31d024a9c7",'
+    '"title":"Advanced Potion-Making","persona":"A brilliant, sardonic expert.",'
+    '"source":{"fingerprint":"df6819cd285f96de4f2c32983fc787218d1a2df254925b982e2e7daa2a274e8c",'
+    '"media_type":"application/vnd.halfblood.annotation-plan.v1+json","unit_count":1},'
+    '"generation":{"provider":null,"base_url_origin":null,"model":null,'
+    '"prompt_version":null,"schema_hash":null,"structured_output_mode":null,'
+    '"timestamp":null,"usage":null},"document_seed":3477603537352674097,'
+    '"units":[{"unit_id":"a5708c57-10a5-58bd-8a83-b118ebcea250","ordinal":1,'
+    '"label":"Page 1","original_text":"Add the wormwood slowly, stirring twice.",'
+    '"source_locator":"page:1","status":"ok","annotations":[{'
+    '"id":"6ad8c798-3e6e-5bb7-ba9a-30c4da27a9bb","target":{"exact":"wormwood slowly",'
+    '"prefix":"Add the ","suffix":", stirring twice.","start_offset":8,"end_offset":23},'
+    '"annotation_type":"correction","content":"No -- crush it first, fool.",'
+    '"confidence":0.8,"requested_placement":"margin_right","mark_intent":"underline",'
+    '"doodle_kind":null}]}],"compatibility":null}'
+)
+
+FIXTURE_ABSENT_TARGET = {
+    "title": "Absent Target",
+    "prince_persona": "A brilliant, sardonic expert.",
+    "pages": [
+        {
+            "page_number": 1,
+            "original_text": "Totally unrelated page text.",
+            "annotations": [
+                {
+                    "page": 1,
+                    "target_text": "not present here",
+                    "annotation_type": "insight",
+                    "content": "hmm",
+                    "confidence": 0.5,
+                    "position": "inline",
+                }
+            ],
+        }
+    ],
+}
+
+_SELECTOR_FIELDS = {"exact", "prefix", "suffix", "start_offset", "end_offset"}
+
+
+def test_migration_serialization_is_byte_frozen():
+    produced = migrate_v1_to_v2(deepcopy(FIXTURE_DEFAULTS)).model_dump_json()
+    assert produced == GOLDEN_V2_DEFAULTS_JSON
+
+
+def test_migrated_selectors_expose_no_normalized_keys_and_order_offsets():
+    v2 = migrate_v1_to_v2(deepcopy(FIXTURE_ALL_TYPES_POSITIONS))
+    payload = json.loads(v2.model_dump_json())
+
+    for unit in payload["units"]:
+        for annotation in unit["annotations"]:
+            target = annotation["target"]
+            assert set(target).issubset(_SELECTOR_FIELDS)
+            for leaked in ("normalized_exact", "normalized_prefix", "normalized_suffix"):
+                assert leaked not in target
+            start, end = target.get("start_offset"), target.get("end_offset")
+            if start is not None and end is not None:
+                assert start <= end
+
+
+def test_migration_of_absent_target_yields_exact_only_selector():
+    v2 = migrate_v1_to_v2(deepcopy(FIXTURE_ABSENT_TARGET))
+    selector = v2.units[0].annotations[0].target
+
+    assert selector.exact == "not present here"
+    assert selector.prefix is None
+    assert selector.suffix is None
+    assert selector.start_offset is None
+    assert selector.end_offset is None

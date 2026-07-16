@@ -1,10 +1,11 @@
 """Renderer-independent v2 annotation models."""
 
 from enum import Enum
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from halfblood.documents.matching import normalize
 from halfblood.models.legacy import AnnotationType
 
 
@@ -36,6 +37,32 @@ class TargetSelector(BaseModel):
         """Normalize the quote without altering whitespace-significant context."""
 
         return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def _validate_offset_order(self) -> Self:
+        """Require a nondecreasing offset range when both bounds are present."""
+        if (
+            self.start_offset is not None
+            and self.end_offset is not None
+            and self.start_offset > self.end_offset
+        ):
+            raise ValueError("start_offset must be <= end_offset")
+        return self
+
+    @property
+    def normalized_exact(self) -> str:
+        """Return the surface-neutral normalized exact quote."""
+        return normalize(self.exact)
+
+    @property
+    def normalized_prefix(self) -> str | None:
+        """Return the surface-neutral normalized prefix, when present."""
+        return normalize(self.prefix) if self.prefix is not None else None
+
+    @property
+    def normalized_suffix(self) -> str | None:
+        """Return the surface-neutral normalized suffix, when present."""
+        return normalize(self.suffix) if self.suffix is not None else None
 
 
 class Annotation(BaseModel):
