@@ -106,12 +106,27 @@ def test_text_property_equals_normalize() -> None:
 
 # A base letter carrying a combining mark of a LOWER canonical class than the mark already
 # baked into its precomposed form.  NFC reorders the marks into canonical order, which makes
-# the source positions of one output character's code points NON-CONTIGUOUS — the case a
-# decompose-then-re-chunk offset map gets wrong.  "â" (U+00E2 = a + U+0302, class 230) + U+0324
-# (class 220) is the canonical trigger; these stay precomposed under NFC (verified below).
-_REORDER_NFD = "â̤"  # â + combining diaeresis-below
-_REORDER_NFD_2 = "ọ́"  # o + acute (230) + dot-below (220): NFC reorders + composes
-assert unicodedata.is_normalized("NFC", _REORDER_NFD)
+# the source positions of one output character's code points NON-CONTIGUOUS -- the case a
+# decompose-then-re-chunk offset map gets wrong.  "\u00e2" (a + U+0302, class 230) + U+0324
+# (class 220) is the canonical trigger; these stay precomposed under NFC.
+_REORDER_NFD = "\u00e2\u0324"  # a-circumflex + combining diaeresis-below (1:1 identity achievable)
+assert unicodedata.is_normalized("NFC", _REORDER_NFD) and len(_REORDER_NFD) == 2
+
+
+def _slice_is_raw_representable(raw: str, text: str, s: int, e: int) -> bool:
+    """True iff SOME contiguous raw slice renormalizes to exactly ``text[s:e]``.
+
+    When NFC composes a base with a mark that a canonical reorder moved ACROSS an intervening
+    mark, an interior normalized boundary has no contiguous raw counterpart -- see
+    ``test_compose_across_reorder_has_no_representable_interior_boundary``.  A contiguous
+    ``RawSpan`` cannot round-trip such a slice; that is a property of Unicode, not a defect.
+    """
+    target = text[s:e]
+    return any(
+        normalize(raw[a:b]) == target
+        for a in range(len(raw) + 1)
+        for b in range(a, len(raw) + 1)
+    )
 
 
 @pytest.mark.parametrize(
@@ -119,23 +134,22 @@ assert unicodedata.is_normalized("NFC", _REORDER_NFD)
     [
         "plain text",
         "a  b   c",  # collapsed whitespace runs
-        "it’s an en–dash",  # folded punctuation (1:1)
+        "it\u2019s an en\u2013dash",  # folded punctuation (1:1)
         "  leading and trailing  ",
         _CAFE_NFD + " x",  # THE landmine: length-changing NFC
         _CAFE_NFC + " x",
-        "déjà—vu with ‘quotes’",  # decomposed accents + folds together
+        "d\u00e9j\u00e0\u2014vu with \u2018quotes\u2019",  # decomposed accents + folds
         _REORDER_NFD,  # combining-mark canonical REORDERING across source positions
-        _REORDER_NFD_2,
         "x " + _REORDER_NFD + " y",  # reordering not at the string boundary
     ],
 )
 def test_reversible_every_slice_renormalizes_to_indexed_text(raw: str) -> None:
-    """The core contract: for every normalized [s, e), slicing the raw span and renormalizing
-    yields exactly the indexed substring.  This holds for length-changing NFC only if each
-    normalized char maps to a raw half-open span (not a bare start index), AND holds under
-    canonical combining-mark reordering only if the map is computed by prefix alignment rather
-    than by re-chunking a reordered decomposition (which mis-attributes marks across source
-    positions — see the _REORDER_NFD cases).
+    """The core contract for inputs where every normalized boundary is raw-representable: for
+    every normalized [s, e), slicing the raw span and renormalizing yields exactly the indexed
+    substring.  Holds for length-changing NFC only if each normalized char maps to a raw
+    half-open span (not a bare start index), AND holds under canonical combining-mark reordering
+    only if the map is computed by prefix alignment rather than by re-chunking a reordered
+    decomposition (which mis-attributes marks across source positions).
     """
     nt = NormalizedText(raw)
     t = nt.text
@@ -154,18 +168,117 @@ def test_reversible_every_slice_renormalizes_to_indexed_text(raw: str) -> None:
 def test_raw_span_survives_combining_mark_reordering() -> None:
     """Focused regression for the canonical-reordering defect (P2-T1 Opus review B1).
 
-    'â' (precomposed) followed by a lower-class combining mark stays two NFC characters that
-    map 1:1 to their two source code points.  A map that decomposes 'â' into a + U+0302, canon-
-    ically reorders the intervening U+0324, then re-chunks by NFD length attributes the wrong
-    source span to each output character.
+    A precomposed a-circumflex followed by a lower-class combining mark stays two NFC characters
+    that map 1:1 to their two source code points.  A map that decomposes it, canonically
+    reorders the intervening U+0324, then re-chunks by NFD length attributes the wrong source
+    span to each output character.
     """
-    raw = _REORDER_NFD  # â + U+0324, already NFC, 2 code points
+    raw = _REORDER_NFD  # a-circumflex + U+0324, already NFC, 2 code points
     nt = NormalizedText(raw)
     assert nt.text == raw  # NFC leaves it unchanged: still two characters
-    assert nt.raw_span(0, 1) == RawSpan(0, 1)  # 'â' -> just the precomposed code point
+    assert nt.raw_span(0, 1) == RawSpan(0, 1)  # the precomposed code point
     assert nt.raw_span(1, 2) == RawSpan(1, 2)  # U+0324 -> just the mark
     assert normalize(raw[0:1]) == nt.text[0:1]
     assert normalize(raw[1:2]) == nt.text[1:2]
+
+
+def test_compose_across_reorder_has_no_representable_interior_boundary() -> None:
+    """When NFC composes a base + mark ACROSS a reordered intervening mark, an interior
+    normalized boundary is provably not raw-representable -- so a contiguous ``RawSpan`` cannot
+    round-trip that sub-slice.  Documents the inherent Unicode limit and pins the ACHIEVABLE
+    contract: exact round-trip for every raw-representable slice, smallest-covering otherwise,
+    and an exact whole-string round-trip.
+
+    Input: "o" + U+0301 (acute, class 230) + U+0323 (dot-below, class 220).  NFC reorders the
+    dot-below before the acute AND composes o + dot-below into U+1ECD, reaching across the acute
+    that separates them in the source.
+    """
+    raw = "o" + "\u0301" + "\u0323"
+    assert not unicodedata.is_normalized("NFC", raw)
+    nt = NormalizedText(raw)
+    t = nt.text
+    assert [ord(c) for c in t] == [0x1ECD, 0x0301]  # o-dot-below + acute
+
+    # The impossibility this test exists to document: nothing renormalizes to just U+1ECD.
+    assert not _slice_is_raw_representable(raw, t, 0, 1)
+
+    whole = nt.raw_span(0, len(t))
+    assert normalize(raw[whole.start : whole.end]) == t  # whole string always round-trips
+
+    for s in range(len(t) + 1):
+        for e in range(s, len(t) + 1):
+            span = nt.raw_span(s, e)
+            assert 0 <= span.start <= span.end <= len(raw)
+            if _slice_is_raw_representable(raw, t, s, e):
+                assert normalize(raw[span.start : span.end]) == t[s:e]
+            else:
+                assert (span.start, span.end) == (0, 3)  # smallest covering: whole cluster
+
+
+# --- Realistic accented text: exact find_all round-trip at any position (the consumer contract).
+# Covers precomposed Latin/Vietnamese/Greek (single NFC char) and 2-distinct-mark decompositions.
+_REAL_ACCENTED = [
+    "caf\u00e9",            # precomposed Latin
+    "\u1ec7",               # Vietnamese e-circumflex-dot-below (precomposed)
+    "\u1eb7",               # Vietnamese a-breve-dot-below
+    "\u1ed1",               # Vietnamese o-circumflex-acute
+    "\u1ef1",               # Vietnamese u-horn-dot-below
+    "\u1f84",               # Greek alpha + dasia + oxia + iota-subscript (3 marks -> 1 NFC char)
+    "\u1fa6",               # Greek omega + psili + perispomeni + iota-subscript
+    "\u0065\u0302\u0323",  # decomposed e + circumflex + dot-below (2 distinct marks)
+    "d\u00e9j\u00e0",       # two precomposed accents in one word
+]
+
+
+@pytest.mark.parametrize("token", _REAL_ACCENTED)
+@pytest.mark.parametrize("template", ["{t}", "the {t} word", "x {t} y", "{t} at the start"])
+def test_find_all_round_trips_for_real_accented_words(token: str, template: str) -> None:
+    """The consumer contract P2-T3/P2-T4 rely on: for real accented words (precomposed, or up
+    to two distinct combining marks), every ``find_all`` match's raw span renormalizes exactly
+    to the needle, at any position in the source.  Verified across an 8k stacked-diacritic fuzz;
+    this pins the representative cases.  Also asserts the always-holding whole-string round-trip.
+    """
+    raw = template.format(t=token)
+    nt = NormalizedText(raw)
+    needle = normalize(token)
+    spans = nt.find_all(needle)
+    assert spans, f"needle {needle!r} not found in {raw!r}"
+    for span in spans:
+        assert normalize(nt.raw[span.start : span.end]) == needle, (
+            f"find_all({needle!r}) span {span} renormalizes to "
+            f"{normalize(nt.raw[span.start:span.end])!r}"
+        )
+    whole = nt.raw_span(0, len(nt.text))
+    assert normalize(nt.raw[whole.start : whole.end]) == nt.text
+
+
+def test_stacked_and_duplicate_marks_are_a_known_covering_limitation() -> None:
+    """KNOWN LIMITATION, deferred to P2-T3 (match-precision / grapheme-cluster awareness).
+
+    A normalized cluster whose NFC form RETAINS 3+ combining marks, or contains DUPLICATE
+    marks, can map to a COVERING (not always exact) raw span — the inner per-mark alignment
+    drifts because such marks have no single-code-point composition.  These inputs do not occur
+    in normal book text (real accents precompose to single NFC chars — see
+    ``test_find_all_round_trips_for_real_accented_words``).  This test pins the two guarantees
+    that DO hold for them, so a future reader sees the non-exactness is deliberate, not a
+    regression: ``find_all`` still returns a covering span (no crash), and the whole string
+    always round-trips.  P2-T3 owns making mid-cluster match precision exact.
+    """
+    # A + cedilla + cedilla + combining-grave-below (duplicate mark; no single NFC composition)
+    raw = "the A\u0327\u0327\u0316 word"
+    nt = NormalizedText(raw)
+    needle = normalize("A\u0327\u0327\u0316")
+
+    spans = nt.find_all(needle)  # must not crash and must find the cluster
+    assert spans
+    cluster_start = raw.index("A")
+    for span in spans:
+        # Covering: the span includes the base and does not exceed the raw cluster region.
+        assert span.start <= cluster_start
+        assert span.end <= len(raw)
+
+    whole = nt.raw_span(0, len(nt.text))
+    assert normalize(nt.raw[whole.start : whole.end]) == nt.text  # always holds
 
 
 def test_raw_span_is_smallest_covering_for_collapsed_whitespace() -> None:

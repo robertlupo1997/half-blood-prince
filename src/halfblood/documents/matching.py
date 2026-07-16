@@ -9,6 +9,16 @@ Normalization is deliberately surface-neutral and happens in this order:
 
 The shared normalization does not strip surrounding whitespace and does not
 repair PDF-specific middle-dot extraction artifacts.
+
+Reversibility (``raw_span``/``find_all``) is exact for all realistic text: precomposed
+accents and words carrying up to two distinct combining marks (Latin, Vietnamese, polytonic
+Greek) round-trip exactly at any position, and the whole-string span always round-trips.
+Known limitation (deferred to P2-T3, which owns grapheme-cluster-aware match precision): a
+normalized cluster whose NFC form retains 3+ combining marks, or contains duplicate marks,
+may return a *covering* rather than exact span. Such clusters do not occur in normal book
+text. A slice that cuts a canonically-reordered cluster where NFC composes a base with a mark
+across an intervening mark (e.g. ``o`` + U+0301 + U+0323) has no contiguous raw counterpart at
+all and necessarily returns the smallest covering span.
 """
 
 from __future__ import annotations
@@ -59,37 +69,82 @@ def normalize(text: str) -> str:
 
 
 def _canonical_decomposition_with_spans(
-    characters: list[tuple[str, RawSpan]],
+    characters: list[tuple[str, RawSpan]], raw: str,
 ) -> tuple[str, list[RawSpan]]:
-    """Return canonical decomposition tokens and their source spans.
+    """Normalize starter segments and align their output to raw prefixes."""
+    normalized_parts: list[str] = []
+    normalized_spans: list[RawSpan] = []
+    segment_start = 0
 
-    Canonical ordering is reproduced alongside the spans so the tokens align
-    with ``NFD(NFC(text))`` even when combining marks need to be reordered.
-    """
-    tokens: list[str] = []
-    spans: list[RawSpan] = []
-    for char, span in characters:
-        for token in unicodedata.normalize("NFD", char):
-            tokens.append(token)
-            spans.append(span)
-            combining_class = unicodedata.combining(token)
-            if combining_class == 0:
-                continue
-            position = len(tokens) - 1
-            while position > 0:
-                previous_class = unicodedata.combining(tokens[position - 1])
-                if previous_class == 0 or previous_class <= combining_class:
+    while segment_start < len(characters):
+        segment_end = segment_start + 1
+        while segment_end < len(characters):
+            char = characters[segment_end][0]
+            if unicodedata.combining(char) == 0:
+                current = "".join(
+                    item for item, _span in characters[segment_start:segment_end]
+                )
+                # Ordinarily a starter begins a new independent segment.  The
+                # equality check retains Hangul Jamo (also class zero) when NFC
+                # can compose them across that apparent boundary.
+                if unicodedata.normalize("NFC", current + char) == (
+                    unicodedata.normalize("NFC", current)
+                    + unicodedata.normalize("NFC", char)
+                ):
                     break
-                tokens[position - 1], tokens[position] = (
-                    tokens[position],
-                    tokens[position - 1],
+            segment_end += 1
+
+        segment = characters[segment_start:segment_end]
+        segment_text = unicodedata.normalize(
+            "NFC", "".join(char for char, _span in segment)
+        )
+        normalized_parts.append(segment_text)
+
+        raw_start = segment[0][1].start
+        raw_end = segment[-1][1].end
+        boundaries = [raw_start]
+        prefix_index = 0
+        for normalized_end in range(1, len(segment_text) + 1):
+            while prefix_index < len(segment):
+                candidate_end = segment[prefix_index][1].end
+                prefix_index += 1
+                if normalize(raw[raw_start:candidate_end]) == segment_text[:normalized_end]:
+                    boundaries.append(candidate_end)
+                    break
+            else:
+                break
+
+        if len(boundaries) == len(segment_text) + 1:
+            normalized_spans.extend(
+                RawSpan(boundaries[index], boundaries[index + 1])
+                for index in range(len(segment_text))
+            )
+        else:
+            # Some canonically reordered decompositions have no raw prefix for
+            # an intermediate NFC prefix.  Preserve exact single-character
+            # slices wherever one exists and conservatively cover the segment
+            # otherwise; no contiguous RawSpan can represent the latter case.
+            for normalized_char in segment_text:
+                candidates: list[RawSpan] = []
+                for candidate_start in range(len(segment)):
+                    for candidate_end in range(candidate_start, len(segment)):
+                        span = RawSpan(
+                            segment[candidate_start][1].start,
+                            segment[candidate_end][1].end,
+                        )
+                        if normalize(raw[span.start : span.end]) == normalized_char:
+                            candidates.append(span)
+                normalized_spans.append(
+                    min(
+                        candidates,
+                        key=lambda span: (span.end - span.start, span.start),
+                        default=RawSpan(raw_start, raw_end),
+                    )
                 )
-                spans[position - 1], spans[position] = (
-                    spans[position],
-                    spans[position - 1],
-                )
-                position -= 1
-    return "".join(tokens), spans
+
+        segment_start = segment_end
+
+    return "".join(normalized_parts), normalized_spans
 
 
 def _normalize_with_spans(raw: str) -> tuple[str, list[RawSpan]]:
@@ -110,23 +165,9 @@ def _normalize_with_spans(raw: str) -> tuple[str, list[RawSpan]]:
 
     folded_text = "".join(char for char, _span in folded)
     normalized = unicodedata.normalize("NFC", folded_text)
-    decomposed, token_spans = _canonical_decomposition_with_spans(folded)
-    expected_decomposition = unicodedata.normalize("NFD", normalized)
-    if decomposed != expected_decomposition:
+    aligned, normalized_spans = _canonical_decomposition_with_spans(folded, raw)
+    if aligned != normalized:
         raise RuntimeError("normalized text could not be aligned with its source")
-
-    normalized_spans: list[RawSpan] = []
-    token_index = 0
-    for char in normalized:
-        token_count = len(unicodedata.normalize("NFD", char))
-        contributing = token_spans[token_index : token_index + token_count]
-        normalized_spans.append(
-            RawSpan(
-                min(span.start for span in contributing),
-                max(span.end for span in contributing),
-            )
-        )
-        token_index += token_count
     return normalized, normalized_spans
 
 
