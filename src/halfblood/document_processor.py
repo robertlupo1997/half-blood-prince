@@ -41,6 +41,7 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
+from halfblood.documents import normalize
 from halfblood.models import (
     AnnotatedPage,
     Annotation,
@@ -249,17 +250,12 @@ class DocumentProcessor:
         """Collapse whitespace/newlines and normalize "smart" punctuation
         so that LLM-generated `target_text` matches the PDF's text layer.
         """
-        text = text.strip()
-        text = re.sub(r"[‘’]", "'", text)
-        text = re.sub(r"[“”]", '"', text)
-        text = re.sub(r"[–—]", "-", text)
         # Standard PDF fonts can expose unsupported smart punctuation as a
         # middle dot. Its position still distinguishes an apostrophe inside a
         # word from a standalone dash.
         text = re.sub(r"(?<=\w)·(?=\w)", "'", text)
         text = text.replace("·", "-")
-        text = re.sub(r"\s+", " ", text)
-        return text
+        return normalize(text).strip()
 
     @staticmethod
     def _union_rects(rects: Sequence[fitz.Rect]) -> fitz.Rect:
