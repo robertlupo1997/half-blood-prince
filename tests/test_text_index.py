@@ -28,6 +28,7 @@ from __future__ import annotations
 import unicodedata
 
 import pytest
+
 from halfblood.documents.matching import (
     MAX_INPUT_CHARS,
     MAX_NEEDLE_CHARS,
@@ -103,6 +104,16 @@ def test_text_property_equals_normalize() -> None:
     assert nt.raw == "curly ‘q’  x"
 
 
+# A base letter carrying a combining mark of a LOWER canonical class than the mark already
+# baked into its precomposed form.  NFC reorders the marks into canonical order, which makes
+# the source positions of one output character's code points NON-CONTIGUOUS — the case a
+# decompose-then-re-chunk offset map gets wrong.  "â" (U+00E2 = a + U+0302, class 230) + U+0324
+# (class 220) is the canonical trigger; these stay precomposed under NFC (verified below).
+_REORDER_NFD = "â̤"  # â + combining diaeresis-below
+_REORDER_NFD_2 = "ọ́"  # o + acute (230) + dot-below (220): NFC reorders + composes
+assert unicodedata.is_normalized("NFC", _REORDER_NFD)
+
+
 @pytest.mark.parametrize(
     "raw",
     [
@@ -113,12 +124,18 @@ def test_text_property_equals_normalize() -> None:
         _CAFE_NFD + " x",  # THE landmine: length-changing NFC
         _CAFE_NFC + " x",
         "déjà—vu with ‘quotes’",  # decomposed accents + folds together
+        _REORDER_NFD,  # combining-mark canonical REORDERING across source positions
+        _REORDER_NFD_2,
+        "x " + _REORDER_NFD + " y",  # reordering not at the string boundary
     ],
 )
 def test_reversible_every_slice_renormalizes_to_indexed_text(raw: str) -> None:
     """The core contract: for every normalized [s, e), slicing the raw span and renormalizing
     yields exactly the indexed substring.  This holds for length-changing NFC only if each
-    normalized char maps to a raw half-open span (not a bare start index).
+    normalized char maps to a raw half-open span (not a bare start index), AND holds under
+    canonical combining-mark reordering only if the map is computed by prefix alignment rather
+    than by re-chunking a reordered decomposition (which mis-attributes marks across source
+    positions — see the _REORDER_NFD cases).
     """
     nt = NormalizedText(raw)
     t = nt.text
@@ -132,6 +149,23 @@ def test_reversible_every_slice_renormalizes_to_indexed_text(raw: str) -> None:
                 f"raw slice {raw[span.start:span.end]!r} renormalizes to "
                 f"{normalize(raw[span.start:span.end])!r}, expected {t[s:e]!r}"
             )
+
+
+def test_raw_span_survives_combining_mark_reordering() -> None:
+    """Focused regression for the canonical-reordering defect (P2-T1 Opus review B1).
+
+    'â' (precomposed) followed by a lower-class combining mark stays two NFC characters that
+    map 1:1 to their two source code points.  A map that decomposes 'â' into a + U+0302, canon-
+    ically reorders the intervening U+0324, then re-chunks by NFD length attributes the wrong
+    source span to each output character.
+    """
+    raw = _REORDER_NFD  # â + U+0324, already NFC, 2 code points
+    nt = NormalizedText(raw)
+    assert nt.text == raw  # NFC leaves it unchanged: still two characters
+    assert nt.raw_span(0, 1) == RawSpan(0, 1)  # 'â' -> just the precomposed code point
+    assert nt.raw_span(1, 2) == RawSpan(1, 2)  # U+0324 -> just the mark
+    assert normalize(raw[0:1]) == nt.text[0:1]
+    assert normalize(raw[1:2]) == nt.text[1:2]
 
 
 def test_raw_span_is_smallest_covering_for_collapsed_whitespace() -> None:
