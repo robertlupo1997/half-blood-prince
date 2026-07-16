@@ -690,10 +690,16 @@ def test_annotate_with_anthropic_and_no_model_uses_preset_default(
 def test_annotation_generator_exports_default_model_constant() -> None:
     """DEFAULT_MODEL must remain an importable module-level constant (AC 5c).
 
-    eval/eval_harness.py:60 imports DEFAULT_MODEL at module level.  Removing the
-    universal default means the *parameter* stops defaulting to DEFAULT_MODEL, but
-    the *module constant* itself must remain.  tests/ does not import eval_harness, so
-    the gate can go green while eval/ is broken — this test is a permanent guard.
+    Removing the universal default means the *parameter* stops defaulting to
+    DEFAULT_MODEL, but the *module constant* itself must remain: it is re-exported from
+    config.DEFAULT_ANTHROPIC_MODEL (annotation_generator.py:22) and is the single
+    authoritative "claude-sonnet-5" literal guarded by AUD-02/03/04.
+
+    UPDATED P1-T9b: eval/eval_harness.py no longer imports this constant — T9b deleted
+    that alias because resolve_eval_configs resolves the model through the anthropic
+    preset.  This test therefore became the DIRECT and only guard of the invariant, where
+    it was previously backstopped by a proxy assertion in
+    test_eval_harness_imports_without_error below.  Do not delete it.
 
     EXPECTED TO PASS before Codex builds and after (regression guard, not red-first).
     """
@@ -712,9 +718,14 @@ def test_eval_harness_imports_without_error() -> None:
     eval/ is completely import-broken.  This test closes that gap.
 
     What it catches:
-    - Codex removes DEFAULT_MODEL from annotation_generator.py (line 60 import fails)
-    - Codex renames or removes the AnnotationGenerator class (line 65 import fails)
+    - Codex renames or removes the AnnotationGenerator class (eval_harness hard-imports it)
+    - Codex renames or removes resolve_eval_configs / build_provider (imported at module level)
     - Any other top-level dependency of eval_harness that breaks on import
+
+    (Before P1-T9b this also caught DEFAULT_MODEL being removed from annotation_generator.py,
+    via eval_harness's `DEFAULT_MODEL as _PIPELINE_DEFAULT_MODEL` import.  T9b deleted that
+    alias legitimately; test_annotation_generator_exports_default_model_constant above is now
+    the direct guard for that invariant.)
 
     We load via importlib so that the ``if __name__ == "__main__"`` guard at
     eval_harness.py:861 prevents the main() function from running.  sys.path is
