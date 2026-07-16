@@ -1,7 +1,7 @@
 ---
 date: 2026-07-16
 severity: A-SEV3
-status: reviewed
+status: closed
 owner: Trey Lupo
 project: half-blood-prince
 task_tier: T2
@@ -81,8 +81,8 @@ real and recurred, which is why this is a postmortem rather than a retro.
 ## Corrective decisions
 | Type | Action | Contributing condition | Owner | Home/link | Due/priority | Verification | Status |
 |---|---|---|---|---|---|---|---|
-| detect | On any controller `tests/` edit, run a discriminating empirical check appropriate to the claim — byte-identity vs. pre-refactor for delegate/refactor tests; exhaustive or randomized fuzz for a claimed invariant — *before* dispatching Codex | cond. 1, 2 | Trey | `.claude/skills/goal/SKILL.md` step 3 | next task (P2-T2) | the check exists and runs; a wrong contract fails it | open |
-| detect | Scope the Opus review prompt to also read the *controller's test delta* adversarially ("could any of these tests assert the wrong contract, be non-hermetic, or pass vacuously?"), not only Codex's src diff | cond. 5 | Trey | `.claude/skills/goal/SKILL.md` step 7 | next task | review prompt includes the test-delta clause | open |
+| detect | On any controller `tests/` edit, run a discriminating empirical check appropriate to the claim — byte-identity vs. pre-refactor for delegate/refactor tests; exhaustive or randomized fuzz for a claimed invariant — *before* dispatching Codex | cond. 1, 2 | Trey | `.claude/skills/goal/SKILL.md` step 3 | done 2026-07-16 | the clause is in step 3 | **done** |
+| detect | Scope the Opus review prompt to also read the *controller's test delta* adversarially ("could any of these tests assert the wrong contract, be non-hermetic, or pass vacuously?"), not only Codex's src diff | cond. 5 | Trey | `.claude/skills/goal/SKILL.md` step 7 | done 2026-07-16 | the clause is in step 7 | **done** |
 | prevent | Standing rule already applied: a test that reaches the real resolver without injectable config paths is non-hermetic — inject paths or pin `chdir` + `XDG_CONFIG_HOME` | cond. 2 | Trey | memory `tests-reaching-real-resolver-are-nonhermetic` | done | rule recorded | done |
 
 ## Harness learning
@@ -99,5 +99,5 @@ real and recurred, which is why this is a postmortem rather than a retro.
 - [x] Each declined action has a reason (no global HARNESS change — overfitting guard)
 - [x] LEARNINGS.md summary added
 - [x] Sensitive information handled (none present)
-- [ ] All actions done or explicitly declined — two `detect` controls remain `open` until wired
-      into the `/goal` skill; this postmortem stays `reviewed`, not `closed`, until then.
+- [x] All actions done or explicitly declined — both `detect` controls wired into `/goal`
+      steps 3 and 7 on 2026-07-16; the `prevent` rule was already recorded. Status: closed.
