@@ -1,7 +1,7 @@
 ---
 date: 2026-07-15T21:44:57-04:00
 researcher: Claude (Opus 4.8) — controller session
-git_commit: 351ec9865b3501f29eb2a9d6626c7fbc56362a1c
+git_commit: 8c60708ae1308f1c49da251889d5a5ab47fcd2e1
 branch: main
 repository: half-blood-prince
 topic: "Session 18 — P1-T9a merged (provider seam for annotate/preview, 539 green); Codex refused 4 defective controller tests instead of bending product code; T9b next"
@@ -96,6 +96,21 @@ All on `main`, merged via `--no-ff` from `phase1-t9a`.
   Safe because `AnthropicProvider.__init__` only constructs an `httpx.Client` (no network),
   and the fake generator discards the provider. Trade-off: it couples font tests to
   provider resolution — if resolution gains a new required setting, they break again.
+- **⚠️ That fix initially introduced a latent machine-dependent flake — caught only on a
+  second review pass, AFTER the Opus review returned CLEAN.** Driving the real resolver
+  through CliRunner means the font tests cannot pass `project_config_path`/`user_config_path`
+  (the seam tests' hermeticity lever), so the resolver fell back to `Path.cwd()/halfblood.toml`
+  and the platformdirs user config dir — **real machine paths**. It passed on this machine
+  only because neither file happens to exist. **Proven load-bearing, not theoretical:**
+  planting arch §4.4's own documented example config at the repo root makes
+  `resolve_generation_config({}, environ={"ANTHROPIC_API_KEY": "x"})` raise
+  `OPENAI_API_KEY is required for provider openai` — i.e. a developer trying the documented
+  example would have broken the font suite. Fixed in `tests/test_font_selection.py`
+  (`monkeypatch.chdir(tmp_path)` + `XDG_CONFIG_HOME` → empty tmp dir) @ `8c60708`; all 8 pass
+  with that config planted. **Generalization: a test that reaches the real resolver without
+  injectable config paths is non-hermetic by construction — the resolver's `or` fallbacks
+  (`config.py`, `project_path`/`user_path`) read the machine. Neither the gate nor the Opus
+  review caught this; both are blind to "passes only because a file happens not to exist."**
 - **`git status` after `git checkout main` reports the never-commit set as modified**
   (`CLAUDE.md`, `.claude/`). Expected per SKILL.md:93 — not a stop condition.
 
@@ -129,13 +144,19 @@ All on `main`, merged via `--no-ff` from `phase1-t9a`.
 | eval still imports the SDK (T9b's job) | `grep -n "from anthropic import" eval/eval_harness.py` | `44:from anthropic import Anthropic` |
 | eval_harness size (T9b review surface) | `wc -l < eval/eval_harness.py` | `862` |
 | Rollback tag | `git rev-parse --short pre-overnight-2026-07-15` | `8b58383` |
+| Font tests were non-hermetic (resolver reads cwd config) | planted `[generation] provider="openai"` at repo root, then `resolve_generation_config({}, environ={"ANTHROPIC_API_KEY": "x"})` | `ProviderConfigurationError: Environment variable OPENAI_API_KEY is required for provider openai` — proves cwd config IS read |
+| Hermeticity fix works | `.venv/bin/pytest tests/test_font_selection.py -q` with that config planted | `8 passed` |
+| Gate still green after the fix (re-run after last edit) | `.venv/bin/pytest tests/ -q` | `539 passed, 22 warnings` |
+| No `chdir`/`autouse` in conftest (why the hole existed) | `grep -n "chdir\|XDG_CONFIG_HOME\|autouse" tests/conftest.py` | no matches |
+| No repo-root or user config on this machine (why it passed anyway) | `ls halfblood.toml`; `ls ~/.config/halfblood/config.toml` | both `No such file or directory` |
 
 ## Artifacts
 
 - `src/halfblood/cli.py`, `config.py`, `annotation_generator.py`, `README.md` — **merged**
   @ `351ec98` (feat commit `f1b6722` on `phase1-t9a`).
 - `tests/test_cli_provider_seam.py` (NEW, 1365 lines), `tests/test_cli.py`,
-  `tests/test_font_selection.py` — **merged**.
+  `tests/test_font_selection.py` — **merged**. `test_font_selection.py` further hardened
+  for hermeticity @ `8c60708` (post-merge, directly on `main`).
 - `.superpowers/sdd/p1-t9a.testsums` — the tripwire manifest (gitignored scratch).
 - `.superpowers/sdd/p1-t9a-report.md` — Codex's own build report (gitignored scratch).
 - `.superpowers/sdd/p1-t9a-brief.md`, `p1-t9a-subdriver-spec.md` — gitignored scratch.
@@ -163,8 +184,14 @@ All on `main`, merged via `--no-ff` from `phase1-t9a`.
 4. **Non-blocking from the Opus review (recorded, not blocking):**
    (a) `test_annotate_with_anthropic_and_no_model_uses_preset_default` is not fully hermetic
    — CliRunner's `env=` is additive, so a machine with `HALFBLOOD_MODEL` set could satisfy
-   it without the preset. The hermetic guard `test_anthropic_preset_provides_default_model`
-   closes the gap; document this in a test comment.
+   it without the preset. **It also has the cwd-config exposure fixed for the font tests
+   @ `8c60708`** (it reaches the real resolver through CliRunner, so `Path.cwd()/halfblood.toml`
+   and the user config dir are live). The hermetic guard
+   `test_anthropic_preset_provides_default_model` closes the *preset* gap, so this is not
+   blocking — but apply the same `monkeypatch.chdir(tmp_path)` + `XDG_CONFIG_HOME` treatment,
+   and consider an **autouse conftest fixture** doing both repo-wide, which would close this
+   class permanently instead of per-test (`tests/conftest.py` currently has no `chdir` or
+   `autouse` at all).
    (b) `annotate`'s terminal width changed 120 → 160 (in-scope but unbriefed; cosmetic).
    (c) 22 `DeprecationWarning`s from `AnnotationGenerator(api_key=...)` callsites in
    `test_pipeline.py` / `test_generation_orchestration.py` — correct behavior (AC 10), but
