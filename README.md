@@ -134,14 +134,14 @@ Run the annotation-quality evaluation harness (see [Evaluation](#evaluation) bel
 halfblood eval [OPTIONS]
 
 Options:
-  --model TEXT       Override model for the eval harness.
+  --model TEXT       Override the generator model for the eval harness.
   --json-out PATH    Write raw evaluation results as JSON.
   --list             List test cases and exit without calling the API.
 ```
 
 ```bash
 halfblood eval --list
-halfblood eval --json-out results.json
+halfblood eval --model claude-opus-4-1-20250805 --json-out results.json
 ```
 
 ## Custom Personas
@@ -201,14 +201,24 @@ See `docs/ARCHITECTURE.md` for the full technical write-up.
 export ANTHROPIC_API_KEY=sk-ant-...
 
 # via the CLI
-halfblood eval
+halfblood eval --model claude-opus-4-1-20250805
 
 # or standalone (no install required)
-python eval/eval_harness.py
-python eval/eval_harness.py --model claude-opus-4-1-20250805
-python eval/eval_harness.py --json-out results.json
+python eval/eval_harness.py --judge-model claude-opus-4-1-20250805
+python eval/eval_harness.py --judge-model claude-opus-4-1-20250805 --json-out results.json
 python eval/eval_harness.py --list
 ```
+
+Generator and judge configuration resolve independently. By default they resolve to the
+same Anthropic preset and the harness exits with an error; choose a distinct generator with
+`--provider`/`--model` or a distinct judge with `--judge-provider`/`--judge-model`.
+`--allow-self-judge` permits identical settings for development only. In Phase 1 the judge
+transport still supports only Anthropic; moving judge transport onto the provider layer is
+planned for Phase 5.
+
+`HALFBLOOD_EVAL_MODEL` is deprecated but remains supported for one minor release as a
+generator-only model setting. An explicit `--model` takes precedence, and the variable never
+configures the judge.
 
 The harness prints a per-test-case table of scores and justifications, then a summary table and an overall grade. Exit code is `0` only if every test case passes every metric's threshold — wire it into CI to catch persona or prompt regressions.
 
