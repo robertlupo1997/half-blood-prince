@@ -759,10 +759,15 @@ def test_eval_harness_imports_without_error() -> None:
         sys.modules.pop(_MODULE_NAME, None)
         sys.path[:] = original_path
 
-    assert isinstance(getattr(module, "_PIPELINE_DEFAULT_MODEL", None), str), (
-        "eval_harness._PIPELINE_DEFAULT_MODEL is not a str after import — "
-        "DEFAULT_MODEL was likely removed from annotation_generator.py"
-    )
+    # NOTE (P1-T9b): this test used to also assert
+    #     isinstance(module._PIPELINE_DEFAULT_MODEL, str)
+    # as a PROXY for "DEFAULT_MODEL still exists in annotation_generator.py".  T9b deleted
+    # that alias legitimately — eval no longer needs a module-level default because
+    # resolve_eval_configs resolves the model through the anthropic preset (T9a) and maps
+    # the legacy HALFBLOOD_EVAL_MODEL env var itself.  The proxy was pinning an eval_harness
+    # implementation detail, not the invariant it cared about; the real invariant is owned by
+    # test_annotation_generator_exports_default_model_constant above, which still passes.
+    # This test keeps its actual job: eval_harness imports without error.
 
 
 # ---------------------------------------------------------------------------

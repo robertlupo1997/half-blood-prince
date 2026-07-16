@@ -12,17 +12,14 @@ annotations with an LLM-as-judge across five quality metrics:
     * variety            -- healthy mix of annotation types, not one type repeated?
     * density             -- roughly the right number of notes for the passage?
 
-If ``halfblood.annotation_generator.AnnotationGenerator`` (and
-``halfblood.document_processor.PageContent``) are importable, the harness
-uses the real pipeline to generate annotations for each test passage. If
-those modules aren't available yet (e.g. during early development), it
-falls back to a small built-in generator that calls the Anthropic API
-directly, so this harness is runnable standalone from day one.
+The harness uses the real annotation pipeline and its configured provider
+to generate annotations for each test passage. The judge retains its
+Anthropic transport until the provider layer is generalized for judge output.
 
 Usage:
 
     export ANTHROPIC_API_KEY=sk-...
-    python eval/eval_harness.py
+    python eval/eval_harness.py --judge-model claude-opus-4-1-20250805
     python eval/eval_harness.py --model claude-opus-4-1-20250805
     python eval/eval_harness.py --json-out results.json
     python eval/eval_harness.py --list
@@ -57,22 +54,16 @@ _SRC_DIR = _REPO_ROOT / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-from halfblood.annotation_generator import DEFAULT_MODEL as _PIPELINE_DEFAULT_MODEL  # noqa: E402
-from halfblood.models import Annotation, AnnotationType  # noqa: E402
-
-try:
-    from halfblood.annotation_generator import AnnotationGenerator
-except ImportError:  # not implemented yet -- harness falls back to a built-in generator
-    AnnotationGenerator = None  # type: ignore[assignment,misc]
-
-try:
-    from halfblood.document_processor import PageContent
-except ImportError:  # not implemented yet
-    PageContent = None  # type: ignore[assignment,misc]
-
-
-DEFAULT_MODEL = os.environ.get("HALFBLOOD_EVAL_MODEL", _PIPELINE_DEFAULT_MODEL)
-
+from halfblood.annotation_generator import AnnotationGenerator  # noqa: E402
+from halfblood.config import resolve_eval_configs  # noqa: E402
+from halfblood.document_processor import PageContent  # noqa: E402, F401
+from halfblood.generation.errors import (  # noqa: E402
+    ProviderConfigurationError,
+    ProviderError,
+)
+from halfblood.generation.providers.base import LLMProvider  # noqa: E402
+from halfblood.generation.registry import build_provider  # noqa: E402
+from halfblood.models import Annotation  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Metric definitions
@@ -397,130 +388,28 @@ def _letter_grade(score: float) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Annotation generation (real pipeline if available, otherwise built-in
-# fallback that talks to Claude directly)
+# Annotation generation
 # ---------------------------------------------------------------------------
-
-GENERATION_TOOL: dict[str, Any] = {
-    "name": "record_annotations",
-    "description": (
-        "Record the set of Half-Blood-Prince-style margin annotations "
-        "generated for a passage."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "annotations": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "target_text": {
-                            "type": "string",
-                            "description": "A short, verbatim excerpt from the passage this note refers to.",
-                        },
-                        "annotation_type": {
-                            "type": "string",
-                            "enum": [t.value for t in AnnotationType],
-                        },
-                        "content": {
-                            "type": "string",
-                            "description": "The handwritten margin note itself.",
-                        },
-                        "confidence": {
-                            "type": "number",
-                            "minimum": 0,
-                            "maximum": 1,
-                        },
-                        "position": {
-                            "type": "string",
-                            "enum": ["margin_right", "margin_left", "inline", "between_lines"],
-                        },
-                    },
-                    "required": ["target_text", "annotation_type", "content"],
-                },
-            }
-        },
-        "required": ["annotations"],
-    },
-}
-
-
-def _fallback_generate(tc: TestCase, client: Anthropic, model: str) -> list[Annotation]:
-    """Generate annotations directly via the Anthropic API.
-
-    Used when ``halfblood.annotation_generator.AnnotationGenerator`` is not
-    yet available, so this harness can run standalone.
-    """
-    lo, hi = tc.ideal_annotation_range
-    system_prompt = (
-        "You are ghost-writing marginalia in the voice of the Half-Blood "
-        f"Prince: {tc.persona} You are terse, sardonic, and quietly "
-        "brilliant. You annotate the margins of a book with corrections, "
-        "improvements, warnings, shortcuts, inventions, and the occasional "
-        "dry aside. Never restate what the text already says; only add "
-        "annotations that a genuine expert reading over the author's "
-        "shoulder would actually bother to scrawl down."
-    )
-    user_prompt = (
-        f"Book: {tc.title} ({tc.genre})\n\n"
-        f'Passage:\n"""\n{tc.passage}\n"""\n\n'
-        f"Produce between {lo} and {hi} margin annotations for this "
-        "passage using the record_annotations tool. Vary the annotation "
-        f"types (favor: {', '.join(tc.expected_annotation_types)}). Each "
-        "target_text must be a short verbatim excerpt copied exactly from "
-        "the passage above."
-    )
-    response = client.messages.create(
-        model=model,
-        max_tokens=2048,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
-        tools=[GENERATION_TOOL],
-        tool_choice={"type": "tool", "name": "record_annotations"},
-    )
-    tool_block = next((b for b in response.content if b.type == "tool_use"), None)
-    if tool_block is None:
-        return []
-    raw_annotations = tool_block.input.get("annotations", [])  # type: ignore[union-attr]
-
-    annotations: list[Annotation] = []
-    for raw in raw_annotations:
-        try:
-            annotations.append(
-                Annotation(
-                    page=1,
-                    target_text=raw["target_text"],
-                    annotation_type=AnnotationType(raw["annotation_type"]),
-                    content=raw["content"],
-                    confidence=float(raw.get("confidence", 0.8)),
-                    position=raw.get("position", "margin_right"),
-                )
-            )
-        except (KeyError, ValueError):
-            # Skip malformed entries rather than failing the whole test case.
-            continue
-    return annotations
 
 
 def generate_annotations(
-    tc: TestCase, client: Anthropic, model: str, console: Console
+    tc: TestCase,
+    *,
+    generator_provider: LLMProvider,
+    generator_model: str,
+    console: Console,
 ) -> list[Annotation]:
-    """Generate annotations for a test case, preferring the real pipeline."""
-    if AnnotationGenerator is not None and PageContent is not None:
-        try:
-            generator = AnnotationGenerator(persona=tc.persona, model=model)
-            result = generator.generate_for_page(
-                page_text=tc.passage, page_number=1, book_context=""
-            )
-            if isinstance(result, list):
-                return result
-        except Exception as exc:  # noqa: BLE001 - defensive fallback boundary
-            console.print(
-                f"[yellow]AnnotationGenerator unavailable or failed ({exc}); "
-                "using the eval harness's built-in generator instead.[/yellow]"
-            )
-    return _fallback_generate(tc, client, model)
+    """Generate annotations for a test case through the injected provider."""
+    generator = AnnotationGenerator(
+        persona=tc.persona,
+        model=generator_model,
+        provider=generator_provider,
+    )
+    return generator.generate_for_page(
+        page_text=tc.passage,
+        page_number=1,
+        book_context="",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -633,7 +522,12 @@ def judge_annotations(
 
 
 def run_eval(
-    test_cases: list[TestCase], client: Anthropic, model: str, console: Console
+    test_cases: list[TestCase],
+    generator_provider: LLMProvider,
+    generator_model: str,
+    judge_client: Anthropic,
+    judge_model: str,
+    console: Console,
 ) -> list[EvalResult]:
     """Generate and judge annotations for every test case, with progress reporting."""
     results: list[EvalResult] = []
@@ -648,10 +542,15 @@ def run_eval(
         for tc in test_cases:
             progress.update(task, description=f"[cyan]{tc.id}[/cyan]: generating annotations")
             try:
-                annotations = generate_annotations(tc, client, model, console)
+                annotations = generate_annotations(
+                    tc,
+                    generator_provider=generator_provider,
+                    generator_model=generator_model,
+                    console=console,
+                )
                 progress.advance(task)
                 progress.update(task, description=f"[cyan]{tc.id}[/cyan]: judging quality")
-                scores = judge_annotations(tc, annotations, client, model)
+                scores = judge_annotations(tc, annotations, judge_client, judge_model)
                 progress.advance(task)
                 results.append(EvalResult(test_case=tc, annotations=annotations, scores=scores))
             except Exception as exc:  # noqa: BLE001 - keep evaluating remaining cases
@@ -807,9 +706,36 @@ def main() -> None:
         description="Evaluate Half-Blood Prince annotation quality using an LLM judge."
     )
     parser.add_argument(
+        "--provider",
+        default=None,
+        help="Provider used to generate annotations.",
+    )
+    parser.add_argument(
         "--model",
-        default=DEFAULT_MODEL,
-        help="Anthropic model used for both the fallback generator and the judge.",
+        default=None,
+        help="Model used to generate annotations.",
+    )
+    parser.add_argument(
+        "--judge-provider",
+        default=None,
+        help="Provider configured for the judge.",
+    )
+    parser.add_argument(
+        "--judge-model",
+        default=None,
+        help="Model used to judge annotations.",
+    )
+    parser.add_argument(
+        "--allow-self-judge",
+        action="store_true",
+        default=False,
+        help="Allow the generator and judge to use the same provider and model.",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Optional project configuration path.",
     )
     parser.add_argument(
         "--json-out",
@@ -839,16 +765,60 @@ def main() -> None:
         console.print(table)
         return
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        console.print(
-            "[bold red]ANTHROPIC_API_KEY is not set.[/bold red] "
-            "Export it before running the eval harness."
-        )
-        raise SystemExit(1)
+    generator_overrides = {
+        key: value
+        for key, value in {
+            "provider": args.provider,
+            "model": args.model,
+        }.items()
+        if value is not None
+    }
+    judge_overrides = {
+        key: value
+        for key, value in {
+            "provider": args.judge_provider,
+            "model": args.judge_model,
+        }.items()
+        if value is not None
+    }
 
-    client = Anthropic(api_key=api_key)
-    results = run_eval(TEST_CASES, client, args.model, console)
+    try:
+        generator_config, judge_config = resolve_eval_configs(
+            generator_overrides,
+            judge_overrides,
+            project_config_path=args.config,
+            allow_self_judge=args.allow_self_judge,
+        )
+        generator_api_key = (
+            os.environ.get(generator_config.api_key_env)
+            if generator_config.api_key_env
+            else None
+        )
+        generator_provider = build_provider(
+            generator_config,
+            api_key=generator_api_key,
+        )
+        if judge_config.provider != "anthropic":
+            raise ProviderConfigurationError(
+                "The Phase 1 eval judge transport supports only the anthropic provider; "
+                "provider-layer judge transport is planned for Phase 5"
+            )
+        judge_api_key = (
+            os.environ.get(judge_config.api_key_env) if judge_config.api_key_env else None
+        )
+        judge_client = Anthropic(api_key=judge_api_key)
+    except ProviderError as exc:
+        console.print(f"[bold red]Provider configuration error:[/bold red] {exc}")
+        raise SystemExit(1) from exc
+
+    results = run_eval(
+        TEST_CASES,
+        generator_provider,
+        generator_config.model,
+        judge_client,
+        judge_config.model,
+        console,
+    )
     all_passed = print_report(results, console)
 
     if args.json_out:

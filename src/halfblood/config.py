@@ -447,3 +447,48 @@ def resolve_generation_config(
         allow_insecure_http=allow_insecure_http,
         sources=sources,
     )
+
+
+def resolve_eval_configs(
+    generator_overrides: Mapping[str, Any] | None = None,
+    judge_overrides: Mapping[str, Any] | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
+    project_config_path: Path | None = None,
+    user_config_path: Path | None = None,
+    allow_self_judge: bool = False,
+) -> tuple[ResolvedConfig, ResolvedConfig]:
+    """Resolve independent generator and judge configs, enforcing judge independence."""
+    generator_settings = dict(generator_overrides or {})
+    environment = os.environ if environ is None else environ
+    if (
+        generator_settings.get("model") is None
+        and "HALFBLOOD_MODEL" not in environment
+        and "HALFBLOOD_EVAL_MODEL" in environment
+    ):
+        generator_settings["model"] = environment["HALFBLOOD_EVAL_MODEL"]
+
+    generator = resolve_generation_config(
+        generator_settings,
+        environ=environ,
+        project_config_path=project_config_path,
+        user_config_path=user_config_path,
+    )
+    judge = resolve_generation_config(
+        judge_overrides,
+        environ=environ,
+        project_config_path=project_config_path,
+        user_config_path=user_config_path,
+    )
+
+    if (
+        generator.provider == judge.provider
+        and generator.model == judge.model
+        and not allow_self_judge
+    ):
+        raise ProviderConfigurationError(
+            "Generator and judge resolve to the same provider and model; choose an "
+            "independent judge with --judge-model, or use --allow-self-judge for development"
+        )
+
+    return generator, judge
