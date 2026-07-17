@@ -264,3 +264,88 @@ def test_crossed_out_replacement_near_top_stays_above_target(
             f"replacement baseline {c.point.y:.1f} overlaps the struck line at {target.y0}"
         )
     _assert_all_on_page(drawn, dp)
+
+
+# ---------------------------------------------------------------------------
+# P2-T7 — layout/anchors.py adapter bridge
+#
+# Inline imports guard existing tests from collection failure while the
+# halfblood.layout package does not yet exist.
+# ---------------------------------------------------------------------------
+
+
+def test_surf_rect_from_fitz_converts_bounds() -> None:
+    from halfblood.layout.anchors import surf_rect_from_fitz
+    from halfblood.models.rendering import SurfaceRect
+
+    r = fitz.Rect(10.5, 20.0, 300.0, 400.5)
+    s = surf_rect_from_fitz(r)
+    assert isinstance(s, SurfaceRect)
+    assert s.x0 == pytest.approx(10.5)
+    assert s.y0 == pytest.approx(20.0)
+    assert s.x1 == pytest.approx(300.0)
+    assert s.y1 == pytest.approx(400.5)
+
+
+def test_surf_quad_from_fitz_converts_corners() -> None:
+    from halfblood.layout.anchors import surf_quad_from_fitz
+    from halfblood.models.rendering import SurfaceQuad
+
+    q = fitz.Rect(10.0, 20.0, 200.0, 32.0).quad
+    s = surf_quad_from_fitz(q)
+    assert isinstance(s, SurfaceQuad)
+    assert s.ul.x == pytest.approx(10.0)
+    assert s.ul.y == pytest.approx(20.0)
+    assert s.lr.x == pytest.approx(200.0)
+    assert s.lr.y == pytest.approx(32.0)
+
+
+def test_pdf_anchor_to_resolved_anchor_maps_char_range_and_quads() -> None:
+    from halfblood.documents.pdf import PdfAnchor
+    from halfblood.layout.anchors import pdf_anchor_to_resolved_anchor
+    from halfblood.models.rendering import ResolvedAnchor
+
+    q1 = fitz.Rect(100.0, 300.0, 400.0, 312.0).quad
+    q2 = fitz.Rect(100.0, 316.0, 300.0, 328.0).quad
+    anchor = PdfAnchor(quads=(q1, q2), char_range=(5, 25), line_count=2, page_rotation=0)
+    ra = pdf_anchor_to_resolved_anchor(anchor)
+    assert isinstance(ra, ResolvedAnchor)
+    assert ra.char_range == (5, 25)
+    assert len(ra.quads) == 2
+
+
+def test_layout_page_annotations_adapter_returns_layout_result() -> None:
+    from halfblood.document_processor import layout_page_annotations
+    from halfblood.layout.engine import LayoutResult, NoteRequest
+    from halfblood.models.legacy import AnnotationType
+    from halfblood.models.rendering import ResolvedAnchor, SurfacePoint, SurfaceQuad
+
+    class _FM:
+        def measure(self, text: str, max_width: float, scale: float) -> tuple[float, float]:
+            return (min(60.0, max_width), 14.0 * scale)
+
+    anchor = ResolvedAnchor(
+        char_range=(0, 10),
+        quads=(
+            SurfaceQuad(
+                ul=SurfacePoint(x=100.0, y=350.0),
+                ur=SurfacePoint(x=400.0, y=350.0),
+                lr=SurfacePoint(x=400.0, y=364.0),
+                ll=SurfacePoint(x=100.0, y=364.0),
+            ),
+        ),
+    )
+    req = NoteRequest(
+        annotation_id="t1",
+        source_locator="p:1",
+        annotation_type=AnnotationType.CORRECTION,
+        confidence=0.9,
+        content="A note.",
+        requested_placement="margin_right",
+        anchor=anchor,
+        render_seed=0,
+    )
+    doc = fitz.open()
+    page = doc.new_page(width=_PAGE_W, height=_PAGE_H)
+    result = layout_page_annotations(page, [req], [], _FM())
+    assert isinstance(result, LayoutResult)
