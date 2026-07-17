@@ -27,6 +27,7 @@ import fitz
 import pytest
 
 from halfblood.document_processor import DocumentProcessor
+from halfblood.documents import PdfPageIndex, resolve_pdf_anchor
 from halfblood.models import AnnotationType
 
 _LINE_HEIGHT_BOUND = 20.0  # one 11pt text line is ~15pt tall
@@ -180,3 +181,31 @@ def test_crossed_out_replacement_uses_requested_position_once(
 
     strike_annots = [a for a in page.annots() or [] if a.type[1] == "StrikeOut"]
     assert len(strike_annots) == 1, "the strikeout mark itself must still be applied"
+
+
+# ---------------------------------------------------------------------------
+# P2-T4 — find_text_rect is the compatibility adapter: it returns the union of
+# the chosen anchor's per-line quads (from resolve_pdf_anchor), never a union
+# across distinct occurrences.
+# ---------------------------------------------------------------------------
+
+
+def test_find_text_rect_returns_union_of_chosen_anchor_quads(
+    dp: DocumentProcessor, page: fitz.Page
+) -> None:
+    # "silver dagger" wraps across two lines (y~300 / y~316). The adapter's rect
+    # must equal the union of the resolver's two per-line quads for that passage.
+    rect = dp.find_text_rect(page, "silver dagger")
+    assert rect is not None
+
+    index = PdfPageIndex(page)
+    start = index.text.index("silver")
+    end = index.text.index("dagger") + len("dagger")
+    anchor = resolve_pdf_anchor(index, start, end)
+    assert anchor is not None
+    assert anchor.line_count == 2  # genuinely two touched lines, not one union
+
+    expected = anchor.bounding_rect()
+    for a, b in zip(tuple(rect), tuple(expected), strict=True):
+        assert abs(a - b) <= 2.0, f"adapter rect {tuple(rect)} != anchor union {tuple(expected)}"
+

@@ -41,7 +41,12 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
-from halfblood.documents import normalize
+from halfblood.documents import (
+    PdfAlignmentError,
+    PdfPageIndex,
+    normalize,
+    resolve_pdf_anchor,
+)
 from halfblood.models import (
     AnnotatedPage,
     Annotation,
@@ -265,8 +270,10 @@ class DocumentProcessor:
         return union
 
     @classmethod
-    def _first_contiguous_hit_group(cls, hits: Sequence[fitz.Rect]) -> fitz.Rect:
-        """Return the first deterministic passage represented by ``hits``.
+    def _first_contiguous_hit_group_rects(
+        cls, hits: Sequence[fitz.Rect]
+    ) -> list[fitz.Rect]:
+        """Return the first deterministic group of contiguous hit rectangles.
 
         ``Page.search_for`` returns one rectangle per occurrence, except that
         a phrase wrapping onto the next line is returned as consecutive line
@@ -283,7 +290,12 @@ class DocumentProcessor:
                 break
             first_group.append(hit)
             previous = hit
-        return cls._union_rects(first_group)
+        return first_group
+
+    @classmethod
+    def _first_contiguous_hit_group(cls, hits: Sequence[fitz.Rect]) -> fitz.Rect:
+        """Return the union of the first deterministic contiguous hit group."""
+        return cls._union_rects(cls._first_contiguous_hit_group_rects(hits))
 
     def _find_normalized_word_rect(
         self, page: fitz.Page, normalized_target: str
@@ -356,6 +368,11 @@ class DocumentProcessor:
         if not normalized:
             return None
 
+        try:
+            index = PdfPageIndex(page)
+        except PdfAlignmentError:
+            index = None
+
         for variant in self._search_variants(normalized):
             hits = page.search_for(variant)
             if hits:
@@ -365,7 +382,16 @@ class DocumentProcessor:
                         text,
                         variant,
                     )
-                return self._first_contiguous_hit_group(hits)
+                group = self._first_contiguous_hit_group_rects(hits)
+                if index is None:
+                    return self._union_rects(group)
+                span = index.char_span_for_rects(group)
+                if span is None:
+                    return self._union_rects(group)
+                anchor = resolve_pdf_anchor(index, *span)
+                if anchor is None:
+                    return self._union_rects(group)
+                return anchor.bounding_rect()
 
         normalized_rect = self._find_normalized_word_rect(page, normalized)
         if normalized_rect is not None:
