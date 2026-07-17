@@ -35,6 +35,13 @@ from bs4 import BeautifulSoup
 from ebooklib import epub
 from lxml import etree
 
+from halfblood.documents import (
+    CrossNodeMatch,
+    iter_inline_runs,
+    locate_across_nodes,
+    selector_for,
+)
+from halfblood.documents.matching import normalize
 from halfblood.epub_processor import EpubProcessor
 from halfblood.models import Annotation, AnnotationType
 
@@ -383,3 +390,127 @@ def test_output_reloads_with_spine_and_metadata_intact(tmp_path: Path) -> None:
     assert pages[_COMBUSTION_PAGE - 1].text.startswith("On Combustion")
     assert pages[_ACIDS_PAGE - 1].text.startswith("On Acids")
     assert pages[_DISTILLATION_PAGE - 1].text.startswith("On Distillation")
+
+
+# ---------------------------------------------------------------------------
+# P2-T5 — cross-node range resolution + markup-preserving wrap (§5.8)
+#
+# The single-node `_locate_text` misses targets split across inline tags
+# (<em>/<strong>/<span>) — it can only fall back to a degraded single-word
+# fragment. `locate_across_nodes` resolves the full quote across adjacent
+# text nodes within one block, using the P2-T3 scorer to reject repeats, and
+# `wrap_cross_node_segments` wraps exactly that range without DOM corruption.
+# render_annotations is deliberately NOT rewired here (that is P2-T9).
+# ---------------------------------------------------------------------------
+
+# One target straddling plain text + <em> + plain text + <strong>.
+_ONE_BLOCK_XHTML = (
+    '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+    '<p id="a">Begin: the <em>sopophorous</em> bean must be '
+    '<strong>crushed</strong>, not cut.</p>'
+    '</body></html>'
+)
+# Same quote in TWO separate <p> blocks -> repeated -> must be rejected as ambiguous.
+_CROSS_XHTML = (
+    '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+    '<p id="a">Begin: the <em>sopophorous</em> bean must be '
+    '<strong>crushed</strong>, not cut.</p>'
+    '<p id="b">Later the <em>sopophorous</em> bean must be '
+    '<strong>crushed</strong> again.</p>'
+    '</body></html>'
+)
+_CROSS_TARGET = "the sopophorous bean must be crushed"
+
+
+def _soup(xhtml: str) -> BeautifulSoup:
+    return BeautifulSoup(xhtml, "lxml")
+
+
+def test_single_node_locator_cannot_cover_the_cross_node_quote() -> None:
+    # Non-vacuity guard for the cross-node capability: whether the single-node path
+    # returns None or (as today) a degraded fragment, it must NEVER cover the full
+    # cross-node phrase. Asserted unconditionally so the guard can't silently evaporate.
+    soup = _soup(_ONE_BLOCK_XHTML)
+    located = EpubProcessor(seed=1)._locate_text(soup.find("p", id="a"), _CROSS_TARGET)
+    covers_full_quote = located is not None and (
+        normalize(str(located[0])[located[1] : located[2]]) == normalize(_CROSS_TARGET)
+    )
+    assert not covers_full_quote, "single-node path must not cover the full cross-node quote"
+
+
+def test_locate_across_nodes_spans_inline_tags() -> None:
+    match = locate_across_nodes(_soup(_ONE_BLOCK_XHTML).body, selector_for(_CROSS_TARGET))
+    assert isinstance(match, CrossNodeMatch)
+    # more than one node touched, in document order
+    assert len({id(seg.node) for seg in match.segments}) >= 2
+    concat = "".join(str(seg.node)[seg.start : seg.end] for seg in match.segments)
+    assert normalize(concat) == normalize(_CROSS_TARGET)
+
+
+def test_locate_across_nodes_never_crosses_a_block_boundary() -> None:
+    # A phrase that would only exist by spanning the two <p> blocks must not match.
+    xhtml = (
+        '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+        '<p>the sopophorous bean must be</p>'
+        '<p>crushed without delay</p>'
+        '</body></html>'
+    )
+    match = locate_across_nodes(_soup(xhtml).body, selector_for(_CROSS_TARGET))
+    assert match is None
+
+
+def test_repeated_cross_node_quote_across_blocks_is_rejected_as_ambiguous() -> None:
+    # The quote appears in BOTH <p> blocks -> ambiguous -> no guess.
+    match = locate_across_nodes(_soup(_CROSS_XHTML).body, selector_for(_CROSS_TARGET))
+    assert match is None
+
+
+def test_script_style_and_own_markup_are_excluded_from_runs() -> None:
+    xhtml = (
+        '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+        '<p><span class="hbp-target">the sopophorous</span> bean</p>'
+        '<script>the sopophorous bean must be crushed</script>'
+        '<style>the sopophorous bean must be crushed</style>'
+        '</body></html>'
+    )
+    runs = iter_inline_runs(_soup(xhtml).body)
+    all_text = "".join(str(n) for run in runs for n in run)
+    assert "crushed" not in all_text  # lived only in <script>/<style> -> excluded
+    assert "sopophorous" not in all_text  # inside hbp-target markup -> excluded
+    assert "bean" in all_text  # a plain text node is retained
+
+
+def test_wrap_cross_node_segments_preserves_markup_and_text() -> None:
+    soup = _soup(_ONE_BLOCK_XHTML)
+    # Compare against the whole body's ORIGINAL text: the sidenote is *added* content,
+    # so the integrity check must exclude hbp-note text (asserting the block's raw
+    # get_text() is unchanged would be wrong — it counts the added note — and would
+    # force the note out of the block; note placement is finalized in P2-T9).
+    before_body_text = normalize(soup.body.get_text())
+    match = locate_across_nodes(soup.body, selector_for(_CROSS_TARGET))
+    assert match is not None
+
+    EpubProcessor(seed=3).wrap_cross_node_segments(
+        soup, match.segments, _ann(1, _CROSS_TARGET)
+    )
+
+    block = soup.find("p")
+    # inline tags survive
+    assert block.find("em") is not None and block.find("strong") is not None
+    # exactly one note; the marked slices concatenate to the quote
+    notes = soup.find_all("span", class_=lambda c: c and "hbp-note" in c)
+    assert len(notes) == 1
+    marks = soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
+    assert normalize("".join(m.get_text() for m in marks)) == normalize(_CROSS_TARGET)
+    # result is valid XHTML
+    etree.fromstring(str(soup).encode("utf-8"))
+    # original book text preserved once the added note is removed (no dup/loss)
+    for note in notes:
+        note.extract()
+    assert normalize(soup.body.get_text()) == before_body_text
+
+
+def test_selector_for_builds_an_exact_selector() -> None:
+    sel = selector_for("The Sopophorous Bean")
+    assert sel.normalized_exact == normalize("The Sopophorous Bean")
+    assert sel.normalized_prefix is None and sel.normalized_suffix is None

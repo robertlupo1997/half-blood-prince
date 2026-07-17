@@ -44,6 +44,7 @@ import logging
 import posixpath
 import random
 import warnings
+from collections.abc import Sequence
 from typing import Any, cast
 
 import ebooklib
@@ -51,7 +52,7 @@ from bs4 import BeautifulSoup, Comment, NavigableString, Tag, XMLParsedAsHTMLWar
 from ebooklib import epub
 
 from halfblood.document_processor import PageContent
-from halfblood.documents import normalize
+from halfblood.documents import CrossNodeSegment, normalize
 from halfblood.models import Annotation, AnnotationPlan, AnnotationType
 
 logger = logging.getLogger(__name__)
@@ -557,6 +558,82 @@ class EpubProcessor:
 
         node.replace_with(*replacements)
         mark_tag.insert_after(note_tag)
+
+    def wrap_cross_node_segments(
+        self,
+        soup: BeautifulSoup,
+        segments: Sequence[CrossNodeSegment],
+        annotation: Annotation,
+    ) -> None:
+        """Wrap ordered DOM text slices and append one note after the last slice."""
+        type_slug = annotation.annotation_type.value
+        last_mark: Tag | None = None
+
+        for segment_index in range(len(segments) - 1, -1, -1):
+            segment = segments[segment_index]
+            if segment.start >= segment.end:
+                continue
+
+            raw = str(segment.node)
+            before = raw[: segment.start]
+            matched = raw[segment.start : segment.end]
+            after = raw[segment.end :]
+            if not matched.strip():
+                continue
+
+            mark_tag = soup.new_tag(
+                "span",
+                attrs={"class": f"hbp-target hbp-target-{type_slug}"},
+            )
+            mark_tag.string = matched
+            mark_tag["style"] = f"color:{self._ink_hex(annotation.annotation_type)};"
+
+            replacements: list[NavigableString | Tag] = []
+            if before:
+                replacements.append(NavigableString(before))
+            replacements.append(mark_tag)
+            if after:
+                replacements.append(NavigableString(after))
+
+            segment.node.replace_with(*replacements)
+            if last_mark is None:
+                last_mark = mark_tag
+
+        if last_mark is None:
+            return
+
+        note_tag = soup.new_tag(
+            "span",
+            attrs={
+                "class": f"hbp-note hbp-note-{type_slug}",
+                "style": self._note_style(annotation),
+                "title": f"{type_slug} (confidence {annotation.confidence:.2f})",
+            },
+        )
+        note_tag.string = self._format_note_text(annotation)
+        note_anchor = last_mark.find_parent(
+            (
+                "p",
+                "div",
+                "section",
+                "article",
+                "aside",
+                "header",
+                "footer",
+                "nav",
+                "figure",
+                "figcaption",
+                "blockquote",
+                "pre",
+                "h1",
+                "h2",
+                "h3",
+                "h4",
+                "h5",
+                "h6",
+            )
+        )
+        (note_anchor or last_mark).insert_after(note_tag)
 
     # ------------------------------------------------------------
     # Small helpers
