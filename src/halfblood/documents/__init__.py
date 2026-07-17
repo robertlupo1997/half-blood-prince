@@ -16,6 +16,12 @@ from halfblood.documents.matching import (
     normalize,
     score_candidates,
 )
+from halfblood.documents.pdf import (
+    PdfAlignmentError,
+    PdfAnchor,
+    PdfPageIndex,
+    resolve_pdf_anchor,
+)
 
 __all__ = [
     "AMBIGUITY_MARGIN",
@@ -27,9 +33,13 @@ __all__ = [
     "MatchResult",
     "NoMatchResult",
     "NormalizedText",
+    "PdfAlignmentError",
+    "PdfAnchor",
+    "PdfPageIndex",
     "RawSpan",
     "ScoredCandidate",
     "ScoringOutcome",
     "normalize",
+    "resolve_pdf_anchor",
     "score_candidates",
 ]
