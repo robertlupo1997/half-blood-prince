@@ -13,10 +13,14 @@ type: handoff
 
 # Session 20 — hbp P2-T3 merged (694 green); FIRST-NIGHT CAP REACHED; P2-T4 next
 
-> Supersedes `2026-07-16_20-55-18_session19-...`. One repo in play this session:
-> **half-blood-prince** (`main` @ `0f336de`, 694 green, local-only). **The `/goal` loop is
-> STOPPED by the first-night cap** — read Action Item #0 before running `/goal` again, or it
-> no-ops on line one. The `/goal` hardening is still on-disk only (sha unchanged this session).
+> Supersedes `2026-07-16_20-55-18_session19-...`. One repo in play:
+> **half-blood-prince** (`main` @ `0f336de`, 694 green, local-only). **The `/goal` loop is NOT
+> blocked.** The human first-night cap was replaced (owner-approved, at this session's tail)
+> with an **autonomous chain-audit gate** (`AUDIT_EVERY = 3`): the window is at **2/3**, so the
+> next `/goal` proceeds straight to **P2-T4**, and after it merges (window → 3) a plan-independent
+> Opus **chain-audit** fires automatically over the P2-T2→P2-T4 chain (CLEAN → advance baseline +
+> continue; BLOCKER → bounded auto-fix or STOP-FLAG). The `/goal` SKILL was edited on-disk this
+> session — **new sha `c42a5f9d…`** (see On-disk-only state).
 
 ## Task(s)
 
@@ -39,12 +43,17 @@ type: handoff
 
 ## ⚠️ On-disk-only state (read before resuming — easy to lose)
 
-- **`.claude/skills/goal/SKILL.md` is hardened but UNCOMMITTED by design** (`.claude/` is in
-  hbp's never-commit set; loop step 8 forbids committing it). **Unchanged this session** — used
-  as-is. **Integrity check:** `sha256sum .claude/skills/goal/SKILL.md` →
-  `183bf46b0e60224b8ee1e9fc73f8ec25b960f1628bbccefcc7c43b9947d9c8d0` (re-verified this session,
-  matches Session 19). If gone/reverted, reapply from handoff `2026-07-16_17-52-10_...` + the
-  postmortem `docs/postmortems/2026-07-16-controller-test-edits-unguarded.md`.
+- **`.claude/skills/goal/SKILL.md` is hardened AND was EDITED this session, still UNCOMMITTED by
+  design** (`.claude/` is in hbp's never-commit set; loop step 8 forbids committing it). **Change
+  this session:** the human "First-night cap" section was replaced with the **Autonomous
+  chain-audit gate** (owner-approved) — periodic plan-independent Opus audit every `AUDIT_EVERY`
+  (=3) merges; CLEAN → advance baseline + auto-continue; BLOCKER → bounded auto-fix (max 2 Codex
+  attempts, ≤2 blockers) else STOP-FLAG. The step-1 orient + section title reference it. **New
+  integrity check:** `sha256sum .claude/skills/goal/SKILL.md` →
+  `c42a5f9d27ba51794285ad34fc235710635ffd301327f763b0c5318fd6252eaa`. If gone/reverted (an SDD
+  session reverts `.claude/`), the loop falls back to the OLD human cap=2 — reapply the chain-audit
+  edit (this handoff's Recent-changes describes it) + the base hardening from handoff
+  `2026-07-16_17-52-10_...` + postmortem `docs/postmortems/2026-07-16-controller-test-edits-unguarded.md`.
 - **`.superpowers/sdd/progress.md`** (Session 20 entry), the plan's P2-T3 DONE STATUS marker,
   and `.superpowers/sdd/p2-t3-*.md` (brief, fix-brief, reports, testsums) are gitignored/
   never-commit scratch.
@@ -77,6 +86,18 @@ type: handoff
 
 **scratch/uncommitted:** `.superpowers/sdd/p2-t3-brief.md`, `p2-t3-fix-brief.md`,
 `p2-t3-report.md`, `p2-t3-fix-report.md`, `p2-t3.testsums`; progress.md Session 20; plan DONE marker.
+
+**`.claude/skills/goal/SKILL.md` (on-disk, never-committed) — chain-audit gate (owner-approved):**
+Replaced the "First-night safety" section (§ retitled *Autonomous chain-audit gate*) and its
+step-1 orient reference. New behavior: at `AUDIT_EVERY` (=3) feat-merges since the newest
+`pre-overnight-*` tag, spawn a **fresh `Agent(general-purpose, model:"opus")`** that reads the
+**plan + spec (NOT the briefs)** + the cumulative window delta (`git diff <baseline>..HEAD -- src
+tests`) + the task list, hunting cross-task compounding / correctness / scope-creep / weak tests;
+returns `{verdict: CLEAN|BLOCKER, findings}`. CLEAN → `git tag pre-overnight-<ts>` at HEAD (window→0)
++ continue. BLOCKER → per-finding bounded auto-fix on a `fix/chain-audit-<ts>` branch (failing
+regression test + tripwire re-snapshot → Codex ≤2 attempts → gate → fresh Opus re-review → merge
+`--no-ff`); all clean → advance baseline + continue; else / >2 blockers → STOP-FLAG. Loop now runs
+unbounded until plan-complete or STOP-FLAG. Motivated by memory `brief-seeded-reviews-not-plan-independent`.
 
 ## Learnings
 
@@ -124,8 +145,8 @@ type: handoff
 | P2-T3 fix regression passes | `.venv/bin/pytest ...::test_proximity_breaks_context_tie ...::test_offset_score_populated_in_genuinely_ambiguous_candidates -q` | `2 passed` |
 | task-scoped tree clean | `git status --porcelain -- src tests eval` | empty |
 | full status = never-commit set only | `git status --porcelain` | ` M .claude/skills/goal/SKILL.md`, ` M CLAUDE.md`, `?? .claude/skills/halfblood-roadmap/`, `?? docs/superpowers/plans/...` |
-| `/goal` SKILL.md integrity (unchanged) | `sha256sum .claude/skills/goal/SKILL.md` | `183bf46b0e60224b8ee1e9fc73f8ec25b960f1628bbccefcc7c43b9947d9c8d0` |
-| **FIRST-NIGHT CAP reached** | `git log pre-overnight-2026-07-16..main --oneline \| grep -c feat:` | `2` (cap = 2 → loop stops) |
+| `/goal` SKILL.md integrity (EDITED this session — chain-audit gate) | `sha256sum .claude/skills/goal/SKILL.md` | `c42a5f9d27ba51794285ad34fc235710635ffd301327f763b0c5318fd6252eaa` |
+| chain-audit window (`AUDIT_EVERY=3`; NOT blocked) | `git log pre-overnight-2026-07-16..main --oneline \| grep -c feat:` | `2` (2/3 → next `/goal` runs P2-T4; audit fires at 3) |
 | rollback tag exists | `git tag -l pre-overnight-2026-07-16` | present (@ `27c70e2`) |
 | hbp has no remote (never push) | `git remote -v` | empty |
 | tripwire clean (Codex touched zero tests/) | `sha256sum -c --quiet .superpowers/sdd/p2-t3.testsums` + added/removed diff | both clean, exit 0 |
@@ -144,11 +165,16 @@ type: handoff
 
 ## Action Items & Next Steps
 
-0. **⛔ UNBLOCK THE CAP BEFORE RUNNING `/goal` AGAIN.** The first-night cap counts `feat:` merges
-   since `pre-overnight-2026-07-16`, now **2** (= cap). A bare `/goal` next session hits "cap
-   reached" and **no-ops before touching P2-T4**. To continue: owner tags a fresh baseline at
-   current HEAD — `git tag pre-overnight-<new-date>` — (or removes/raises the cap in the SKILL)
-   **before** the next run. Owner should also eyeball the P2-T2→P2-T3 merged chain first.
+0. **✅ NO MANUAL UNBLOCK NEEDED — the human cap is now the autonomous chain-audit gate**
+   (owner-approved change this session; on-disk in the `/goal` SKILL, new sha `c42a5f9d…`). The
+   window (feat merges since `pre-overnight-2026-07-16`) is at **2/3** (`AUDIT_EVERY=3`), so a bare
+   `/goal` next session proceeds straight to **P2-T4**. After P2-T4 merges (window → 3), the loop
+   auto-spawns a **fresh plan-independent Opus chain-audit** over the P2-T2→P2-T4 chain: CLEAN →
+   `git tag pre-overnight-<ts>` at HEAD + continue autonomously; BLOCKER → bounded auto-fix (fix
+   branch, test-first, Codex ≤2 attempts, fresh Opus re-review) else STOP-FLAG (also STOP-FLAG if
+   >2 distinct blockers). Owner can stop the loop anytime; every `pre-overnight-*` tag stays a
+   rollback point. (If the SKILL gets reverted, this falls back to the old human cap=2 — see
+   On-disk-only state.)
 1. **hbp P2-T4** (PDF targets → ordered multi-quad anchors; plan line 66; depends P2-T3). Runs
    under the hardened `/goal`. **PROBE HEAD FIRST** — check what `document_processor.find_text_rect`
    / `_find_contiguous_hit_group` already ship before writing the brief.
