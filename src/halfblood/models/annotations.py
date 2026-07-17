@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from halfblood.documents.matching import normalize
 from halfblood.models.legacy import AnnotationType
 
+Placement = Literal["margin_right", "margin_left", "inline", "between_lines"]
+
 
 class MarkIntent(str, Enum):  # noqa: UP042  # Keep the enum behavior aligned with v1.
     """Semantic mark requested for an annotation target."""
@@ -75,11 +77,9 @@ class Annotation(BaseModel):
     annotation_type: AnnotationType
     content: str = Field(min_length=1)
     confidence: float = Field(ge=0.0, le=1.0)
-    requested_placement: Literal[
-        "margin_right", "margin_left", "inline", "between_lines"
-    ]
+    requested_placement: Placement
     mark_intent: MarkIntent
     doodle_kind: str | None = None
 
 
-__all__ = ["Annotation", "MarkIntent", "TargetSelector"]
+__all__ = ["Annotation", "MarkIntent", "Placement", "TargetSelector"]
