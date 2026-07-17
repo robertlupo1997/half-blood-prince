@@ -1,5 +1,12 @@
 """Document text normalization and matching contracts."""
 
+from halfblood.documents.epub import (
+    CrossNodeMatch,
+    CrossNodeSegment,
+    iter_inline_runs,
+    locate_across_nodes,
+    selector_for,
+)
 from halfblood.documents.matching import (
     AMBIGUITY_MARGIN,
     MAX_CANDIDATES,
@@ -30,6 +37,8 @@ __all__ = [
     "MAX_NEEDLE_CHARS",
     "MIN_CONTEXT_SCORE",
     "AmbiguousResult",
+    "CrossNodeMatch",
+    "CrossNodeSegment",
     "MatchResult",
     "NoMatchResult",
     "NormalizedText",
@@ -39,7 +48,10 @@ __all__ = [
     "RawSpan",
     "ScoredCandidate",
     "ScoringOutcome",
+    "iter_inline_runs",
+    "locate_across_nodes",
     "normalize",
     "resolve_pdf_anchor",
     "score_candidates",
+    "selector_for",
 ]
