@@ -156,6 +156,40 @@ def test_phrase_wrapping_three_lines_yields_three_ordered_quads() -> None:
     assert tops == sorted(tops), "quads must be in top-to-bottom reading order"
 
 
+def test_rotated_180_multiline_quads_follow_content_stream_not_visual_order() -> None:
+    """P2-T4 fold-in (chain-audit #1): pin that multi-line quad order is CONTENT-STREAM
+    order (the order ``get_text``/``rawdict`` emit lines), NOT visual top-to-bottom.
+
+    On an unrotated page the two coincide, which is exactly why the test above cannot
+    distinguish them — it must be pinned where they diverge. Under 180-degree rotation the
+    first content line ("alpha", inserted near the top) renders at the visual BOTTOM of
+    displayed space, so a resolver returning content-stream order yields quads whose display
+    y-tops are DESCENDING — the reverse of the unrotated ordering. A resolver that instead
+    sorted quads by display geometry would reorder them and fail this test. This is the
+    behavior the ``PdfAnchor`` docstring documents and the P2-T6 layout contract relies on.
+    """
+    page = _one_liner("alpha valerian one", "beta valerian two")
+    page.set_rotation(180)
+    index = PdfPageIndex(page)
+    start = _span(index, "alpha valerian one")[0]
+    end = _span(index, "beta valerian two")[1]
+    anchor = resolve_pdf_anchor(index, start, end)
+    assert anchor is not None
+    assert anchor.line_count == 2
+    assert anchor.page_rotation == 180
+    tops = [quad.rect.y0 for quad in anchor.quads]
+    # quads[0] is the first CONTENT line ("alpha"); under 180deg it is the visually LOWEST,
+    # so content-stream order is the exact reverse of visual top-to-bottom order.
+    assert tops == sorted(tops, reverse=True), (
+        "quads[0] (first content line) must be the visually lowest under 180deg — the "
+        "resolver must return content-stream order, not visual top-to-bottom order"
+    )
+    assert tops != sorted(tops), "non-vacuous: content-stream order differs from visual order"
+    for quad in anchor.quads:
+        assert _finite_rect(quad.rect)
+        assert quad.rect in page.rect
+
+
 def test_single_line_selection_is_one_quad() -> None:
     page = _one_liner("the sopophorous bean releases its juice")
     index = PdfPageIndex(page)

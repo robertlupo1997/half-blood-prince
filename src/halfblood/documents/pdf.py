@@ -13,7 +13,15 @@ class PdfAlignmentError(RuntimeError):
 
 @dataclass(frozen=True)
 class PdfAnchor:
-    """A resolved PDF target: one quad per touched line, in reading order."""
+    """A resolved PDF target: one quad per touched line, in reading order.
+
+    "Reading order" here means **content-stream order** (the order lines are emitted
+    by ``page.get_text`` / ``rawdict``), which is *not* necessarily visual
+    top-to-bottom order. On an unrotated page the two coincide, but under page
+    rotation they diverge: e.g. at 180 degrees ``quads[0]`` (the first content line)
+    is the visually *lowest* quad in displayed space. Consumers must treat quad order
+    as the character-range order, never assume ``quads[0]`` is the topmost on screen.
+    """
 
     quads: tuple[fitz.Quad, ...]
     char_range: tuple[int, int]
