@@ -25,10 +25,22 @@ from __future__ import annotations
 
 import unicodedata
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Union
+
+if TYPE_CHECKING:
+    from halfblood.models.annotations import TargetSelector
 
 MAX_INPUT_CHARS = 50_000
 MAX_NEEDLE_CHARS = 5_000
 MAX_CANDIDATES = 500
+
+MIN_CONTEXT_SCORE: float = 0.0
+# Minimum context_score for a MatchResult candidate. 0.0 = never reject on score alone
+# (callers inspect context_score themselves). Named so callers can tune it.
+
+AMBIGUITY_MARGIN: float = 0.15
+# context_score difference at or below which two or more candidates in the winning tier are a
+# near-tie -> AmbiguousResult instead of a guessed MatchResult. Covers exact ties (diff == 0).
 
 _PUNCTUATION_FOLDS = {
     "‘": "'",
@@ -46,6 +58,41 @@ class RawSpan:
 
     start: int
     end: int
+
+
+@dataclass
+class ScoredCandidate:
+    """A single located candidate with its scoring evidence."""
+
+    raw_span: RawSpan
+    context_score: float
+    offset_score: float
+    exactness_tier: int
+    reason: str
+
+
+@dataclass
+class MatchResult:
+    """A single confident candidate from the winning exactness tier."""
+
+    candidate: ScoredCandidate
+
+
+@dataclass
+class AmbiguousResult:
+    """Two or more near-tie candidates in ascending source order."""
+
+    candidates: list[ScoredCandidate]
+
+
+@dataclass
+class NoMatchResult:
+    """No candidate in any tier, or a top candidate below the score threshold."""
+
+    reason: str
+
+
+ScoringOutcome = Union[MatchResult, AmbiguousResult, NoMatchResult]  # noqa: UP007
 
 
 def normalize(text: str) -> str:
@@ -232,3 +279,203 @@ class NormalizedText:
             end = start + len(normalized_needle)
             matches.append(self.raw_span(start, end))
             search_from = end
+
+
+def _exactness_tiers(normalized_exact: str) -> list[str]:
+    """Build the ordered, de-duplicated legacy exactness ladder."""
+    words = normalized_exact.split(" ")
+    variants = [normalized_exact]
+    if len(words) > 8:
+        variants.append(" ".join(words[:8]))
+    if len(words) > 5:
+        variants.append(" ".join(words[:5]))
+    if len(words) > 3:
+        variants.append(" ".join(words[:3]))
+
+    longest = max(
+        (word.strip(".,;:!?\"'()") for word in words),
+        key=len,
+        default="",
+    )
+    if len(longest) >= 4:
+        variants.append(longest)
+
+    seen: set[str] = set()
+    tiers: list[str] = []
+    for variant in variants:
+        if variant and variant not in seen:
+            seen.add(variant)
+            tiers.append(variant)
+    return tiers
+
+
+def _find_normalized_occurrences(
+    text: NormalizedText,
+    needle: str,
+) -> list[tuple[int, int, RawSpan]]:
+    """Return bounded non-overlapping normalized and raw occurrence spans."""
+    if len(needle) > MAX_NEEDLE_CHARS:
+        raise ValueError(f"needle exceeds MAX_NEEDLE_CHARS ({MAX_NEEDLE_CHARS})")
+    if not needle.strip():
+        raise ValueError("needle must contain a non-whitespace character")
+
+    matches: list[tuple[int, int, RawSpan]] = []
+    search_from = 0
+    while True:
+        start = text.text.find(needle, search_from)
+        if start < 0:
+            return matches
+        if len(matches) == MAX_CANDIDATES:
+            raise ValueError(f"match count exceeds MAX_CANDIDATES ({MAX_CANDIDATES})")
+        end = start + len(needle)
+        matches.append((start, end, text.raw_span(start, end)))
+        search_from = end
+
+
+def _context_score(
+    norm_text: str,
+    n_start: int,
+    n_end: int,
+    selector: TargetSelector,
+) -> float:
+    """Return the fraction of provided context fields that agree."""
+    checks = 0
+    agreements = 0
+    if selector.normalized_prefix is not None:
+        checks += 1
+        prefix = selector.normalized_prefix
+        if norm_text[max(0, n_start - len(prefix)) : n_start].endswith(prefix):
+            agreements += 1
+    if selector.normalized_suffix is not None:
+        checks += 1
+        suffix = selector.normalized_suffix
+        if norm_text[n_end : n_end + len(suffix)].startswith(suffix):
+            agreements += 1
+    return 1.0 if checks == 0 else agreements / checks
+
+
+def _offset_score(n_start: int, start_offset: int | None, norm_text_len: int) -> float:
+    """Return normalized proximity to start_offset, or zero when unavailable."""
+    if start_offset is None or norm_text_len == 0:
+        return 0.0
+    return max(0.0, 1.0 - abs(n_start - start_offset) / norm_text_len)
+
+
+def _candidate(
+    selector: TargetSelector,
+    text: NormalizedText,
+    exactness_tier: int,
+    occurrence: tuple[int, int, RawSpan],
+) -> ScoredCandidate:
+    """Score one occurrence without including selector or source text in diagnostics."""
+    n_start, n_end, span = occurrence
+    context_score = _context_score(text.text, n_start, n_end, selector)
+    offset_score = _offset_score(n_start, selector.start_offset, len(text.text))
+    reason = (
+        f"tier={exactness_tier} context={context_score:.2f} "
+        f"offset={offset_score:.2f} pos={span.start}"
+    )
+    return ScoredCandidate(
+        raw_span=span,
+        context_score=context_score,
+        offset_score=offset_score,
+        exactness_tier=exactness_tier,
+        reason=reason,
+    )
+
+
+def score_candidates(
+    selector: TargetSelector,
+    text: NormalizedText,
+    *,
+    legacy_exact_only: bool = False,
+) -> ScoringOutcome:
+    """Rank candidates across exactness tiers and reject ambiguous targets.
+
+    Default mode searches the full quote followed by progressively shorter legacy
+    fallbacks, stopping at the first tier with occurrences. Candidates in that tier
+    are ranked by context agreement, offset proximity, and source position.
+
+    Legacy mode searches only the full normalized quote and returns its first
+    occurrence without scoring or fallback selection.
+    """
+    tiers = _exactness_tiers(selector.normalized_exact)
+    if not tiers:
+        return NoMatchResult(reason="tiers=0 candidates=0")
+
+    if legacy_exact_only:
+        try:
+            occurrences = _find_normalized_occurrences(text, tiers[0])
+        except ValueError:
+            return NoMatchResult(reason="legacy=1 tier=0 bounded=0")
+        if not occurrences:
+            return NoMatchResult(reason="legacy=1 tier=0 candidates=0")
+        _n_start, _n_end, span = occurrences[0]
+        return MatchResult(
+            ScoredCandidate(
+                raw_span=span,
+                context_score=1.0,
+                offset_score=0.0,
+                exactness_tier=0,
+                reason="legacy: first occurrence tier=0",
+            )
+        )
+
+    winning_tier: int | None = None
+    winning_occurrences: list[tuple[int, int, RawSpan]] = []
+    for tier, needle in enumerate(tiers):
+        try:
+            occurrences = _find_normalized_occurrences(text, needle)
+        except ValueError:
+            return NoMatchResult(reason=f"tier={tier} bounded=0")
+        if occurrences:
+            winning_tier = tier
+            winning_occurrences = occurrences
+            break
+
+    if winning_tier is None:
+        return NoMatchResult(reason=f"tiers={len(tiers)} candidates=0")
+
+    candidates = [
+        _candidate(selector, text, winning_tier, occurrence)
+        for occurrence in winning_occurrences
+    ]
+    max_context = max(candidate.context_score for candidate in candidates)
+    if max_context < MIN_CONTEXT_SCORE:
+        top = max(
+            candidates,
+            key=lambda candidate: (
+                candidate.context_score,
+                candidate.offset_score,
+                -candidate.raw_span.start,
+            ),
+        )
+        return NoMatchResult(
+            reason=(
+                f"tier={winning_tier} context={top.context_score:.2f} "
+                f"threshold={MIN_CONTEXT_SCORE:.2f} pos={top.raw_span.start}"
+            )
+        )
+
+    contention = [
+        candidate
+        for candidate in candidates
+        if max_context - candidate.context_score <= AMBIGUITY_MARGIN
+    ]
+    contention.sort(
+        key=lambda candidate: (-candidate.offset_score, candidate.raw_span.start)
+    )
+    if len(contention) == 1:
+        return MatchResult(contention[0])
+
+    top, runner = contention[0], contention[1]
+    if top.offset_score - runner.offset_score > AMBIGUITY_MARGIN:
+        return MatchResult(top)
+
+    pool = [
+        candidate
+        for candidate in contention
+        if top.offset_score - candidate.offset_score <= AMBIGUITY_MARGIN
+    ]
+    pool.sort(key=lambda candidate: candidate.raw_span.start)
+    return AmbiguousResult(pool)
