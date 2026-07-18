@@ -47,6 +47,12 @@ from halfblood.documents import (
     normalize,
     resolve_pdf_anchor,
 )
+from halfblood.layout.engine import (
+    LayoutConfig,
+    LayoutResult,
+    NoteMeasurer,
+    NoteRequest,
+)
 from halfblood.models import (
     AnnotatedPage,
     Annotation,
@@ -910,3 +916,32 @@ class DocumentProcessor:
                     annotation = annotation.model_copy(update={"page": page.page_number})
                 flattened.append(annotation)
         return flattened
+
+
+def layout_page_annotations(
+    page: fitz.Page,
+    requests: Sequence[NoteRequest],
+    body_occupancy: Sequence[fitz.Rect],
+    measurer: NoteMeasurer,
+    config: LayoutConfig | None = None,
+) -> LayoutResult:
+    """Bridge fitz page geometry to the surface-neutral layout engine.
+
+    This is the sole P2-T7 modification to document_processor.py.
+    It converts fitz.Page.rect and fitz.Rect body occupancy into SurfaceRect
+    values, then delegates to run_layout. Does NOT modify add_margin_note.
+
+    Args:
+        page: A fitz.Page; its .rect provides the surface bounds.
+        requests: NoteRequest list (annotation_ids, anchors, placements, etc.).
+        body_occupancy: fitz.Rect list of regions that contain body text.
+        measurer: NoteMeasurer protocol implementation.
+        config: LayoutConfig; defaults to LayoutConfig() if None.
+    """
+    from halfblood.layout.anchors import surf_rect_from_fitz
+    from halfblood.layout.engine import run_layout
+
+    cfg = config if config is not None else LayoutConfig()
+    page_rect = surf_rect_from_fitz(page.rect)
+    body_surf = [surf_rect_from_fitz(rect) for rect in body_occupancy]
+    return run_layout(requests, page_rect, body_surf, measurer, config=cfg)
