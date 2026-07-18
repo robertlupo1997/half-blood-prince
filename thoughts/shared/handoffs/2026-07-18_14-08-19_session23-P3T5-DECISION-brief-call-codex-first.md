@@ -105,9 +105,11 @@ P3-T6→T10. **NO-GO** permanently blocks them for this milestone.
 1. **Call Codex** with the question above; relay its recommendation.
 2. **Explain outline-vs-single-stroke** to the owner (coloring-book vs connect-the-dots), and surface
    the deeper "is procedural handwriting worth it vs. font typesetting" question.
-3. **Get the owner's decision**, then **write `docs/decisions/stroke-assets.md`** with the full
-   provenance record (GO) or the recorded NO-GO. On GO also plan `src/halfblood/ink/assets/manifest.json`
-   + `tests/test_ink_asset_manifest.py` (that IS P3-T5's deliverable).
+3. **Get the owner's decision**, then **fill in the pre-scaffolded `docs/decisions/stroke-assets.md`**
+   (already created @ `aa841b9`, `status: PENDING` — it has the options table, a Codex-recommendation
+   slot, and the full provenance-record form; complete it, don't recreate it). On GO also plan
+   `src/halfblood/ink/assets/manifest.json` + `tests/test_ink_asset_manifest.py` (that IS P3-T5's
+   deliverable).
 4. **Then resume** `/loop /goal` — GO drives P3-T6→T10; carry the **F2 latent bug** (P3-T7 must make
    `_douglas_peucker`/`simplify_commands` cubic-aware) and the **Codex-timeout mechanism fix** (wrap
    dispatch in `timeout 720 codex-safe.sh`) from the state handoff.
