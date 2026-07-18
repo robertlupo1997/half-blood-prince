@@ -1,0 +1,25 @@
+{
+  "style_version": "1.0",
+  "palette": {
+    "ink_color": "#1a0a00",
+    "highlight_color": "#b8860b",
+    "shadow_color": "#3c2a1a",
+    "base_opacity": 0.9
+  },
+  "nib": {
+    "base_width": 1.5,
+    "min_width": 0.5,
+    "max_width": 3.0
+  },
+  "variation": {
+    "slant_noise": 0.08,
+    "width_noise": 0.04
+  },
+  "readability": {
+    "min_scale": 0.55
+  },
+  "budget": {
+    "max_points": 8000,
+    "max_paths": 400
+  }
+}
