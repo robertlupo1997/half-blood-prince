@@ -1,0 +1,62 @@
+{
+  "scene_version": "1.0",
+  "ink_algorithm_version": "procedural-v1",
+  "annotation_id": "ann-001",
+  "seed": 42,
+  "bounds": {"x0": 0.0, "y0": 0.0, "x1": 100.0, "y1": 200.0},
+  "degradation_flags": [],
+  "groups": [
+    {
+      "group_id": "g-underline-0",
+      "role": "underline",
+      "paths": [
+        {
+          "commands": [
+            {"kind": "M", "x": 10.0, "y": 50.0},
+            {"kind": "L", "x": 90.0, "y": 50.0}
+          ],
+          "samples": [],
+          "stroke": {
+            "color": "#1a0a00",
+            "base_width": 1.5,
+            "opacity": 0.9,
+            "cap": "round",
+            "join": "round"
+          },
+          "width_profile": [
+            {"position": 0.0, "width": 0.8},
+            {"position": 0.5, "width": 1.2},
+            {"position": 1.0, "width": 0.8}
+          ],
+          "transform": {"matrix": [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]},
+          "z_index": 0,
+          "accessibility_label": "underline mark"
+        }
+      ]
+    },
+    {
+      "group_id": "g-connector-0",
+      "role": "connector",
+      "paths": [
+        {
+          "commands": [
+            {"kind": "M", "x": 5.0, "y": 100.0},
+            {"kind": "C", "x1": 5.0, "y1": 80.0, "x2": 50.0, "y2": 60.0, "x": 60.0, "y": 55.0}
+          ],
+          "samples": [],
+          "stroke": {
+            "color": "#2b1500",
+            "base_width": 1.0,
+            "opacity": 0.85,
+            "cap": "round",
+            "join": "round"
+          },
+          "width_profile": [],
+          "transform": {"matrix": [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]},
+          "z_index": 1,
+          "accessibility_label": "connector arrow"
+        }
+      ]
+    }
+  ]
+}
