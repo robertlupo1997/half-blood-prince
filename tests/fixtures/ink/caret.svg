@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0.0 0.0 100.0 200.0" width="300" height="600">
+  <title>Caret — insertion point</title>
+  <!-- role=caret group_id=caret-golden seed=42 algo=p3t3-v1 -->
+  <rect width="100%" height="100%" fill="#f5f0e8"/>
+  <path d="M 46.258 80.539 L 49.898 75.755" fill="none" stroke="#1a0a00" stroke-width="1.500" opacity="0.90" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 49.898 75.755 L 53.538 80.539" fill="none" stroke="#1a0a00" stroke-width="1.500" opacity="0.90" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
