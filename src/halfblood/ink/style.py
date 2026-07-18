@@ -63,6 +63,19 @@ class BudgetProfile(_StyleBase):
     max_paths: int = Field(gt=0)
 
 
+class RoughProfile(_StyleBase):
+    """Parameters governing rough-ink generation geometry."""
+
+    overshoot_ratio: float = Field(ge=0.0, le=0.5, default=0.12)
+    """Fraction of line width to overshoot at each end of linear marks."""
+
+    wobble_amplitude: float = Field(ge=0.0, le=0.5, default=0.05)
+    """Cubic-wobble amplitude as a fraction of connector length."""
+
+    connector_max_route_attempts: int = Field(ge=1, le=32, default=8)
+    """Routing attempts before recording a connector fallback."""
+
+
 class InkStyleProfile(_StyleBase):
     style_version: str = "1.0"
     palette: InkPalette
@@ -70,6 +83,7 @@ class InkStyleProfile(_StyleBase):
     variation: VariationProfile
     readability: ReadabilityProfile
     budget: BudgetProfile
+    rough: RoughProfile = Field(default_factory=RoughProfile)
 
 
 def load_ink_style_profile(data: dict[str, Any]) -> InkStyleProfile:
@@ -111,6 +125,7 @@ __all__ = [
     "InkStyleProfile",
     "NibProfile",
     "ReadabilityProfile",
+    "RoughProfile",
     "VariationProfile",
     "canonical_style_hash",
     "load_builtin_style",

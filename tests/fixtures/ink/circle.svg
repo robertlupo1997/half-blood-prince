@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0.0 0.0 100.0 200.0" width="300" height="600">
+  <title>Circle — 2-quad cluster</title>
+  <!-- role=circle group_id=circle-golden seed=42 algo=p3t3-v1 -->
+  <rect width="100%" height="100%" fill="#f5f0e8"/>
+  <path d="M 83.600 41.000 C 83.223 47.746 68.651 53.688 50.000 54.640 C 32.398 55.298 16.076 48.902 16.400 41.000 C 15.477 33.390 30.755 28.145 50.000 27.360 C 67.298 26.658 81.642 33.627 83.418 39.580" fill="none" stroke="#1a0a00" stroke-width="1.500" opacity="0.90" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

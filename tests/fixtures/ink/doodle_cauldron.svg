@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0.0 0.0 100.0 200.0" width="300" height="600">
+  <title>Doodle — cauldron</title>
+  <!-- role=doodle group_id=doodle-cauldron seed=42 algo=p3t3-v1 -->
+  <rect width="100%" height="100%" fill="#f5f0e8"/>
+  <path d="M 39.800 52.600 C 40.160 61.600 45.800 64.000 50.528 63.640 C 54.200 64.000 59.840 61.600 60.200 52.600 L 39.800 52.600" fill="none" stroke="#1a0a00" stroke-width="1.500" opacity="0.90" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 45.440 61.960 L 43.760 66.760" fill="none" stroke="#1a0a00" stroke-width="1.500" opacity="0.90" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 54.560 61.960 L 56.240 66.760" fill="none" stroke="#1a0a00" stroke-width="1.500" opacity="0.90" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

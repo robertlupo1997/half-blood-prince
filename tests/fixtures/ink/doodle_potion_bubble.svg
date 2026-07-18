@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0.0 0.0 100.0 200.0" width="300" height="600">
+  <title>Doodle — potion_bubble</title>
+  <!-- role=doodle group_id=doodle-potion_bubble seed=42 algo=p3t3-v1 -->
+  <rect width="100%" height="100%" fill="#f5f0e8"/>
+  <path d="M 57.489 160.000 C 58.088 163.307 53.145 165.975 50.000 165.335 C 45.357 164.908 41.762 159.552 42.511 160.000 C 42.886 155.626 54.119 154.132 57.339 159.253" fill="none" stroke="#1a0a00" stroke-width="1.500" opacity="0.90" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
