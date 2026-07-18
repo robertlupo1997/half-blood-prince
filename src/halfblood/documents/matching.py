@@ -39,8 +39,13 @@ MIN_CONTEXT_SCORE: float = 0.0
 # (callers inspect context_score themselves). Named so callers can tune it.
 
 AMBIGUITY_MARGIN: float = 0.15
-# context_score difference at or below which two or more candidates in the winning tier are a
-# near-tie -> AmbiguousResult instead of a guessed MatchResult. Covers exact ties (diff == 0).
+# Dual role — both thresholds use the same value:
+# (1) Context-score near-tie: when two or more candidates in the winning tier have
+#     a context_score difference <= AMBIGUITY_MARGIN, the outcome is AmbiguousResult
+#     instead of a guessed MatchResult.  Covers exact ties (diff == 0).
+# (2) Offset-score tiebreaker: when two candidates are already within AMBIGUITY_MARGIN
+#     of each other on context_score, their offset_score difference must exceed
+#     AMBIGUITY_MARGIN to break the tie; otherwise offset_score is treated as negligible.
 
 _PUNCTUATION_FOLDS = {
     "‘": "'",
@@ -355,7 +360,12 @@ def _context_score(
 
 
 def _offset_score(n_start: int, start_offset: int | None, norm_text_len: int) -> float:
-    """Return normalized proximity to start_offset, or zero when unavailable."""
+    """Return normalized proximity to start_offset, or zero when unavailable.
+
+    ``start_offset`` is a **normalized-text** character position — specifically
+    the output index from ``_normalize_with_spans``, NOT a raw byte offset or
+    a character position in the original un-normalized document text.
+    """
     if start_offset is None or norm_text_len == 0:
         return 0.0
     return max(0.0, 1.0 - abs(n_start - start_offset) / norm_text_len)

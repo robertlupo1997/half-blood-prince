@@ -349,3 +349,53 @@ def test_layout_page_annotations_adapter_returns_layout_result() -> None:
     page = doc.new_page(width=_PAGE_W, height=_PAGE_H)
     result = layout_page_annotations(page, [req], [], _FM())
     assert isinstance(result, LayoutResult)
+
+
+# ---------------------------------------------------------------------------
+# P2-T8 fold-in — fitz_rect_from_surf inverse converter
+# ---------------------------------------------------------------------------
+
+
+def test_fitz_rect_from_surf_roundtrips_through_surf_rect_from_fitz() -> None:
+    """fitz_rect_from_surf must be the exact inverse of surf_rect_from_fitz.
+
+    This test fails against HEAD because fitz_rect_from_surf does not exist
+    in halfblood.layout.anchors yet (P2-T8 adds it).
+    """
+    from halfblood.layout.anchors import fitz_rect_from_surf, surf_rect_from_fitz
+    from halfblood.models.rendering import SurfaceRect
+
+    original = fitz.Rect(10.5, 20.0, 300.0, 400.5)
+    surf = surf_rect_from_fitz(original)
+    assert isinstance(surf, SurfaceRect)
+
+    recovered = fitz_rect_from_surf(surf)
+    assert isinstance(recovered, fitz.Rect)
+    assert recovered.x0 == pytest.approx(original.x0)
+    assert recovered.y0 == pytest.approx(original.y0)
+    assert recovered.x1 == pytest.approx(original.x1)
+    assert recovered.y1 == pytest.approx(original.y1)
+
+
+def test_fitz_rect_from_surf_quad_returns_bounding_rect() -> None:
+    """fitz_rect_from_surf_quad must return the axis-aligned bounding box.
+
+    This test fails against HEAD because fitz_rect_from_surf_quad does not
+    exist in halfblood.layout.anchors yet (P2-T8 adds it).
+    """
+    from halfblood.layout.anchors import fitz_rect_from_surf_quad
+    from halfblood.models.rendering import SurfacePoint, SurfaceQuad
+
+    # An axis-aligned quad at (100, 300) to (400, 312).
+    q = SurfaceQuad(
+        ul=SurfacePoint(x=100.0, y=300.0),
+        ur=SurfacePoint(x=400.0, y=300.0),
+        lr=SurfacePoint(x=400.0, y=312.0),
+        ll=SurfacePoint(x=100.0, y=312.0),
+    )
+    rect = fitz_rect_from_surf_quad(q)
+    assert isinstance(rect, fitz.Rect)
+    assert rect.x0 == pytest.approx(100.0)
+    assert rect.y0 == pytest.approx(300.0)
+    assert rect.x1 == pytest.approx(400.0)
+    assert rect.y1 == pytest.approx(312.0)
