@@ -427,12 +427,19 @@ def annotate(
 
         # Render
         render_task = progress.add_task("Rendering annotated file...", total=1)
-        if isinstance(processor, DocumentProcessor):
-            flat_annotations = processor.annotations_from_plan(plan)
+        if isinstance(processor, DocumentProcessor) and hasattr(processor, "render_plan"):
+            from halfblood.models.documents import migrate_v1_to_v2
+
+            v2_plan = migrate_v1_to_v2(plan.model_dump())
+            report = processor.render_plan(str(input_file), v2_plan, str(output_file))
         else:
             flat_annotations = [a for ap in plan.pages for a in ap.annotations]
-        processor.render_annotations(str(input_file), flat_annotations, str(output_file))
+            processor.render_annotations(str(input_file), flat_annotations, str(output_file))
+            report = None
         progress.update(render_task, completed=1)
+
+    if report is not None:
+        console.print(f"Rendered {report.rendered_count} / Skipped {report.skipped_count}")
 
     if generator.failed_pages:
         console.print(

@@ -52,3 +52,21 @@ def pdf_anchor_to_resolved_anchor(anchor: PdfAnchor) -> ResolvedAnchor:
         char_range=anchor.char_range,
         quads=tuple(surf_quad_from_fitz(quad) for quad in anchor.quads),
     )
+
+
+def fitz_rect_from_surf(surf: SurfaceRect) -> fitz.Rect:
+    """Convert a renderer-neutral surface rectangle back to a fitz.Rect.
+
+    Inverse of surf_rect_from_fitz.
+    """
+    return fitz.Rect(surf.x0, surf.y0, surf.x1, surf.y1)
+
+
+def fitz_rect_from_surf_quad(quad: SurfaceQuad) -> fitz.Rect:
+    """Return the axis-aligned bounding rectangle of a SurfaceQuad.
+
+    Uses all four corners so it is correct for rotated quads.
+    """
+    xs = (quad.ul.x, quad.ur.x, quad.lr.x, quad.ll.x)
+    ys = (quad.ul.y, quad.ur.y, quad.lr.y, quad.ll.y)
+    return fitz.Rect(min(xs), min(ys), max(xs), max(ys))

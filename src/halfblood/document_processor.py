@@ -33,11 +33,15 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import random
 import re
+import tempfile
 from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import fitz  # PyMuPDF
 
@@ -59,6 +63,12 @@ from halfblood.models import (
     AnnotationPlan,
     AnnotationType,
 )
+
+if TYPE_CHECKING:
+    from halfblood.documents.pdf import PdfAnchor
+    from halfblood.models.annotations import Annotation as V2Annotation
+    from halfblood.models.documents import AnnotationPlan as V2AnnotationPlan
+    from halfblood.models.rendering import RenderReport, ResolvedAnnotation
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +135,22 @@ class DocumentProcessor:
     """Extracts text from PDFs and renders Half-Blood-Prince-style
     handwritten margin annotations back onto them.
     """
+
+    class _LayoutMeasurer:
+        """NoteMeasurer adapter wrapping the processor's handwriting font metric.
+
+        Satisfies layout.engine.NoteMeasurer without importing the protocol.
+        """
+
+        def __init__(self, font: Any, base_fontsize: float = 9.0) -> None:
+            self._font = font
+            self._base_fontsize = base_fontsize
+
+        def measure(self, text: str, max_width: float, scale: float) -> tuple[float, float]:
+            fontsize = self._base_fontsize * scale
+            # Clamp width to the column; approximate line height as fontsize * 1.3.
+            width = min(max_width, self._font.text_length(text, fontsize=fontsize))
+            return (width, fontsize * 1.3)
 
     def __init__(
         self,
@@ -410,6 +436,81 @@ class DocumentProcessor:
         logger.warning("Could not locate target_text %r on page", text)
         return None
 
+    def _render_seed_for(self, annotation_id: str, document_seed: int) -> int:
+        """Derive a stable per-annotation render seed from document seed + annotation id."""
+        import hashlib
+
+        digest = hashlib.sha256(f"render:{document_seed}:{annotation_id}".encode()).digest()
+        return int.from_bytes(digest[:8], byteorder="big", signed=False)
+
+    def _resolve_annotation_to_anchor(
+        self,
+        page: fitz.Page,
+        index: PdfPageIndex | None,
+        annotation: V2Annotation,
+    ) -> PdfAnchor | None:
+        """Resolve a V2 annotation target to per-line quads, or None if not found.
+
+        Uses the same _search_variants + page.search_for chain as find_text_rect
+        but returns the PdfAnchor with individual per-line quads intact — it does
+        NOT call bounding_rect().
+
+        When index is None (PdfAlignmentError on this page), synthesizes a single-quad
+        anchor from the search hit's union rect so the page still renders.
+
+        Args:
+            page: The fitz.Page to search.
+            index: The pre-built PdfPageIndex for this page, or None.
+            annotation: A V2 Annotation whose target.exact is the search string.
+
+        Returns:
+            PdfAnchor with per-line quads, or None if the target cannot be found.
+        """
+        from halfblood.documents.pdf import PdfAnchor
+
+        normalized = self._normalize_search_text(annotation.target.exact)
+        if not normalized:
+            return None
+
+        def _fallback_anchor(rect: fitz.Rect) -> PdfAnchor:
+            return PdfAnchor(
+                quads=(rect.quad,),
+                char_range=(0, 0),
+                line_count=1,
+                page_rotation=page.rotation,
+            )
+
+        for variant in self._search_variants(normalized):
+            hits = page.search_for(variant)
+            if not hits:
+                continue
+
+            group = self._first_contiguous_hit_group_rects(hits)
+            if index is None:
+                return _fallback_anchor(self._union_rects(group))
+
+            span = index.char_span_for_rects(group)
+            if span is None:
+                return _fallback_anchor(self._union_rects(group))
+
+            anchor = resolve_pdf_anchor(index, *span)
+            if anchor is not None:
+                return anchor
+            return _fallback_anchor(self._union_rects(group))
+
+        # Last resort: word-normalized fallback
+        normalized_rect = self._find_normalized_word_rect(page, normalized)
+        if normalized_rect is not None:
+            if index is not None:
+                span = index.char_span_for_rects([normalized_rect])
+                if span is not None:
+                    anchor = resolve_pdf_anchor(index, *span)
+                    if anchor is not None:
+                        return anchor
+            return _fallback_anchor(normalized_rect)
+
+        return None
+
     # ----------------------------------------------------------------
     # Rendering
     # ----------------------------------------------------------------
@@ -469,6 +570,244 @@ class DocumentProcessor:
             doc.save(output_path, garbage=4, deflate=True)
         finally:
             doc.close()
+
+    def _draw_resolved_note(
+        self,
+        page: fitz.Page,
+        resolved_ann: ResolvedAnnotation,
+        annotation: V2Annotation,
+    ) -> None:
+        """Draw the annotation note at the layout-resolved note_box.
+
+        This is the resolved-plan counterpart to the _write_margin_text family:
+        it BYPASSES _write_margin_text (which recomputes placement from scratch)
+        and writes directly into the pre-resolved note_box rect.
+
+        Args:
+            page: The fitz.Page to draw on.
+            resolved_ann: The placed ResolvedAnnotation from LayoutResult; its
+                note_box and anchor carry the resolver's geometry.
+            annotation: The original V2 Annotation for content, type, confidence.
+        """
+        from halfblood.layout.anchors import fitz_rect_from_surf, fitz_rect_from_surf_quad
+
+        if resolved_ann.note_box is None:
+            return
+
+        note_rect = fitz_rect_from_surf(resolved_ann.note_box)
+        ink = self._ink_color(annotation.annotation_type)
+        opacity = self._opacity(annotation.confidence)
+        angle = self._organic_angle(annotation.content)
+        fontsize = _FONT_SIZE_BY_TYPE.get(annotation.annotation_type, 9.0)
+
+        shape = page.new_shape()
+
+        # Write text lines inside the note_box.
+        note_width = max(1.0, note_rect.width)
+        lines = self._wrap_text(annotation.content, note_width, fontsize)
+        line_gap = fontsize * 1.3
+        y = note_rect.y0 + fontsize
+
+        for line in lines:
+            if y > note_rect.y1 + line_gap:
+                break
+            pivot = fitz.Point((note_rect.x0 + note_rect.x1) / 2.0, y)
+            morph = (pivot, fitz.Matrix(angle))
+            shape.insert_text(
+                fitz.Point(note_rect.x0, y),
+                line,
+                fontfile=self._fontfile,
+                fontname=self._fontname,
+                fontsize=fontsize,
+                color=ink,
+                morph=morph,
+            )
+            y += line_gap
+
+        # Connector: from note_box anchor point to the first target quad's rect.
+        if resolved_ann.anchor and resolved_ann.anchor.quads:
+            target_rect = fitz_rect_from_surf_quad(resolved_ann.anchor.quads[0])
+            # Determine which side the note is on relative to the target.
+            note_cx = (note_rect.x0 + note_rect.x1) / 2.0
+            target_cx = (target_rect.x0 + target_rect.x1) / 2.0
+            connector_side = "right" if note_cx > target_cx else "left"
+            connector_anchor = fitz.Point(
+                note_rect.x1 if connector_side == "left" else note_rect.x0,
+                (note_rect.y0 + note_rect.y1) / 2.0,
+            )
+            self._draw_connector(
+                shape,
+                target_rect,
+                connector_anchor,
+                ink,
+                opacity,
+                side=connector_side,
+            )
+
+        shape.commit(overlay=True)
+
+    def render_plan(
+        self,
+        input_path: str,
+        plan: V2AnnotationPlan,
+        output_path: str,
+    ) -> RenderReport:
+        """Render a V2 AnnotationPlan onto a PDF using resolved anchors and layout.
+
+        Pipeline per page:
+          1. Build PdfPageIndex for per-char geometry.
+          2. _resolve_annotation_to_anchor: each annotation → PdfAnchor or MISSING.
+          3. layout_page_annotations: assigns note_box and placement to each request.
+          4. For placed annotations: _mark_target per quad; _draw_resolved_note.
+          5. Accumulate rendered IDs and SkipRecords into a RenderReport.
+
+        Output is written atomically: fitz saves to a temp file in the same directory,
+        then os.replace to output_path.
+
+        This method does NOT touch render_annotations or add_margin_note.
+
+        Args:
+            input_path: Source PDF path.
+            plan: A validated V2 AnnotationPlan (halfblood.models.documents.AnnotationPlan).
+            output_path: Destination PDF path (created or overwritten atomically).
+
+        Returns:
+            RenderReport with rendered/skipped partition covering all input annotations.
+        """
+        from halfblood.layout.anchors import (
+            fitz_rect_from_surf_quad,
+            pdf_anchor_to_resolved_anchor,
+        )
+        from halfblood.models.documents import Unit
+        from halfblood.models.rendering import RenderReport, SkipReason, SkipRecord
+
+        # Build per-page lookup: ordinal -> (unit, [V2Annotation])
+        # and per-id lookup for the draw phase.
+        by_page: dict[int, tuple[Unit, list[V2Annotation]]] = {}
+        ann_by_id: dict[str, tuple[Unit, V2Annotation]] = {}
+        for unit in plan.units:
+            by_page[unit.ordinal] = (unit, list(unit.annotations))
+            for ann in unit.annotations:
+                ann_by_id[ann.id] = (unit, ann)
+
+        rendered_ids: list[str] = []
+        skip_records: list[SkipRecord] = []
+        measurer = self._LayoutMeasurer(self._measure_font)
+
+        doc = fitz.open(input_path)
+        try:
+            for page_ordinal in sorted(by_page):
+                unit, annotations = by_page[page_ordinal]
+                page_index = page_ordinal - 1
+
+                # Out-of-range page: skip all annotations on this unit.
+                if page_index < 0 or page_index >= doc.page_count:
+                    for ann in annotations:
+                        skip_records.append(
+                            SkipRecord(
+                                annotation_id=ann.id,
+                                reason=SkipReason.OUT_OF_RANGE_PAGE,
+                                detail=(
+                                    f"page {page_ordinal} is out of range "
+                                    f"[1, {doc.page_count}]"
+                                ),
+                            )
+                        )
+                    continue
+
+                page = doc[page_index]
+                try:
+                    index: PdfPageIndex | None = PdfPageIndex(page)
+                except PdfAlignmentError:
+                    index = None
+
+                # --- Resolution phase ---
+                requests: list[NoteRequest] = []
+                resolution_miss_ids: list[str] = []
+
+                for ann in annotations:
+                    pdf_anchor = self._resolve_annotation_to_anchor(page, index, ann)
+                    if pdf_anchor is None:
+                        resolution_miss_ids.append(ann.id)
+                    else:
+                        resolved_anchor = pdf_anchor_to_resolved_anchor(pdf_anchor)
+                        requests.append(
+                            NoteRequest(
+                                annotation_id=ann.id,
+                                source_locator=unit.source_locator,
+                                annotation_type=ann.annotation_type,
+                                confidence=ann.confidence,
+                                content=ann.content,
+                                requested_placement=ann.requested_placement,
+                                anchor=resolved_anchor,
+                                render_seed=self._render_seed_for(ann.id, plan.document_seed),
+                            )
+                        )
+
+                # --- Layout phase ---
+                if requests:
+                    layout_result = layout_page_annotations(page, requests, [], measurer)
+                else:
+                    layout_result = LayoutResult(
+                        placed=(),
+                        skipped=(),
+                        degradation_flags=(),
+                    )
+
+                # --- Drawing phase ---
+                for resolved_ann in layout_result.placed:
+                    _, ann = ann_by_id[resolved_ann.annotation_id]
+                    ink = self._ink_color(ann.annotation_type)
+                    opacity = self._opacity(ann.confidence)
+
+                    # Mark each quad separately — NOT a union.
+                    if resolved_ann.anchor:
+                        for quad in resolved_ann.anchor.quads:
+                            quad_rect = fitz_rect_from_surf_quad(quad)
+                            self._mark_target(
+                                page,
+                                quad_rect,
+                                ann.annotation_type,
+                                ink,
+                                opacity,
+                            )
+
+                    self._draw_resolved_note(page, resolved_ann, ann)
+                    rendered_ids.append(resolved_ann.annotation_id)
+
+                # Layout skips (UNPLACEABLE etc.)
+                for skip in layout_result.skipped:
+                    skip_records.append(skip)
+
+                # Resolution misses (MISSING_TARGET)
+                for ann_id in resolution_miss_ids:
+                    skip_records.append(
+                        SkipRecord(
+                            annotation_id=ann_id,
+                            reason=SkipReason.MISSING_TARGET,
+                            detail="target text not found on page",
+                        )
+                    )
+
+            # Atomic output: temp file in same dir → rename.
+            out_path = Path(output_path)
+            fd, tmp_str = tempfile.mkstemp(dir=out_path.parent, suffix=".pdf.tmp")
+            os.close(fd)
+            try:
+                doc.save(tmp_str, garbage=4, deflate=True)
+                os.replace(tmp_str, output_path)
+            except Exception:
+                with suppress(OSError):
+                    os.unlink(tmp_str)
+                raise
+
+        finally:
+            doc.close()
+
+        return RenderReport(
+            rendered=tuple(rendered_ids),
+            skipped=tuple(skip_records),
+        )
 
     def add_margin_note(
         self,

@@ -209,3 +209,99 @@ def test_find_text_rect_returns_union_of_chosen_anchor_quads(
     for a, b in zip(tuple(rect), tuple(expected), strict=True):
         assert abs(a - b) <= 2.0, f"adapter rect {tuple(rect)} != anchor union {tuple(expected)}"
 
+
+# ---------------------------------------------------------------------------
+# P2-T8 fold-in #2 — whitespace-run normalization: occurrence selection
+# ---------------------------------------------------------------------------
+
+
+def test_score_candidates_finds_target_through_whitespace_run_normalization() -> None:
+    """score_candidates must locate a target whose source text has whitespace runs.
+
+    PDF text extraction often produces runs of multiple spaces.  NormalizedText
+    collapses each whitespace run to a single space, so a selector with single
+    spaces must still match the normalized form.
+
+    This test constructs a NormalizedText directly from text with double spaces
+    and asserts that score_candidates returns a MatchResult pointing to the
+    correct passage.
+    """
+    from halfblood.documents.matching import MatchResult, NormalizedText, score_candidates
+    from halfblood.models.annotations import TargetSelector
+
+    raw_with_runs = "Begin  by  warming  the  cauldron  over  a  low  flame."
+    text = NormalizedText(raw_with_runs)
+    # Normalized form must collapse every run.
+    assert "  " not in text.text, "whitespace runs must be collapsed in normalized text"
+    assert "cauldron" in text.text
+
+    selector = TargetSelector(exact="warming the cauldron over a low flame")
+    outcome = score_candidates(selector, text)
+    assert isinstance(outcome, MatchResult), (
+        f"expected MatchResult after whitespace normalization; got {outcome}"
+    )
+    # raw_span must fall inside the original text.
+    raw = outcome.candidate.raw_span
+    assert raw_with_runs[raw.start : raw.end].replace(" ", "").startswith("warmingthe")
+
+
+def test_normalized_text_raw_span_covers_whitespace_run_char_positions() -> None:
+    """NormalizedText.raw_span must map back to cover the original whitespace run.
+
+    When two raw spaces normalize to one, the raw_span for the single normalized
+    space character must cover BOTH original space characters (start to end
+    spans the whole run).
+    """
+    from halfblood.documents.matching import NormalizedText
+
+    raw = "hello  world"  # two spaces
+    text = NormalizedText(raw)
+    assert text.text == "hello world"  # normalized to one space
+
+    # The normalized text is:  h e l l o   w o r l d
+    # indices:                  0 1 2 3 4 5 6 7 8 9 10
+    # The space at normalized index 5 must map back to the run [5, 7) in raw.
+    span = text.raw_span(5, 6)  # the single normalized space character
+    assert span.start == 5, f"expected run start 5, got {span.start}"
+    assert span.end == 7, f"expected run end 7 (covers both raw spaces), got {span.end}"
+
+
+# ---------------------------------------------------------------------------
+# P2-T8 fold-in #3 — score_candidates → raw_span → resolve_pdf_anchor chain
+# ---------------------------------------------------------------------------
+
+
+def test_score_candidates_raw_span_resolve_pdf_anchor_chain(
+    page: fitz.Page,
+) -> None:
+    """Full chain: score_candidates → raw_span → resolve_pdf_anchor.
+
+    The passage 'silver dagger before pressing it flat' spans two lines on
+    the fixture page (y~300 and y~316).  This integration test verifies that
+    chaining the three functions produces a PdfAnchor with line_count == 2,
+    i.e., that the raw_span from score_candidates maps correctly into
+    PdfPageIndex's char positions.
+    """
+    from halfblood.documents.matching import MatchResult, NormalizedText, score_candidates
+    from halfblood.models.annotations import TargetSelector
+
+    index = PdfPageIndex(page)
+    text = NormalizedText(index.text)
+    selector = TargetSelector(exact="silver dagger before pressing it flat")
+
+    outcome = score_candidates(selector, text)
+    assert isinstance(outcome, MatchResult), (
+        f"score_candidates failed to find the target: {outcome}"
+    )
+
+    raw = outcome.candidate.raw_span
+    anchor = resolve_pdf_anchor(index, raw.start, raw.end)
+    assert anchor is not None, (
+        "resolve_pdf_anchor returned None for a span from score_candidates"
+    )
+    # The passage wraps two lines so the anchor must carry two quads.
+    assert anchor.line_count == 2, (
+        f"expected line_count=2 for a two-line wrapped passage; got {anchor.line_count}"
+    )
+    assert len(anchor.quads) == 2
+
