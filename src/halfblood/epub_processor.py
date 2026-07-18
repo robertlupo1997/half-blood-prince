@@ -52,8 +52,23 @@ from bs4 import BeautifulSoup, Comment, NavigableString, Tag, XMLParsedAsHTMLWar
 from ebooklib import epub
 
 from halfblood.document_processor import PageContent
-from halfblood.documents import CrossNodeSegment, normalize
+from halfblood.documents import (
+    AmbiguousResult,
+    CrossNodeMatch,
+    CrossNodeSegment,
+    MatchResult,
+    NormalizedText,
+    iter_inline_runs,
+    locate_across_nodes,
+    normalize,
+    score_candidates,
+)
+from halfblood.documents.epub import _has_overlapping_exact, _owner_map
 from halfblood.models import Annotation, AnnotationPlan, AnnotationType
+from halfblood.models.annotations import Annotation as V2Annotation
+from halfblood.models.annotations import TargetSelector
+from halfblood.models.documents import AnnotationPlan as V2AnnotationPlan
+from halfblood.models.rendering import DegradationFlag, RenderReport, SkipReason, SkipRecord
 
 logger = logging.getLogger(__name__)
 
@@ -397,6 +412,176 @@ class EpubProcessor:
     # ----------------------------------------------------------------
     # Rendering
     # ----------------------------------------------------------------
+
+    @staticmethod
+    def _epub_miss_reason(root: Tag, selector: TargetSelector) -> SkipReason:
+        """Classify a ``locate_across_nodes`` miss as ambiguous or missing.
+
+        Inspects every inline run to distinguish between a target that truly does
+        not appear in the chapter and one that appears multiple times without
+        enough context to pick a single occurrence.
+        """
+        tier0_hit_count = 0
+        for run in iter_inline_runs(root):
+            raw, _ = _owner_map(run)
+            norm = NormalizedText(raw)
+            if _has_overlapping_exact(norm.text, selector.normalized_exact):
+                return SkipReason.AMBIGUOUS_TARGET
+            outcome = score_candidates(selector, norm)
+            if isinstance(outcome, AmbiguousResult):
+                if outcome.candidates and outcome.candidates[0].exactness_tier == 0:
+                    return SkipReason.AMBIGUOUS_TARGET
+            elif isinstance(outcome, MatchResult) and outcome.candidate.exactness_tier == 0:
+                tier0_hit_count += 1
+        return (
+            SkipReason.AMBIGUOUS_TARGET
+            if tier0_hit_count > 1
+            else SkipReason.MISSING_TARGET
+        )
+
+    @staticmethod
+    def _epub_spans_overlap(match_a: CrossNodeMatch, match_b: CrossNodeMatch) -> bool:
+        """Return whether two matches overlap within any shared DOM text node."""
+        for seg_a in match_a.segments:
+            for seg_b in match_b.segments:
+                if (
+                    seg_a.node is seg_b.node
+                    and max(seg_a.start, seg_b.start) < min(seg_a.end, seg_b.end)
+                ):
+                    return True
+        return False
+
+    def render_plan(
+        self,
+        input_path: str,
+        plan: V2AnnotationPlan,
+        output_path: str,
+    ) -> RenderReport:
+        """Render a V2 AnnotationPlan into an EPUB using the shared cross-node path.
+
+        Routing:
+          1. Each annotation's ``TargetSelector`` is resolved via
+             ``locate_across_nodes`` before any DOM mutation (pre-resolve pass).
+          2. ``None`` returns are classified as AMBIGUOUS_TARGET or MISSING_TARGET
+             via ``_epub_miss_reason``.
+          3. Resolved pairs whose char intervals overlap on any shared DOM node are
+             classified OVERLAPPING_TARGET (the later annotation in plan order).
+          4. Surviving annotations are applied sequentially with fresh
+             ``locate_across_nodes`` calls (re-resolve after each DOM mutation),
+             so non-overlapping annotations that share a text node each find their
+             target correctly after the first wrapping splits the node.
+          5. ``DegradationFlag.EPUB_NO_TARGET_GEOMETRY`` is always set: reflowable
+             EPUB content has no fixed geometry.
+
+        Args:
+            input_path: Source EPUB path.
+            plan: A validated V2 AnnotationPlan (halfblood.models.documents.AnnotationPlan).
+            output_path: Destination EPUB path (created or overwritten).
+
+        Returns:
+            RenderReport with a complete rendered/skipped partition covering every
+            annotation in the plan.
+        """
+        book = epub.read_epub(input_path)
+        self._ensure_toc_uids(book.toc)
+        spine_docs: dict[int, epub.EpubHtml] = dict(self._iter_spine_documents(book))
+
+        rendered_ids: list[str] = []
+        skip_records: list[SkipRecord] = []
+        stylesheet: epub.EpubItem | None = None
+
+        for unit in plan.units:
+            annotations: list[V2Annotation] = unit.annotations
+            item = spine_docs.get(unit.ordinal)
+            if item is None:
+                for ann in annotations:
+                    skip_records.append(
+                        SkipRecord(annotation_id=ann.id, reason=SkipReason.OUT_OF_RANGE_PAGE)
+                    )
+                continue
+
+            soup = BeautifulSoup(item.get_content(), "lxml")
+            chapter_root: Tag = soup.body or soup
+
+            # Phase 1: pre-resolve all annotations on the initial DOM.
+            pre_resolved: list[CrossNodeMatch | None] = []
+            for ann in annotations:
+                pre_resolved.append(locate_across_nodes(chapter_root, ann.target))
+
+            # Phase 2: classify unresolved annotations.
+            skip_reason_for: dict[int, SkipReason] = {}
+            for idx, (ann, match) in enumerate(
+                zip(annotations, pre_resolved, strict=True)
+            ):
+                if match is None:
+                    skip_reason_for[idx] = self._epub_miss_reason(chapter_root, ann.target)
+
+            # Phase 3: mark the later annotation in each overlapping pair.
+            resolved_indices: list[int] = [
+                i for i, match in enumerate(pre_resolved) if match is not None
+            ]
+            overlapping: set[int] = set()
+            for i, idx_i in enumerate(resolved_indices):
+                if idx_i in overlapping:
+                    continue
+                for idx_j in resolved_indices[i + 1 :]:
+                    if idx_j in overlapping:
+                        continue
+                    match_i = pre_resolved[idx_i]
+                    match_j = pre_resolved[idx_j]
+                    assert match_i is not None
+                    assert match_j is not None
+                    if self._epub_spans_overlap(match_i, match_j):
+                        overlapping.add(idx_j)
+
+            for idx in overlapping:
+                skip_reason_for[idx] = SkipReason.OVERLAPPING_TARGET
+
+            # Phase 4: re-resolve and apply sequentially on the mutated DOM.
+            chapter_rendered = 0
+            for idx, ann in enumerate(annotations):
+                if idx in skip_reason_for:
+                    skip_records.append(
+                        SkipRecord(annotation_id=ann.id, reason=skip_reason_for[idx])
+                    )
+                    continue
+
+                fresh_match = locate_across_nodes(chapter_root, ann.target)
+                if fresh_match is None:
+                    skip_records.append(
+                        SkipRecord(annotation_id=ann.id, reason=SkipReason.MISSING_TARGET)
+                    )
+                    continue
+
+                legacy_ann = Annotation(
+                    page=unit.ordinal,
+                    target_text=ann.target.exact,
+                    annotation_type=ann.annotation_type,
+                    content=ann.content,
+                    confidence=ann.confidence,
+                    position=ann.requested_placement,
+                )
+                self.wrap_cross_node_segments(soup, fresh_match.segments, legacy_ann)
+                rendered_ids.append(ann.id)
+                chapter_rendered += 1
+
+            item.set_content(str(soup).encode("utf-8"))
+            if chapter_rendered:
+                if stylesheet is None:
+                    stylesheet = self._ensure_annotation_stylesheet(book)
+                self._link_annotation_stylesheet(item, stylesheet)
+
+        logger.info(
+            "render_plan: rendered %s, skipped %s",
+            len(rendered_ids),
+            len(skip_records),
+        )
+        epub.write_epub(output_path, book)
+        return RenderReport(
+            rendered=tuple(rendered_ids),
+            skipped=tuple(skip_records),
+            degradation_flags=(DegradationFlag.EPUB_NO_TARGET_GEOMETRY,),
+        )
 
     def render_annotations(
         self, input_path: str, annotations: list[Annotation], output_path: str

@@ -427,7 +427,7 @@ def annotate(
 
         # Render
         render_task = progress.add_task("Rendering annotated file...", total=1)
-        if isinstance(processor, DocumentProcessor) and hasattr(processor, "render_plan"):
+        if hasattr(processor, "render_plan"):
             from halfblood.models.documents import migrate_v1_to_v2
 
             v2_plan = migrate_v1_to_v2(plan.model_dump())
