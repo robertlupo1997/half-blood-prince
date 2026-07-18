@@ -171,10 +171,9 @@ def _segments_for_span(
             end = owner[position][1] + 1
             position += 1
 
-        if start < end:
-            segments.append(
-                CrossNodeSegment(node=run[node_index], start=start, end=end)
-            )
+        segments.append(
+            CrossNodeSegment(node=run[node_index], start=start, end=end)
+        )
     return tuple(segments)
 
 

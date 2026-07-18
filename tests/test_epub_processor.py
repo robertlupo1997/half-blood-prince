@@ -44,6 +44,12 @@ from halfblood.documents import (
 from halfblood.documents.matching import normalize
 from halfblood.epub_processor import EpubProcessor
 from halfblood.models import Annotation, AnnotationType
+from halfblood.models.annotations import Annotation as V2Annotation
+
+# P2-T9 fold-in #1: V2 imports for render_plan / render_annotations parity test.
+from halfblood.models.annotations import MarkIntent, TargetSelector
+from halfblood.models.documents import AnnotationPlan as V2Plan
+from halfblood.models.documents import GenerationProvenance, SourceInfo, Unit
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_book.epub"
 
@@ -514,3 +520,96 @@ def test_selector_for_builds_an_exact_selector() -> None:
     sel = selector_for("The Sopophorous Bean")
     assert sel.normalized_exact == normalize("The Sopophorous Bean")
     assert sel.normalized_prefix is None and sel.normalized_suffix is None
+
+
+# ---------------------------------------------------------------------------
+# P2-T9 fold-in #1 — render_plan / render_annotations markup-structure parity
+#
+# render_annotations routes through the single-node _locate_text fallback path.
+# render_plan (added in P2-T9) must route through locate_across_nodes with the
+# shared scorer.  For a simple unique target fully inside one text node both
+# paths must produce the same hbp-target / hbp-note span structure.
+# ---------------------------------------------------------------------------
+
+_ACIDS_TARGET = "turns blue litmus red"  # unique single-node phrase in ch2.xhtml
+_ACIDS_ORDINAL = 3  # ch2 == spine page 3 (nav=1, ch1=2, ch2=3)
+_ACIDS_CHAPTER = "ch2.xhtml"
+
+_V2_FINGERPRINT = "c" * 64
+
+
+def _v2_acids_plan(ann_id: str) -> V2Plan:
+    return V2Plan(
+        id="fold-in-1-plan",
+        title="Fold-in 1 Plan",
+        persona="Snape",
+        source=SourceInfo(
+            fingerprint=_V2_FINGERPRINT,
+            media_type="application/epub+zip",
+            unit_count=1,
+        ),
+        generation=GenerationProvenance(),
+        document_seed=11,
+        units=[
+            Unit(
+                unit_id="unit-acids",
+                ordinal=_ACIDS_ORDINAL,
+                label="Page 3",
+                original_text="",
+                source_locator=f"page:{_ACIDS_ORDINAL}",
+                annotations=[
+                    V2Annotation(
+                        id=ann_id,
+                        target=TargetSelector(exact=_ACIDS_TARGET),
+                        annotation_type=AnnotationType.INSIGHT,
+                        content="Snape's note.",
+                        confidence=0.9,
+                        requested_placement="margin_right",
+                        mark_intent=MarkIntent.CIRCLE,
+                    )
+                ],
+            )
+        ],
+    )
+
+
+def test_render_plan_and_render_annotations_produce_same_span_count(
+    tmp_path: Path,
+) -> None:
+    """render_plan (locate_across_nodes path) and render_annotations (_locate_text path)
+    must produce the same number of hbp-target and hbp-note spans for a simple
+    single-node target, proving the two render paths agree on markup structure.
+
+    Fails before P2-T9 because EpubProcessor.render_plan does not yet exist.
+    """
+    # --- render_annotations (legacy V1 path) ---
+    out_v1 = tmp_path / "v1.epub"
+    ann_v1 = _ann(page=_ACIDS_ORDINAL, target=_ACIDS_TARGET, content="Note.")
+    EpubProcessor(seed=5).render_annotations(str(FIXTURE), [ann_v1], str(out_v1))
+    with zipfile.ZipFile(out_v1) as zf:
+        v1_bytes = _chapter_bytes(zf, _ACIDS_CHAPTER)
+
+    v1_soup = BeautifulSoup(v1_bytes, "lxml")
+    v1_targets = v1_soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
+    v1_notes = v1_soup.find_all("span", class_=lambda c: c and "hbp-note" in c)
+
+    # --- render_plan (P2-T9 V2 path) ---
+    out_v2 = tmp_path / "v2.epub"
+    plan = _v2_acids_plan("acids-ann-1")
+    EpubProcessor(seed=5).render_plan(str(FIXTURE), plan, str(out_v2))
+    with zipfile.ZipFile(out_v2) as zf:
+        v2_bytes = _chapter_bytes(zf, _ACIDS_CHAPTER)
+
+    v2_soup = BeautifulSoup(v2_bytes, "lxml")
+    v2_targets = v2_soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
+    v2_notes = v2_soup.find_all("span", class_=lambda c: c and "hbp-note" in c)
+
+    # Both paths must produce exactly one target span and one note span.
+    assert len(v1_targets) == 1, "render_annotations must produce one hbp-target span"
+    assert len(v2_targets) == 1, "render_plan must produce one hbp-target span"
+    assert len(v1_notes) == 1, "render_annotations must produce one hbp-note span"
+    assert len(v2_notes) == 1, "render_plan must produce one hbp-note span"
+    # The wrapped text must be identical regardless of which path placed it.
+    assert v1_targets[0].get_text() == v2_targets[0].get_text(), (
+        "target span text must be the same from both render paths"
+    )
