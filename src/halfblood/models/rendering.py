@@ -100,6 +100,8 @@ class SkipReason(str, Enum):  # noqa: UP042  # Preserve the pinned string-enum c
     FORBIDDEN_BOUNDARY = "forbidden_boundary"
     UNPLACEABLE = "unplaceable"
     OUT_OF_RANGE_PAGE = "out_of_range_page"
+    INK_PATH_BUDGET_EXCEEDED = "ink_path_budget_exceeded"
+    INK_GEOMETRY_INVALID = "ink_geometry_invalid"
 
 
 class AnchorWarningCode(str, Enum):  # noqa: UP042  # Preserve the pinned string-enum contract.
