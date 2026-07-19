@@ -93,6 +93,14 @@ class _FakeCliProvider:
 class _FakePdfProcessor:
     load_calls: list[str] = []
     render_calls: list[str] = []
+    last_handwriting_engine: str | None = None
+
+    def __init__(
+        self, font_path: str | None = None, handwriting_engine: str = "typeset"
+    ) -> None:
+        # P3-T12b threads --handwriting-engine to the PDF processor via
+        # _processor_for; accept and record it so construction still succeeds.
+        type(self).last_handwriting_engine = handwriting_engine
 
     def load(self, path: str) -> list[PageContent]:
         type(self).load_calls.append(path)
@@ -379,3 +387,94 @@ def test_annotate_help_documents_force(runner: CliRunner) -> None:
 def test_readme_documents_force() -> None:
     readme = Path(__file__).resolve().parents[1] / "README.md"
     assert "--force" in readme.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# P3-T12b — --handwriting-engine: typeset default; procedural is a P3-T5 NO-GO
+# ---------------------------------------------------------------------------
+
+
+def test_annotate_help_lists_handwriting_engine(runner: CliRunner) -> None:
+    result = runner.invoke(cli_module.main, ["annotate", "--help"])
+    assert result.exit_code == 0
+    assert "--handwriting-engine" in result.output
+
+
+def test_annotate_typeset_engine_dispatches_normally(
+    runner: CliRunner, fakes: None, tmp_path: Path
+) -> None:
+    """The default/explicit typeset engine runs the pipeline to completion."""
+    src = tmp_path / "book.pdf"
+    src.write_bytes(_PDF_BYTES)
+    out = tmp_path / "out.pdf"
+    result = runner.invoke(
+        cli_module.main,
+        ["annotate", str(src), "-o", str(out), "--handwriting-engine", "typeset"],
+    )
+    assert result.exit_code == 0, result.output
+    assert _no_traceback(result), f"raw exception leaked: {result.exception!r}"
+    assert _FakePdfProcessor.last_handwriting_engine == "typeset"
+
+
+def test_procedural_engine_rejected_before_provider_and_generator(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`procedural` must fail with p3_t5_no_go before any heavy construction.
+
+    Neither the processor, provider config, provider, nor generator may be built
+    — each is patched to explode, so the clean p3_t5_no_go ClickException proves
+    the gate fired first (a leaked AssertionError would fail _no_traceback).
+    """
+    src = tmp_path / "book.pdf"
+    src.write_bytes(_PDF_BYTES)
+    out = tmp_path / "out.pdf"
+
+    def _boom(*args: object, **kwargs: object):
+        raise AssertionError(
+            "procedural must be rejected before processor/provider/generator construction"
+        )
+
+    monkeypatch.setattr(cli_module, "DocumentProcessor", _boom)
+    monkeypatch.setattr(cli_module, "resolve_generation_config", _boom)
+    monkeypatch.setattr(cli_module, "build_provider", _boom)
+    monkeypatch.setattr(cli_module, "AnnotationGenerator", _boom)
+
+    result = runner.invoke(
+        cli_module.main,
+        ["annotate", str(src), "-o", str(out), "--handwriting-engine", "procedural"],
+    )
+    assert result.exit_code != 0
+    assert _no_traceback(result), f"raw exception leaked: {result.exception!r}"
+    assert "p3_t5_no_go" in result.output
+
+
+def test_procedural_engine_gate_precedes_font_resolution(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A bogus --font must NOT mask the p3_t5_no_go rejection (gate is earlier)."""
+    src = tmp_path / "book.pdf"
+    src.write_bytes(_PDF_BYTES)
+    out = tmp_path / "out.pdf"
+
+    def _boom(*args: object, **kwargs: object):
+        raise AssertionError("nothing past the procedural gate may run")
+
+    monkeypatch.setattr(cli_module, "DocumentProcessor", _boom)
+    monkeypatch.setattr(cli_module, "resolve_generation_config", _boom)
+    monkeypatch.setattr(cli_module, "build_provider", _boom)
+    monkeypatch.setattr(cli_module, "AnnotationGenerator", _boom)
+
+    result = runner.invoke(
+        cli_module.main,
+        [
+            "annotate", str(src), "-o", str(out),
+            "--handwriting-engine", "procedural",
+            "--font", "/nonexistent/bogus.ttf",
+        ],
+    )
+    assert result.exit_code != 0
+    assert _no_traceback(result), f"raw exception leaked: {result.exception!r}"
+    assert "p3_t5_no_go" in result.output
+    assert "bogus.ttf" not in result.output, (
+        "font resolution ran before the procedural gate — the NO-GO was masked"
+    )

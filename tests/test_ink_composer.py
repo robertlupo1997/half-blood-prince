@@ -289,3 +289,33 @@ def test_default_postprocessor_preserves_cubic_paths() -> None:
     out = post.process(cubic, bounds=LocalRect(x0=0.0, y0=0.0, x1=200.0, y1=300.0), tolerance=100.0, input_budget=64)
     assert out is not None
     assert sum(1 for c in out.commands if isinstance(c, CubicTo)) == 1, "cubic must not be simplified/dropped"
+
+
+# --------------------------------------------------------------------------- #
+# Connector near-edge property (moved to the LIVE composer path from the legacy
+# _draw_resolved_note regression). Guards the "connector arrows reversed" bug
+# class: the connector must leave the note-box edge FACING the target.
+# --------------------------------------------------------------------------- #
+
+
+def test_connector_leaves_note_near_edge_facing_target() -> None:
+    """With the note to the RIGHT of the target, the connector starts at the
+    note's LEFT (near) edge and lands on the target's nearest (right) edge —
+    never the far edge of the note box."""
+    rough = RecordingRough()
+    # Default fixture: note_box (140,70)-(190,120); target quads at x 40..100 and
+    # 40..85 — i.e. entirely LEFT of the note.
+    _composer(rough).compose(_request(), load_builtin_style())
+
+    req, _ = rough.request_for(RoughRole.CONNECTOR)
+    assert req is not None, "a connector must be generated when note_box and target exist"
+    assert req.note_edge is not None and req.target_edge is not None
+
+    assert req.note_edge.x == pytest.approx(140.0), (
+        "connector must start at the note's NEAR edge (x0=140) facing the target, "
+        "not the far edge (x1=190)"
+    )
+    assert req.note_edge.x < 190.0, "must not anchor to the far edge of the note box"
+    assert req.target_edge.x == pytest.approx(100.0), (
+        "connector must land on the nearest target quad's right edge (x=100)"
+    )

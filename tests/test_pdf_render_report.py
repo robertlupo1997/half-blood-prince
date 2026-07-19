@@ -4,9 +4,13 @@ All tests that call ``processor.render_plan`` fail against HEAD with
 ``AttributeError: 'DocumentProcessor' object has no attribute 'render_plan'``.
 That is the intended failure mode — no existing tests are weakened.
 
-Spy-based tests in this file patch ``_mark_target`` (which exists in HEAD)
-to count draw calls.  All other behavioral assertions rely on the RenderReport
-return value and observable side effects (output file, native PDF annotations).
+P3-T12b routes marks through the ink composer + ``PdfRenderer`` instead of the
+native ``_mark_target``.  Mark-shape assertions therefore spy on
+``PdfRenderer.render_scene`` (capturing the composed ``InkScene``); other
+behavioral assertions rely on the RenderReport and observable output (vector
+drawings, absence of native PDF annotations, output hash).  The legacy
+``_draw_resolved_note`` connector regression tests below still exercise the
+retained compatibility helper directly.
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ import fitz
 import pytest
 
 from halfblood.document_processor import DocumentProcessor
+from halfblood.ink.model import InkRole
 from halfblood.models.annotations import Annotation, MarkIntent, TargetSelector
 from halfblood.models.documents import (
     AnnotationPlan,
@@ -28,6 +33,7 @@ from halfblood.models.documents import (
 )
 from halfblood.models.legacy import AnnotationType
 from halfblood.models.rendering import RenderReport, SkipReason
+from halfblood.renderers import PdfRenderer
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 SAMPLE_PDF = FIXTURES_DIR / "potions_textbook.pdf"
@@ -332,12 +338,46 @@ class TestRenderPlanOutput:
 # ---------------------------------------------------------------------------
 
 
-class TestRenderPlanPerQuadMarking:
-    """Verify the 'one mark per quad' contract by spying on _mark_target.
+def _capture_scenes(
+    processor: DocumentProcessor, src: Path, plan: AnnotationPlan, out: Path
+) -> list:
+    """Run render_plan while capturing every InkScene handed to PdfRenderer.
 
-    _mark_target exists in HEAD so patch.object succeeds immediately.
-    render_plan does not exist yet so the test fails at the call site with
-    AttributeError — the intended failure mode before Codex implements it.
+    P3-T12b routes marks through ``PdfRenderer.render_scene`` instead of the
+    native ``_mark_target``.  Spying the class method captures the real composed
+    scenes without needing to inject a factory into render_plan's internal
+    renderer.  On HEAD render_plan never constructs a PdfRenderer, so nothing is
+    captured — the intended pre-implementation failure.
+    """
+    captured: list = []
+    real = PdfRenderer.render_scene
+
+    def spy(self_inner, page, scene):  # type: ignore[no-untyped-def]
+        captured.append(scene)
+        return real(self_inner, page, scene)
+
+    with patch.object(PdfRenderer, "render_scene", spy):
+        processor.render_plan(str(src), plan, str(out))
+    return captured
+
+
+def _underline_paths(scenes: list) -> list:
+    """All stroke paths across captured scenes whose group role is UNDERLINE."""
+    return [
+        path
+        for scene in scenes
+        for group in scene.groups
+        if group.role == InkRole.UNDERLINE
+        for path in group.paths
+    ]
+
+
+class TestRenderPlanPerQuadMarking:
+    """Verify the 'one vector mark per quad' contract via the composed InkScene.
+
+    P3-T12b replaces the native ``_mark_target`` marks with per-quad vector paths
+    from ``make_underline``: one ``InkRole.UNDERLINE`` group whose path count equals
+    the number of target line quads (never a single tall union).
     """
 
     def _make_two_line_pdf(self, tmp_path: Path) -> Path:
@@ -351,45 +391,28 @@ class TestRenderPlanPerQuadMarking:
         doc.close()
         return src
 
-    def test_wrapped_two_line_target_calls_mark_target_twice(
+    def test_wrapped_two_line_target_marks_each_quad_separately(
         self, processor: DocumentProcessor, tmp_path: Path
     ) -> None:
-        """A target spanning two text lines must produce two separate mark calls.
+        """A target spanning two text lines produces two per-quad underline paths.
 
-        Calling _mark_target once with the union rect is the OLD behavior.
-        The P2-T8 requirement is one call per line quad.
+        One tall union path is the OLD behavior.  The requirement is one vector
+        underline path per line quad.
         """
         src = self._make_two_line_pdf(tmp_path)
         ann = _ann("a1", "silver dagger before pressing it flat")
         plan = _plan((1, [ann]))
 
-        mark_rects: list[fitz.Rect] = []
-        real_mark = DocumentProcessor._mark_target
-
-        def spy_mark(  # type: ignore[no-untyped-def]
-            self_inner, page, rect, annotation_type, ink, opacity
-        ):
-            mark_rects.append(fitz.Rect(rect))
-            return real_mark(self_inner, page, rect, annotation_type, ink, opacity)
-
-        with patch.object(DocumentProcessor, "_mark_target", spy_mark):
-            processor.render_plan(str(src), plan, str(tmp_path / "out.pdf"))
-
-        # Two separate quads → two mark calls, not one tall union.
-        assert len(mark_rects) == 2, (
-            f"expected 2 mark calls (one per wrapped line), got "
-            f"{len(mark_rects)}: heights={[r.height for r in mark_rects]}"
+        scenes = _capture_scenes(processor, src, plan, tmp_path / "out.pdf")
+        paths = _underline_paths(scenes)
+        assert len(paths) == 2, (
+            f"expected 2 per-quad underline paths (one per wrapped line), got {len(paths)}"
         )
-        _LINE_HEIGHT_BOUND = 20.0
-        for rect in mark_rects:
-            assert rect.height < _LINE_HEIGHT_BOUND, (
-                f"mark rect too tall — likely a union rect: {rect}"
-            )
 
-    def test_single_line_target_calls_mark_target_once(
+    def test_single_line_target_marks_one_quad(
         self, processor: DocumentProcessor, tmp_path: Path
     ) -> None:
-        """A single-line target must produce exactly one mark call."""
+        """A single-line target produces exactly one underline vector path."""
         doc = fitz.open()
         page = doc.new_page(width=612, height=792)
         page.insert_text(fitz.Point(72, 300), "Slice the bean with care.", fontsize=11)
@@ -400,36 +423,34 @@ class TestRenderPlanPerQuadMarking:
         ann = _ann("a1", "Slice the bean")
         plan = _plan((1, [ann]))
 
-        mark_count: list[int] = [0]
-        real_mark = DocumentProcessor._mark_target
-
-        def spy_mark(  # type: ignore[no-untyped-def]
-            self_inner, page, rect, annotation_type, ink, opacity
-        ):
-            mark_count[0] += 1
-            return real_mark(self_inner, page, rect, annotation_type, ink, opacity)
-
-        with patch.object(DocumentProcessor, "_mark_target", spy_mark):
-            processor.render_plan(str(src), plan, str(tmp_path / "out.pdf"))
-
-        assert mark_count[0] == 1, (
-            f"expected 1 mark call for single-line target, got {mark_count[0]}"
+        scenes = _capture_scenes(processor, src, plan, tmp_path / "out.pdf")
+        paths = _underline_paths(scenes)
+        assert len(paths) == 1, (
+            f"expected 1 underline path for single-line target, got {len(paths)}"
         )
 
-    def test_found_annotation_gains_native_pdf_annotation(
+    def test_found_annotation_renders_vectors_not_native_annots(
         self, processor: DocumentProcessor, sample_pdf: Path, tmp_path: Path
     ) -> None:
-        """A successfully matched annotation must produce at least one native annot."""
+        """A matched annotation now renders as vector drawings, not a native annot.
+
+        P3-T12b replaces native PDF mark annotations with ``fitz.Shape`` vector
+        paths, so the output page carries vector drawings and ZERO newly-created
+        native annotations.
+        """
         ann = _ann("a1", _PAGE_TEXT[2])
         plan = _plan((2, [ann]))
         out = tmp_path / "out.pdf"
-        processor.render_plan(str(sample_pdf), plan, str(out))
+        report = processor.render_plan(str(sample_pdf), plan, str(out))
+        assert "a1" in report.rendered, "the target should have been found and rendered"
+
         doc = fitz.open(str(out))
         try:
-            page_annots = list(doc[1].annots())  # page 2 (0-indexed)
-            assert len(page_annots) >= 1, (
-                "a matched annotation must produce at least one native PDF annotation"
+            page = doc[1]  # page 2 (0-indexed)
+            assert list(page.annots()) == [], (
+                "P3-T12b marks must be vector paths, not native PDF annotations"
             )
+            assert page.get_drawings(), "a rendered mark must leave vector drawings on the page"
         finally:
             doc.close()
 
@@ -612,3 +633,70 @@ class TestConnectorAnchorNearEdge:
             f"connector anchor.x should be note_rect.x1={note_x1} (near/right edge "
             f"facing target), but got {anchor_x:.1f} — likely using the far edge x0={note_x0}"
         )
+
+
+# ---------------------------------------------------------------------------
+# P3-T12b — integration: composed vector marks reach the PDF (the risky seam)
+# ---------------------------------------------------------------------------
+
+
+class TestRenderPlanVectorIntegration:
+    """P3-T12b wires InkComposer + PdfRenderer into render_plan.
+
+    These fail on HEAD because render_plan still draws native marks and returns
+    no output_hashes.
+    """
+
+    def test_output_report_carries_pdf_output_hash(
+        self, processor: DocumentProcessor, sample_pdf: Path, tmp_path: Path
+    ) -> None:
+        """render_plan stamps a role='pdf' OutputHash matching the written file."""
+        import hashlib
+
+        ann = _ann("a1", _PAGE_TEXT[2])
+        plan = _plan((2, [ann]))
+        out = tmp_path / "out.pdf"
+        report = processor.render_plan(str(sample_pdf), plan, str(out))
+
+        pdf_hashes = [h for h in report.output_hashes if h.role == "pdf"]
+        assert len(pdf_hashes) == 1, "exactly one role='pdf' OutputHash expected"
+        on_disk = hashlib.sha256(out.read_bytes()).hexdigest()
+        assert pdf_hashes[0].sha256 == on_disk, (
+            "OutputHash must be computed from the final on-disk PDF (after atomic replace)"
+        )
+
+    def test_rotated_page_renders_vectors_and_preserves_source(
+        self, processor: DocumentProcessor, tmp_path: Path
+    ) -> None:
+        """The rotated-page seam: vectors drawn, no native annots, source intact.
+
+        This is the riskiest coordinate/layer seam — a 90-degree page must still
+        get vector marks (via the renderer's single derotation), keep its rotation,
+        text, and gain no native annotations.
+        """
+        doc = fitz.open()
+        page = doc.new_page(width=612, height=792)
+        page.insert_text(fitz.Point(72, 300), "The rotated cauldron simmers slowly.", fontsize=11)
+        page.set_rotation(90)
+        src = tmp_path / "rotated.pdf"
+        doc.save(str(src))
+        doc.close()
+
+        ann = _ann("r1", "rotated cauldron")
+        plan = _plan((1, [ann]))
+        out = tmp_path / "out.pdf"
+        report = processor.render_plan(str(src), plan, str(out))
+
+        assert "r1" in report.rendered, (
+            "the target on the rotated page must resolve, compose, and render"
+        )
+
+        result = fitz.open(str(out))
+        try:
+            rpage = result[0]
+            assert rpage.rotation == 90, "source page rotation must be preserved"
+            assert "rotated cauldron" in rpage.get_text(), "source page text must survive"
+            assert list(rpage.annots()) == [], "marks must be vectors, not native annotations"
+            assert rpage.get_drawings(), "vector marks must be present on the rotated page"
+        finally:
+            result.close()
