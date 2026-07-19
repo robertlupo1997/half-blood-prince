@@ -290,3 +290,61 @@ def test_result_reports_annotation_and_counts(page: fitz.Page, factory: Recordin
     assert result.rendered is True
     assert result.path_count == 1
     assert result.command_count == 2
+
+
+# --------------------------------------------------------------------------- #
+# P3-T12b — underlay/overlay commit split: highlights behind, marks in front
+# --------------------------------------------------------------------------- #
+
+
+def test_highlight_commits_underlay_and_marks_commit_overlay(
+    page: fitz.Page, factory: RecordingShapeFactory
+) -> None:
+    """Negative-z (highlight) paths commit overlay=False; the rest overlay=True.
+
+    This places the original page content BETWEEN the highlight wash and the
+    visible marks.  On HEAD render_scene uses a single shape committed
+    overlay=True — the intended pre-implementation failure.
+    """
+    mark = _group(InkRole.STRIKE, _path((MoveTo(x=10, y=170), LineTo(x=60, y=170)), z_index=0))
+    highlight = _group(
+        InkRole.UNDERLINE, _path((MoveTo(x=11, y=171), LineTo(x=61, y=171)), z_index=-100), gid="hl"
+    )
+    scene = _scene(mark, highlight)
+    result = _render(page, factory, scene)
+
+    assert result.rendered is True
+    assert len(factory.shapes) == 2, "expected a separate underlay and overlay shape"
+    underlay, overlay = factory.shapes
+    assert underlay.commits == [False], "highlight (z<0) must commit as underlay (overlay=False)"
+    assert overlay.commits == [True], "visible marks must commit as overlay (overlay=True)"
+    underlay_lines = [payload for op, payload in underlay.calls if op == "draw_line"]
+    overlay_lines = [payload for op, payload in overlay.calls if op == "draw_line"]
+    assert underlay_lines == [((11.0, 171.0), (61.0, 171.0))], "underlay draws only the highlight"
+    assert overlay_lines == [((10.0, 170.0), (60.0, 170.0))], "overlay draws only the mark"
+
+
+def test_scene_without_highlight_uses_single_overlay_commit(
+    page: fitz.Page, factory: RecordingShapeFactory
+) -> None:
+    """The common case (no z<0 path) still creates ONE shape committed overlay=True."""
+    scene = _scene(_group(InkRole.STRIKE, _path((MoveTo(x=10, y=180), LineTo(x=60, y=180)), z_index=0)))
+    _render(page, factory, scene)
+    assert len(factory.shapes) == 1, "no underlay shape when there is nothing behind"
+    assert factory.shapes[0].commits == [True]
+
+
+def test_all_highlight_scene_uses_single_underlay_commit(
+    page: fitz.Page, factory: RecordingShapeFactory
+) -> None:
+    """A scene of only highlights creates ONE shape committed overlay=False."""
+    scene = _scene(
+        _group(
+            InkRole.UNDERLINE,
+            _path((MoveTo(x=10, y=190), LineTo(x=60, y=190)), z_index=-100),
+            gid="hl",
+        )
+    )
+    _render(page, factory, scene)
+    assert len(factory.shapes) == 1, "no overlay shape when everything is an underlay"
+    assert factory.shapes[0].commits == [False]

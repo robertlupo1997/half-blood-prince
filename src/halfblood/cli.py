@@ -21,7 +21,7 @@ import sys
 import webbrowser
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 import click
 from rich import box
@@ -43,6 +43,7 @@ from halfblood.generation.errors import ProviderConfigurationError, ProviderErro
 from halfblood.generation.providers.base import GenerationRequest, LLMProvider
 from halfblood.generation.registry import build_provider
 from halfblood.generation.schema import generate_annotation_schema
+from halfblood.ink.composer import HandwritingUnavailable
 from halfblood.models import AnnotatedPage
 from halfblood.web_preview import generate_preview
 
@@ -203,7 +204,11 @@ def _filter_pages(all_pages: list[PageContent], page_numbers: list[int]) -> list
     return [p for p in all_pages if p.page_number in wanted]
 
 
-def _processor_for(path: Path, font_path: Path | None = None) -> Processor:
+def _processor_for(
+    path: Path,
+    font_path: Path | None = None,
+    handwriting_engine: Literal["typeset", "procedural"] = "typeset",
+) -> Processor:
     """Pick a `DocumentProcessor` (PDF) or `EpubProcessor` (EPUB) based on
     `path`'s extension.
 
@@ -212,6 +217,13 @@ def _processor_for(path: Path, font_path: Path | None = None) -> Processor:
     """
     suffix = path.suffix.lower()
     if suffix == ".pdf":
+        if handwriting_engine == "procedural":
+            if font_path is not None:
+                return DocumentProcessor(
+                    font_path=str(font_path),
+                    handwriting_engine=handwriting_engine,
+                )
+            return DocumentProcessor(handwriting_engine=handwriting_engine)
         if font_path is not None:
             return DocumentProcessor(font_path=str(font_path))
         return DocumentProcessor()
@@ -333,6 +345,13 @@ def main() -> None:
     metavar="NAME|PATH",
     help="PDF handwriting font. Registered names: " + ", ".join(REGISTERED_FONTS) + ".",
 )
+@click.option(
+    "--handwriting-engine",
+    type=click.Choice(("typeset", "procedural")),
+    default="typeset",
+    show_default=True,
+    help="Note-body engine. Rough PDF marks are always procedural vectors.",
+)
 @click.option("--force", is_flag=True, help="Overwrite an existing output file.")
 @_provider_options
 def annotate(
@@ -342,6 +361,7 @@ def annotate(
     pages: str | None,
     max_per_page: int,
     font: str | None,
+    handwriting_engine: Literal["typeset", "procedural"],
     force: bool,
     provider: str | None,
     model: str | None,
@@ -359,6 +379,9 @@ def annotate(
 
     _validate_input_signature(input_file)
     _refuse_existing_output(output_file, force)
+    if handwriting_engine == "procedural":
+        unavailable = HandwritingUnavailable()
+        raise click.ClickException(f"{unavailable.code}: {unavailable.detail}")
     output_file.parent.mkdir(parents=True, exist_ok=True)
     if input_file.suffix.lower() == ".epub" and font is not None:
         console.print(
@@ -368,7 +391,7 @@ def annotate(
         font_path = None
     else:
         font_path = _resolve_font_option(font) if font is not None else None
-    processor = _processor_for(input_file, font_path)
+    processor = _processor_for(input_file, font_path, handwriting_engine)
     if output_file.suffix.lower() != input_file.suffix.lower():
         console.print(
             f"[yellow]Warning:[/yellow] output extension {output_file.suffix!r} doesn't "

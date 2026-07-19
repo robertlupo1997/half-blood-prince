@@ -181,32 +181,39 @@ class PdfRenderer:
                 SkipReason.INK_GEOMETRY_INVALID,
             )
 
-        shape = self._shape_factory(page)
-        for path, cached_outline, color in zip(paths, outlines, colors, strict=True):
-            if cached_outline is None:
-                self._draw_centerline(shape, page, path)
-                shape.finish(
-                    color=color,
-                    width=path.stroke.base_width,
-                    closePath=False,
-                    stroke_opacity=path.stroke.opacity,
-                    lineCap=_CAP_CODES[path.stroke.cap],
-                    lineJoin=_JOIN_CODES[path.stroke.join],
-                )
-            else:
-                points = [
-                    self._transform_point(page, path, vertex.x, vertex.y)
-                    for vertex in cached_outline.vertices
-                ]
-                shape.draw_polyline(points)
-                shape.finish(
-                    fill=color,
-                    color=None,
-                    fill_opacity=path.stroke.opacity,
-                    closePath=True,
-                )
+        prepared_paths = tuple(zip(paths, outlines, colors, strict=True))
+        underlay_paths = tuple(item for item in prepared_paths if item[0].z_index < 0)
+        overlay_paths = tuple(item for item in prepared_paths if item[0].z_index >= 0)
 
-        shape.commit(overlay=True)
+        for overlay, partition in ((False, underlay_paths), (True, overlay_paths)):
+            if not partition:
+                continue
+            shape = self._shape_factory(page)
+            for path, cached_outline, color in partition:
+                if cached_outline is None:
+                    self._draw_centerline(shape, page, path)
+                    shape.finish(
+                        color=color,
+                        width=path.stroke.base_width,
+                        closePath=False,
+                        stroke_opacity=path.stroke.opacity,
+                        lineCap=_CAP_CODES[path.stroke.cap],
+                        lineJoin=_JOIN_CODES[path.stroke.join],
+                    )
+                else:
+                    points = [
+                        self._transform_point(page, path, vertex.x, vertex.y)
+                        for vertex in cached_outline.vertices
+                    ]
+                    shape.draw_polyline(points)
+                    shape.finish(
+                        fill=color,
+                        color=None,
+                        fill_opacity=path.stroke.opacity,
+                        closePath=True,
+                    )
+
+            shape.commit(overlay=overlay)
         return PdfSceneRenderResult(
             annotation_id=scene.annotation_id,
             rendered=True,

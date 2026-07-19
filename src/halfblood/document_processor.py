@@ -31,6 +31,7 @@ pipeline never breaks -- it will just look less handwritten.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.resources
 import logging
 import math
@@ -42,7 +43,7 @@ from collections.abc import Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import fitz  # PyMuPDF
 
@@ -52,6 +53,17 @@ from halfblood.documents import (
     normalize,
     resolve_pdf_anchor,
 )
+from halfblood.ink.composer import (
+    BuiltinRoughInkEngine,
+    ComposeRequest,
+    DefaultPathPostprocessor,
+    HandwritingReady,
+    HandwritingUnavailable,
+    InkComposer,
+    P3T5NoGoHandwritingEngine,
+    TypesetBody,
+)
+from halfblood.ink.style import load_builtin_style
 from halfblood.layout.engine import (
     LayoutConfig,
     LayoutResult,
@@ -64,12 +76,22 @@ from halfblood.models import (
     AnnotationPlan,
     AnnotationType,
 )
+from halfblood.models.rendering import (
+    AnchorWarning,
+    DegradationFlag,
+    OutputHash,
+    RenderReport,
+    ResolvedAnnotation,
+    SkipReason,
+    SkipRecord,
+    SurfaceRect,
+)
+from halfblood.renderers import PdfRenderer
 
 if TYPE_CHECKING:
     from halfblood.documents.pdf import PdfAnchor
     from halfblood.models.annotations import Annotation as V2Annotation
     from halfblood.models.documents import AnnotationPlan as V2AnnotationPlan
-    from halfblood.models.rendering import RenderReport, ResolvedAnnotation
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +180,7 @@ class DocumentProcessor:
         font_path: str | None = None,
         project_root: str | None = None,
         seed: int | None = None,
+        handwriting_engine: Literal["typeset", "procedural"] = "typeset",
     ) -> None:
         """
         Args:
@@ -168,11 +191,14 @@ class DocumentProcessor:
             seed: Optional seed for the "organic" rotation jitter, so
                 renders are reproducible in tests. Defaults to a
                 per-annotation deterministic seed derived from its text.
+            handwriting_engine: Note-body rendering mode. Rough marks are
+                procedural vectors in either mode.
         """
         self._project_root = (
             Path(project_root) if project_root else Path(__file__).resolve().parents[2]
         )
         self._seed = seed
+        self._handwriting_engine = handwriting_engine
         self._fontfile, self._fontname, self._is_custom_font = self._resolve_handwriting_font(
             font_path
         )
@@ -659,6 +685,48 @@ class DocumentProcessor:
 
         shape.commit(overlay=True)
 
+    def _draw_note_body(
+        self,
+        page: fitz.Page,
+        resolved_ann: ResolvedAnnotation,
+        annotation: V2Annotation,
+    ) -> None:
+        """Draw only the typeset note body inside the resolved note box."""
+        from halfblood.layout.anchors import fitz_rect_from_surf
+
+        if resolved_ann.note_box is None:
+            return
+
+        note_rect = fitz_rect_from_surf(resolved_ann.note_box)
+        ink = self._ink_color(annotation.annotation_type)
+        angle = self._organic_angle(annotation.content)
+        fontsize = _FONT_SIZE_BY_TYPE.get(annotation.annotation_type, 9.0)
+
+        shape = page.new_shape()
+
+        note_width = max(1.0, note_rect.width)
+        lines = self._wrap_text(annotation.content, note_width, fontsize)
+        line_gap = fontsize * 1.3
+        y = note_rect.y0 + fontsize
+
+        for line in lines:
+            if y > note_rect.y1 + line_gap:
+                break
+            pivot = fitz.Point((note_rect.x0 + note_rect.x1) / 2.0, y)
+            morph = (pivot, fitz.Matrix(angle))
+            shape.insert_text(
+                fitz.Point(note_rect.x0, y),
+                line,
+                fontfile=self._fontfile,
+                fontname=self._fontname,
+                fontsize=fontsize,
+                color=ink,
+                morph=morph,
+            )
+            y += line_gap
+
+        shape.commit(overlay=True)
+
     def render_plan(
         self,
         input_path: str,
@@ -687,12 +755,17 @@ class DocumentProcessor:
         Returns:
             RenderReport with rendered/skipped partition covering all input annotations.
         """
-        from halfblood.layout.anchors import (
-            fitz_rect_from_surf_quad,
-            pdf_anchor_to_resolved_anchor,
-        )
+        from halfblood.layout.anchors import pdf_anchor_to_resolved_anchor
         from halfblood.models.documents import Unit
-        from halfblood.models.rendering import RenderReport, SkipReason, SkipRecord
+
+        composer = InkComposer(
+            BuiltinRoughInkEngine(),
+            P3T5NoGoHandwritingEngine(),
+            path_postprocessor=DefaultPathPostprocessor(),
+            algorithm_version="ink-1.0",
+        )
+        style = load_builtin_style()
+        renderer = PdfRenderer()
 
         # Build per-page lookup: ordinal -> (unit, [V2Annotation])
         # and per-id lookup for the draw phase.
@@ -705,6 +778,8 @@ class DocumentProcessor:
 
         rendered_ids: list[str] = []
         skip_records: list[SkipRecord] = []
+        warnings: list[AnchorWarning] = []
+        degradation_flags: list[DegradationFlag] = []
         measurer = self._LayoutMeasurer(self._measure_font)
 
         doc = fitz.open(input_path)
@@ -767,26 +842,64 @@ class DocumentProcessor:
                         degradation_flags=(),
                     )
 
+                warnings.extend(layout_result.warnings)
+                degradation_flags.extend(layout_result.degradation_flags)
+
                 # --- Drawing phase ---
                 for resolved_ann in layout_result.placed:
                     _, ann = ann_by_id[resolved_ann.annotation_id]
-                    ink = self._ink_color(ann.annotation_type)
-                    opacity = self._opacity(ann.confidence)
+                    page_bounds = SurfaceRect(
+                        x0=page.rect.x0,
+                        y0=page.rect.y0,
+                        x1=page.rect.x1,
+                        y1=page.rect.y1,
+                    )
+                    request = ComposeRequest(
+                        annotation=ann,
+                        resolved=resolved_ann,
+                        document_seed=plan.document_seed,
+                        page_bounds=page_bounds,
+                        obstacles=(),
+                    )
+                    composition = composer.compose(
+                        request,
+                        style,
+                        handwriting_mode=self._handwriting_engine,
+                    )
+                    scene_result = renderer.render_scene(page, composition.scene)
 
-                    # Mark each quad separately — NOT a union.
-                    if resolved_ann.anchor:
-                        for quad in resolved_ann.anchor.quads:
-                            quad_rect = fitz_rect_from_surf_quad(quad)
-                            self._mark_target(
-                                page,
-                                quad_rect,
-                                ann.annotation_type,
-                                ink,
-                                opacity,
+                    degradation_mapping = {
+                        "connector_routing_fallback": (
+                            DegradationFlag.CONNECTOR_ROUTING_FALLBACK
+                        ),
+                        "ink_path_budget_exceeded": (
+                            DegradationFlag.INK_PATH_BUDGET_EXCEEDED
+                        ),
+                    }
+                    for degradation in composition.degradations:
+                        flag = degradation_mapping.get(degradation.code)
+                        if flag is not None:
+                            degradation_flags.append(flag)
+
+                    if isinstance(composition.body, HandwritingUnavailable):
+                        degradation_flags.append(DegradationFlag.GLYPH_FALLBACK)
+
+                    if not scene_result.rendered:
+                        assert scene_result.skip_reason is not None
+                        skip_records.append(
+                            SkipRecord(
+                                annotation_id=resolved_ann.annotation_id,
+                                reason=scene_result.skip_reason,
+                                detail="composed ink scene failed PDF renderer preflight",
                             )
+                        )
+                        continue
 
-                    self._draw_resolved_note(page, resolved_ann, ann)
                     rendered_ids.append(resolved_ann.annotation_id)
+                    if isinstance(composition.body, TypesetBody):
+                        self._draw_note_body(page, resolved_ann, ann)
+                    elif isinstance(composition.body, HandwritingReady):
+                        pass
 
                 # Layout skips (UNPLACEABLE etc.)
                 for skip in layout_result.skipped:
@@ -817,9 +930,14 @@ class DocumentProcessor:
         finally:
             doc.close()
 
+        output_sha256 = hashlib.sha256(Path(output_path).read_bytes()).hexdigest()
+
         return RenderReport(
             rendered=tuple(rendered_ids),
             skipped=tuple(skip_records),
+            warnings=tuple(warnings),
+            degradation_flags=tuple(dict.fromkeys(degradation_flags)),
+            output_hashes=(OutputHash(role="pdf", sha256=output_sha256),),
         )
 
     def add_margin_note(

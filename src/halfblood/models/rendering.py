@@ -121,6 +121,8 @@ class DegradationFlag(str, Enum):  # noqa: UP042  # Preserve the pinned string-e
     EPUB_NO_TARGET_GEOMETRY = "epub_no_target_geometry"
     SVG_UNSUPPORTED_TEXT_NOTE = "svg_unsupported_text_note"
     NOTE_SKIPPED_UNFITTABLE = "note_skipped_unfittable"
+    CONNECTOR_ROUTING_FALLBACK = "connector_routing_fallback"
+    INK_PATH_BUDGET_EXCEEDED = "ink_path_budget_exceeded"
 
 
 class AnchorWarning(_StrictModel):
