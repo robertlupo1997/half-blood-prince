@@ -11,6 +11,12 @@ status: in-progress
 
 # Handoff: Session 24 — P3-T5 decided (NO-GO), three feat merges, next is P3-T12b integration
 
+> **Codex reviewed this handoff (read-only, 2026-07-19): READY-WITH-GAPS.** All its corrections are
+> folded in below (composer does NOT do the join; T12b must rewrite `test_pdf_render_report.py` marks
+> tests; underlay is a renderer-level extension not two calls; reporting/`OutputHash` semantics;
+> default wiring; CLI routing; safer rollback). Full review preserved:
+> `.superpowers/sdd/codex-handoff-review-report.md`.
+
 ## Task Status
 
 ### Current Phase
@@ -87,9 +93,11 @@ Gate on `main` @ `2100d01`: **1102 passed**, ruff clean, mypy clean (39 files).
   within `ink/`; `document_processor.py` still drew native PDF marks. That gap is the whole point of the
   T12 redirect. (After T12a/composer it's *still* inert until T12b wires it in.)
 - **`ResolvedAnnotation` (`models/rendering.py:149`) drops the mark type** (mark_intent/annotation_type/
-  content/doodle_kind) and **`ResolvedPlan` drops `document_seed`.** So the composer JOINS the semantic
-  `Annotation` (`models/annotations.py:70`) by id and receives `document_seed` separately — T12b must do
-  this join inside `render_plan`.
+  content/doodle_kind) and **`ResolvedPlan` drops `document_seed`.** The **JOIN happens in the T12b
+  integration inside `render_plan`, NOT in the composer** — `render_plan` already builds an `ann_by_id`
+  map and has `plan.document_seed`, so it constructs the `ComposeRequest`. `InkComposer.compose` only
+  VALIDATES `annotation.id == resolved.annotation_id` (raises on mismatch); it does not look anything up.
+  (Correction from the Codex handoff review — my earlier phrasing "composer joins" was wrong.)
 - **Latent F2 bug** — `_douglas_peucker` (`ink/geometry.py:332`) keys on command endpoints, ignoring
   cubic control points. The composer's `DefaultPathPostprocessor` **skips simplifying any cubic path**
   as the T12 guard. A future P3-T7 (blocked) must make simplification Bézier-aware before reopening.
@@ -108,16 +116,39 @@ Gate on `main` @ `2100d01`: **1102 passed**, ruff clean, mypy clean (39 files).
 ## Action Items & Next Steps (priority order — this IS P3-T12b)
 1. [ ] **Codex read-only design refresh (optional but recommended)** for T12b against
    `.superpowers/sdd/p3-t12-design.md` § integration + the CURRENT `render_plan`.
-2. [ ] **Author controller failing tests** first: extend `tests/test_cli.py` (`--handwriting-engine`
-   choice; default `typeset`; `procedural` → `ClickException` with `p3_t5_no_go`); add an integration
-   test that the v2 `render_plan` path draws **vector** marks (spy: no `add_*_annot` native marks; body
-   still `insert_text`s). Snapshot `sha256sum tests/*.py` for the tripwire.
-3. [ ] **Brief + dispatch Codex** to wire it: `DocumentProcessor.handwriting_engine`; in `render_plan`
-   join `Annotation`↔`ResolvedAnnotation` by id, `InkComposer.compose` → `PdfRenderer.render_scene`,
-   **replace** `_mark_target`+`_draw_connector` for marks/connectors/doodles; split `_draw_resolved_note`
-   to body-only; add `DegradationFlag.CONNECTOR_ROUTING_FALLBACK`/`INK_PATH_BUDGET_EXCEEDED`;
-   underlay/overlay commit split (highlight z<0 → `overlay=False`); fold degradations/skips into
-   `RenderReport`; keep atomic save + add output hash.
+2. [ ] **Author controller failing tests** first. Beyond extending `tests/test_cli.py`
+   (`--handwriting-engine` choice; default `typeset`; `procedural` → `ClickException` with
+   `p3_t5_no_go`), you **MUST rewrite the existing v2-render tests that assert the behavior T12b
+   removes** — `tests/test_pdf_render_report.py` (~line 354) spies on `_mark_target`, requires native
+   PDF annotations, and tests `_draw_resolved_note`'s connector; rewrite those (~5) for vector /
+   per-quad geometry + composer connector endpoints. **Leave the legacy `render_annotations` /
+   `tests/test_pdf_geometry.py` tests unchanged.** Add a **rotated-page integration test** (the riskiest
+   seam): vector drawings, multi-quad marks kept separate, highlight underlay, typeset body still drawn,
+   NO newly-created native annotations, complete `RenderReport` partition + `OutputHash`, and page
+   rotation/text/links preserved. Snapshot `sha256sum tests/*.py` for the tripwire.
+3. [ ] **Brief + dispatch Codex** to wire it. Specify ALL of:
+   - **Default production wiring** (name it explicitly): `InkComposer(BuiltinRoughInkEngine(),
+     P3T5NoGoHandwritingEngine(), path_postprocessor=DefaultPathPostprocessor(), algorithm_version=<fixed
+     value>)`, `style = load_builtin_style()`, `PdfRenderer()`, `page_bounds` = a `SurfaceRect` from
+     `page.rect`. Decide `obstacles` (other placed note boxes / target quads, or intentionally `()`).
+   - In `render_plan`: build the `ComposeRequest` (join via the existing `ann_by_id` + `plan.
+     document_seed`), `InkComposer.compose(...)` → `PdfRenderer.render_scene(page, scene)`, **replacing**
+     `_mark_target` + `_draw_connector`. Split `_draw_resolved_note` to draw ONLY the body text (no
+     connector).
+   - **Underlay/overlay is a RENDERER-LEVEL extension, NOT two `render_scene` calls.** Extend
+     `PdfRenderer` to preflight the WHOLE scene once, then draw negative-z (highlight) paths on an
+     underlay shape committed `overlay=False` and the rest on an overlay shape committed `overlay=True`.
+     Two split-scene calls would risk partial output and break whole-scene budgets/reporting. Test:
+     mixed `overlay=False`/`True` commits, and **zero shapes/commits on any preflight failure**.
+   - **Reporting semantics:** a renderer/compose skip becomes a `SkipRecord` (annotation id NOT in
+     `rendered`) and must suppress that note's body drawing; propagate `LayoutResult.warnings` +
+     `degradation_flags`; add + map `DegradationFlag.CONNECTOR_ROUTING_FALLBACK` /
+     `INK_PATH_BUDGET_EXCEEDED`; decide how `ink_geometry_invalid` is represented; append
+     `OutputHash(role="pdf", sha256=...)` computed AFTER the atomic replace.
+   - **CLI routing:** `_processor_for` currently takes only `font_path` and also handles EPUB — thread
+     `handwriting_engine` to the PDF processor and define EPUB behavior. `procedural` must fail **before**
+     font resolution / provider construction / generation; test that neither provider nor generator is
+     called and that an invalid `--font` cannot mask the `p3_t5_no_go` error. `--font` applies to typeset only.
 4. [ ] Gate → tripwire → Opus review (pre-empt the CLAUDE.md false-positive) → merge `p3-t12b`.
 5. [ ] **VERIFY END-TO-END** (this task changes real output): run `halfblood annotate` on
    `tests/fixtures/potions_textbook.pdf` and confirm marks render as vector paths, note bodies still
@@ -139,7 +170,11 @@ grep -rn "renderers\|ink.composer" src/halfblood --include=*.py | grep -vE "ink/
 
 ## Other Notes
 - **Never push. Local-only repo.** Merges are `--no-ff` to local `main`.
-- **Rollback for this run's 3 feat merges:** `git reset --hard pre-overnight-2026-07-19` (@ `8f9c911`).
+- **Rollback for this run's 3 feat merges:** do NOT blindly `git reset --hard pre-overnight-2026-07-19`
+  — it would DESTROY the pre-existing uncommitted `CLAUDE.md` rewrite (and other untracked local state).
+  Prefer `git revert -m 1 <merge-sha>` for the specific merge(s), or if you must reset, first
+  `git stash push -- CLAUDE.md` (or `git diff HEAD -- CLAUDE.md > /tmp/claudemd.patch`) and reapply
+  after. (Correction from the Codex handoff review.)
 - **Pre-existing dirty tree (leave alone):** `M CLAUDE.md`, untracked `.claude/skills/halfblood-roadmap/`,
   `docs/superpowers/plans/…`. The plan file + `.superpowers/` are untracked local state; `docs/decisions/**`
   IS committed.
