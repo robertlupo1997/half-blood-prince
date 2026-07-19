@@ -29,6 +29,9 @@ Thumbs.db
 fonts/*.ttf
 fonts/*.otf
 !fonts/README.md
+!src/halfblood/fonts/
+!src/halfblood/fonts/*.ttf
+!src/halfblood/fonts/*.txt
 
 # Test/eval outputs
 *.annotated.pdf

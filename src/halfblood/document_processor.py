@@ -15,10 +15,10 @@ annotations rather than baked-in ink.
 
 Font note
 ---------
-By default this module looks for a handwriting font at
-``<project_root>/fonts/CaveatBrush-Regular.ttf``. That file is **not**
-bundled with the repo (font licensing). Download "Caveat Brush" (or
-plain "Caveat") from Google Fonts::
+By default this module first looks for a development override at
+``<project_root>/fonts/CaveatBrush-Regular.ttf``, then uses the bundled
+``halfblood/fonts/CaveatBrush-Regular.ttf`` package resource. To override
+the bundled font, download "Caveat Brush" (or plain "Caveat") from Google Fonts::
 
     https://fonts.google.com/specimen/Caveat+Brush
     https://fonts.google.com/specimen/Caveat
@@ -31,6 +31,7 @@ pipeline never breaks -- it will just look less handwritten.
 
 from __future__ import annotations
 
+import importlib.resources
 import logging
 import math
 import os
@@ -191,8 +192,9 @@ class DocumentProcessor:
             2. ``<project_root>/fonts/CaveatBrush-Regular.ttf``
             3. Any ``<project_root>/fonts/*aveat*.tt[fc]`` (Caveat / Caveat Brush,
                any weight/case).
-            4. A short list of common system font install locations.
-            5. Fallback: PDF standard font ``Helvetica-Oblique`` (no file
+            4. The bundled ``halfblood/fonts/CaveatBrush-Regular.ttf`` resource.
+            5. A short list of common system font install locations.
+            6. Fallback: PDF standard font ``Helvetica-Oblique`` (no file
                needed). An informational notice is logged once per process.
 
         Returns:
@@ -218,6 +220,16 @@ class DocumentProcessor:
             candidates.extend(sorted(fonts_dir.glob("*aveat*.ttf")))
             candidates.extend(sorted(fonts_dir.glob("*aveat*.otf")))
 
+        packaged_font = Path(
+            str(
+                importlib.resources.files("halfblood").joinpath(
+                    "fonts", "CaveatBrush-Regular.ttf"
+                )
+            )
+        )
+        if packaged_font.is_file():
+            candidates.append(packaged_font)
+
         system_candidates = [
             Path("C:/Windows/Fonts/Caveat-Regular.ttf"),
             Path("C:/Windows/Fonts/CaveatBrush-Regular.ttf"),
@@ -235,7 +247,8 @@ class DocumentProcessor:
         global _missing_font_notice_logged
         if not _missing_font_notice_logged:
             logger.info(
-                "No handwriting font found (looked for %s and system Caveat installs). "
+                "No handwriting font found (looked for %s, package resources, and system "
+                "Caveat installs). "
                 "Falling back to Helvetica-Oblique.",
                 fonts_dir / "CaveatBrush-Regular.ttf",
             )
