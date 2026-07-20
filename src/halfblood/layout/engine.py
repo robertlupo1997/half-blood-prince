@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
+from halfblood.layout.occupancy import TextColumn
 from halfblood.models.annotations import Placement
 from halfblood.models.legacy import AnnotationType
 from halfblood.models.rendering import (
@@ -201,11 +202,15 @@ def _try_margin_side(
     forbidden_rects: Sequence[SurfaceRect],
     measurer: NoteMeasurer,
     config: LayoutConfig,
+    note_x_bounds: tuple[float, float] | None = None,
 ) -> tuple[SurfaceRect, bool] | None:
     """Try bounded vertical positions on one margin at one scale."""
-    note_x0, note_x1 = _margin_geometry(
-        side, target_rect, page_rect, margin_width, config.margin_gap
-    )
+    if note_x_bounds is None:
+        note_x0, note_x1 = _margin_geometry(
+            side, target_rect, page_rect, margin_width, config.margin_gap
+        )
+    else:
+        note_x0, note_x1 = note_x_bounds
     note_width = note_x1 - note_x0
     if note_width <= 0.0:
         return None
@@ -221,9 +226,10 @@ def _try_margin_side(
     ):
         return None
 
-    # The aligned position is the baseline; the budget bounds shifts away from it.
+    target_center_y = (target_rect.y0 + target_rect.y1) / 2.0
+    centered_y0 = target_center_y - height / 2.0
     for attempt in range(max(0, config.attempt_budget) + 1):
-        proposed_y0 = target_rect.y0 + _shift_multiplier(attempt) * height
+        proposed_y0 = centered_y0 + _shift_multiplier(attempt) * height
         y0 = max(page_rect.y0, min(proposed_y0, page_rect.y1 - height))
         if y0 >= page_rect.y1 - height * 0.5:
             continue
@@ -243,7 +249,7 @@ def _try_margin_side(
             for occupied in forbidden_rects
         ):
             continue
-        return note_box, not math.isclose(y0, target_rect.y0, abs_tol=1e-9)
+        return note_box, not math.isclose(y0, centered_y0, abs_tol=1e-9)
 
     return None
 
@@ -270,6 +276,8 @@ def run_layout(
     body_occupancy: Sequence[SurfaceRect],
     measurer: NoteMeasurer,
     config: LayoutConfig = LayoutConfig(),  # noqa: B008 - pinned public API
+    *,
+    body_columns: Sequence[TextColumn] = (),
 ) -> LayoutResult:
     """Place margin annotations by priority using occupancy-based layout."""
     ordered_requests = sorted(
@@ -292,6 +300,18 @@ def run_layout(
         "margin_left": [],
     }
     note_boxes: list[SurfaceRect] = []
+
+    if body_columns:
+        right_strip_x0 = max(column.x1 for column in body_columns) + config.margin_gap
+        right_strip_x1 = page_rect.x1 - 8.0
+        left_strip_x1 = min(column.x0 for column in body_columns) - config.margin_gap
+        left_strip_x0 = page_rect.x0 + 8.0
+        margin_strips: dict[_MarginSide, tuple[float, float]] | None = {
+            "margin_right": (right_strip_x0, right_strip_x1),
+            "margin_left": (left_strip_x0, left_strip_x1),
+        }
+    else:
+        margin_strips = None
 
     for request, target_rect in request_targets:
         common_forbidden = tuple(body_occupancy) + target_occupancy + tuple(note_boxes)
@@ -327,10 +347,15 @@ def run_layout(
             "margin_left" if request.requested_placement == "margin_left" else "margin_right"
         )
         opposite: _MarginSide = "margin_left" if preferred == "margin_right" else "margin_right"
-        margin_widths: dict[_MarginSide, float] = {
-            "margin_right": page_rect.x1 - target_rect.x1 - config.margin_gap,
-            "margin_left": target_rect.x0 - page_rect.x0 - config.margin_gap,
-        }
+        if margin_strips is not None:
+            margin_widths = {
+                side: strip[1] - strip[0] for side, strip in margin_strips.items()
+            }
+        else:
+            margin_widths = {
+                "margin_right": page_rect.x1 - target_rect.x1 - config.margin_gap,
+                "margin_left": target_rect.x0 - page_rect.x0 - config.margin_gap,
+            }
         candidate_sides = [
             side for side in (preferred, opposite) if margin_widths[side] >= config.margin_min_width
         ]
@@ -361,6 +386,7 @@ def run_layout(
                     forbidden_rects=common_forbidden,
                     measurer=measurer,
                     config=config,
+                    note_x_bounds=(margin_strips or {}).get(side),
                 )
                 if candidate is not None:
                     note_box, shifted = candidate

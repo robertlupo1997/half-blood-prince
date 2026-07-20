@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.resources
+import inspect
 import logging
 import math
 import os
@@ -53,6 +54,7 @@ from halfblood.documents import (
     normalize,
     resolve_pdf_anchor,
 )
+from halfblood.documents.pdf_occupancy import PdfTextLayerOccupancyProvider
 from halfblood.ink.composer import (
     BuiltinRoughInkEngine,
     ComposeRequest,
@@ -70,6 +72,7 @@ from halfblood.layout.engine import (
     NoteMeasurer,
     NoteRequest,
 )
+from halfblood.layout.occupancy import TextColumn
 from halfblood.models import (
     AnnotatedPage,
     Annotation,
@@ -113,6 +116,18 @@ class PageContent:
     text: str
     width: float
     height: float
+
+
+class _PdfBodyOccupancy(list[fitz.Rect]):
+    """Fitz obstacle sequence that preserves columns through legacy wrappers."""
+
+    def __init__(
+        self,
+        obstacles: Sequence[fitz.Rect],
+        body_columns: Sequence[TextColumn],
+    ) -> None:
+        super().__init__(obstacles)
+        self.body_columns = tuple(body_columns)
 
 
 # --------------------------------------------------------------------------
@@ -799,7 +814,7 @@ class DocumentProcessor:
         Returns:
             RenderReport with rendered/skipped partition covering all input annotations.
         """
-        from halfblood.layout.anchors import pdf_anchor_to_resolved_anchor
+        from halfblood.layout.anchors import fitz_rect_from_surf, pdf_anchor_to_resolved_anchor
         from halfblood.models.documents import Unit
 
         composer = InkComposer(
@@ -810,6 +825,7 @@ class DocumentProcessor:
         )
         style = load_builtin_style()
         renderer = PdfRenderer()
+        occupancy_provider = PdfTextLayerOccupancyProvider()
 
         # Build per-page lookup: ordinal -> (unit, [V2Annotation])
         # and per-id lookup for the draw phase.
@@ -853,6 +869,7 @@ class DocumentProcessor:
                     continue
 
                 page = doc[page_index]
+                page_occ = occupancy_provider.extract(page)
                 try:
                     index: PdfPageIndex | None = PdfPageIndex(page)
                 except PdfAlignmentError:
@@ -883,7 +900,27 @@ class DocumentProcessor:
 
                 # --- Layout phase ---
                 if requests:
-                    layout_result = layout_page_annotations(page, requests, [], measurer)
+                    body_fitz = _PdfBodyOccupancy(
+                        [fitz_rect_from_surf(rect) for rect in page_occ.obstacles],
+                        page_occ.body_columns,
+                    )
+                    if "body_columns" in inspect.signature(
+                        layout_page_annotations
+                    ).parameters:
+                        layout_result = layout_page_annotations(
+                            page,
+                            requests,
+                            body_fitz,
+                            measurer,
+                            body_columns=page_occ.body_columns,
+                        )
+                    else:
+                        layout_result = layout_page_annotations(
+                            page,
+                            requests,
+                            body_fitz,
+                            measurer,
+                        )
                 else:
                     layout_result = LayoutResult(
                         placed=(),
@@ -908,7 +945,7 @@ class DocumentProcessor:
                         resolved=resolved_ann,
                         document_seed=plan.document_seed,
                         page_bounds=page_bounds,
-                        obstacles=(),
+                        obstacles=page_occ.obstacles,
                     )
                     composition = composer.compose(
                         request,
@@ -1412,6 +1449,7 @@ def layout_page_annotations(
     body_occupancy: Sequence[fitz.Rect],
     measurer: NoteMeasurer,
     config: LayoutConfig | None = None,
+    body_columns: Sequence[TextColumn] = (),
 ) -> LayoutResult:
     """Bridge fitz page geometry to the surface-neutral layout engine.
 
@@ -1432,4 +1470,13 @@ def layout_page_annotations(
     cfg = config if config is not None else LayoutConfig()
     page_rect = surf_rect_from_fitz(page.rect)
     body_surf = [surf_rect_from_fitz(rect) for rect in body_occupancy]
-    return run_layout(requests, page_rect, body_surf, measurer, config=cfg)
+    if not body_columns and isinstance(body_occupancy, _PdfBodyOccupancy):
+        body_columns = body_occupancy.body_columns
+    return run_layout(
+        requests,
+        page_rect,
+        body_surf,
+        measurer,
+        config=cfg,
+        body_columns=body_columns,
+    )
