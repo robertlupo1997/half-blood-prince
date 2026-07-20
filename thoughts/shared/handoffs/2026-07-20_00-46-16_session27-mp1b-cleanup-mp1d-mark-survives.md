@@ -1,25 +1,25 @@
 ---
 date: 2026-07-20T00:46:16-04:00
 researcher: Claude (Opus 4.8)
-git_commit: 8c777f33ac126c9c672d60a0d1ddc81d9e7bdb1e
+git_commit: 253c9ca
 branch: main
 repository: half-blood-prince
-topic: "MP1b cleanup MERGED + MP1d mark-survives-unplaceable-note MERGED; finding 5 re-scoped as MP1c"
-tags: [annotation-placement, layout, occupancy, mark-survives, render-report, ink-composer, codex, controller-discipline]
+topic: "MP1b cleanup + MP1d mark-survives + MP1c fail-closed — ALL MERGED (Phase-1 within-page placement complete)"
+tags: [annotation-placement, layout, occupancy, mark-survives, fail-closed, render-report, ink-composer, codex, controller-discipline]
 status: complete
 last_updated: 2026-07-20
 type: handoff
 ---
 
-# Handoff: Session 27 — MP1b cleanup + mark-survives-unplaceable-note (both merged)
+# Handoff: Session 27 — MP1b cleanup + MP1d mark-survives + MP1c fail-closed (all merged)
 
-> **Both tasks the owner asked for are done and on local `main`.** MP1b cleanup
-> (dead-code + config const + header/footer filter) merged `6441973`; **mark-survives-
-> unplaceable-note** (MP1d) merged `8c777f3`. `main` is **1136 green**, ruff + mypy clean,
-> `v0.1.0` tag intact. Two independent Opus reviews returned **GO**. Finding 5 turned out to
-> be a real engine-contract change, not a quick tweak — **re-scoped as MP1c and deferred**
-> (evidence below). **NEW BOUNDARY the next session must know: MP1d is PDF-only — the EPUB
-> render path is separate and unaddressed.**
+> **Three tasks done and on local `main`, Phase-1 within-page placement is now complete.**
+> MP1b cleanup merged `6441973`; **MP1d mark-survives-unplaceable-note** merged `8c777f3`;
+> **MP1c fail-closed** merged `253c9ca`. `main` is **1138 green**, ruff + mypy clean,
+> `v0.1.0` tag intact. **Three** independent Opus reviews returned **GO**. Finding 5 became
+> the real engine-contract change it was predicted to be (MP1c) and is done. **NEW BOUNDARY
+> the next session must know: MP1d/MP1c are PDF-only — the EPUB render path is separate and
+> unaddressed.**
 
 ## Task(s)
 - ✅ **MP1b cleanup (findings 1–4)** — MERGED `6441973` (feat `78c4159`). Removed dead
@@ -30,10 +30,15 @@ type: handoff
 - ✅ **MP1d — mark-survives-unplaceable-note** — MERGED `8c777f3` (feat `748b95e`). A target
   mark now renders even when its margin note is skipped as unplaceable, recorded in a new
   additive `RenderReport.marks_only`.
-- 🚧 **MP1c — fail-closed when columns can't be inferred (was "finding 5")** — DEFERRED,
-  scoped. See Learnings; this is the next Phase-1 task.
-- ⏳ **Phased roadmap** (design §5): expanded-canvas `--page-mode` (OPTIONAL), global solver,
-  scene-owns-note-body, EPUB track (incl. EPUB mark-survival), OCR milestone.
+- ✅ **MP1c — fail-closed when columns can't be inferred (was "finding 5")** — MERGED
+  `253c9ca` (feat `0c0bd59`). `run_layout` now skips (UNPLACEABLE) rather than falling back to
+  a target-relative margin when no body columns were inferred; inline placement stays exempt.
+  The ~20-test blast radius the deferral predicted was real and converted (hard asserts, no
+  vacuity; two side-switch tests rewritten as column-driven). Closes finding 5.
+- ⏳ **Phased roadmap** (design §5) — **Phase-1 within-page placement is now COMPLETE**
+  (measure≡render, margin discipline, mark-survival, fail-closed). Remaining phases:
+  expanded-canvas `--page-mode` (OPTIONAL), global solver, scene-owns-note-body, EPUB track
+  (incl. EPUB mark-survival + EPUB fail-closed), OCR milestone.
 - ⏳ **Product validation still owed** — no real `halfblood annotate` LLM run yet (no key).
   Use OpenRouter (`--provider openrouter --model anthropic/claude-3.7-sonnet`).
 
@@ -45,7 +50,12 @@ type: handoff
 3. `.superpowers/sdd/{mp1b-cleanup-brief.md, mp1d-mark-survives-brief.md}` — the Codex briefs
    used this session (untracked loop artifacts).
 
-## Recent changes (`file:line`, on `main` @ `8c777f3`)
+## Recent changes (`file:line`, on `main` @ `253c9ca`)
+- `src/halfblood/layout/engine.py` `run_layout` — MP1c: removed the target-relative
+  `margin_widths` else-fallback; added an early gate (`if margin_strips is None:` → skip
+  UNPLACEABLE + `NOTE_SKIPPED_UNFITTABLE` + `continue`) before the margin loop. Inline runs
+  before the gate (exempt). `run_layout`'s default `body_columns=()` now means "skip all
+  margin placement" — only `render_plan` calls it and always passes real columns.
 - `src/halfblood/models/rendering.py:188` — NEW `RenderReport.marks_only: tuple[str, ...] = ()`;
   the `@model_validator` (`rendering.py:205-207`) enforces uniqueness + `marks_only ⊆ skipped`.
   `report_version` stays `"1.0"` (additive).
@@ -72,8 +82,21 @@ type: handoff
   `margin_strips=None` and falls to the **target-relative fallback** (`engine.py:355-359`) — the
   exact behavior design §5 says to remove. But that fallback is load-bearing: **31 `run_layout`
   calls in `tests/test_layout_engine.py` pass NO `body_columns`**. Making the engine fail-closed
-  means converting all 31 tests + pinning the contract. That is a real task (MP1c), correctly
-  refused as scope creep on a "quick cleanup."
+  means converting all 31 tests + pinning the contract. That is a real task (MP1c) — correctly
+  refused as scope creep on a "quick cleanup", then done as its own task this session.
+- **MP1c: fail-closed removed a target-relative behavior, so 2 tests needed REWRITING, not just
+  columns.** `test_target_hugging_*_switches_*` asserted target-hug → side-switch — a
+  target-relative property that no longer exists (margins are column-derived now). Adding columns
+  makes them HARD-FAIL (not go vacuous), so they surface. Rewritten as
+  `narrow_preferred_*_margin_switches_*` driven by a degenerate COLUMN strip. General rule: after
+  removing a fallback, the compiler catches the hard-asserts; you must MANUALLY walk the
+  skip-tolerant / `if result.placed:` tests for silent vacuity (they skip for a new reason and
+  pass empty). Method: where a single note + wide column makes placement deterministic, upgrade
+  `if result.placed:` → `assert result.placed`.
+- **MP1c + MP1d compose on the rotated-page test.** A single-line rotated fixture has no
+  inferable columns → the note fails closed (MP1c) → but its mark SURVIVES (MP1d) and still
+  renders as a vector. The test now asserts `"r1" in report.marks_only` + `get_drawings()`
+  non-empty, which is a stronger integration check than the old "renders" assertion.
 - **The doodle role is the mark-survives trap.** In `composer.compose`, CONNECTOR is note_box-
   gated but **DOODLE is not** — a skipped DOODLE_NOTE composed with `note_box=None` would emit a
   doodle against a missing box. The fix is an explicit `mark_only=True` that drops both roles;
@@ -93,10 +116,11 @@ type: handoff
 - **`M CLAUDE.md` is STILL a pre-existing uncommitted rewrite — never staged all session.**
 
 ## Boundaries the gate could NOT catch (state these — verified below)
-- **MP1d is PDF-ONLY.** `EpubProcessor` has its OWN `render_plan` (`epub_processor.py:454`)
-  building its own `RenderReport` (`epub_processor.py:580`). It never touches the PDF mark-only
-  path — EPUB `marks_only` is always empty and a skipped EPUB note still loses its mark. EPUB
-  mark-survival is a **future task** (fits the design's EPUB parallel track).
+- **MP1d AND MP1c are PDF-ONLY.** `EpubProcessor` has its OWN `render_plan` (`epub_processor.py:454`)
+  building its own `RenderReport` (`epub_processor.py:580`) — it uses neither the PDF mark-only
+  path nor `run_layout`'s fail-closed gate. So EPUB `marks_only` is always empty, a skipped EPUB
+  note still loses its mark, and EPUB has no fail-closed policy. EPUB parity is a **future task**
+  (fits the design's EPUB parallel track).
 - **The CLI labels mark-only notes "skipped."** `cli.py:463` prints
   `Rendered {rendered_count} / Skipped {skipped_count}`; a mark-only note is in `skipped`, so it
   reads as fully skipped even though its mark rendered. `marks_only` is not surfaced. Non-blocking
@@ -105,11 +129,14 @@ type: handoff
 ## Verification
 | Claim | Command run this session | Result |
 |---|---|---|
-| HEAD `8c777f3` on `main` | `git rev-parse --short HEAD` | `8c777f3` |
-| Full suite passes on main | `.venv/bin/pytest tests/ -q` | `1136 passed` |
+| HEAD `253c9ca` on `main` | `git rev-parse --short HEAD` | `253c9ca` |
+| Full suite passes on main | `.venv/bin/pytest tests/ -q` | `1138 passed` |
 | Lint clean | `.venv/bin/ruff check src tests eval` | `All checks passed!` |
 | Types clean | `.venv/bin/mypy src/halfblood` | `Success: no issues found in 41 source files` |
-| MP1b + MP1d merged | `git log --oneline -3` | merges `6441973`, `8c777f3` present |
+| MP1b + MP1d + MP1c merged | `git log --oneline` | merges `6441973`, `8c777f3`, `253c9ca` present |
+| MP1c fail-closed contract | `pytest tests/test_layout_engine.py -k without_columns` | `2 passed` (margin skips / inline places) |
+| MP1c: no residual vacuity | `grep -n "if result.placed:" tests/test_layout_engine.py` | `0` soft guards remain |
+| layout engine suite intact | `pytest tests/test_layout_engine.py -q` | `32 passed` |
 | `import inspect` gone | `grep -c inspect src/halfblood/document_processor.py` | `0` |
 | `_PdfBodyOccupancy` gone | `grep -rc _PdfBodyOccupancy src/halfblood/` | `0` (no matches) |
 | header/footer white-box tests | `pytest -k "running_header or dipping_into_header"` | `2 passed` (were 1 failed pre-build) |
@@ -132,23 +159,25 @@ type: handoff
 - Rollback tag (local): `pre-session27-cleanup` @ `1d298f4`.
 
 ## Action Items & Next Steps
-1. **MP1c — fail-closed when columns can't be inferred.** Remove the target-relative fallback
-   (`engine.py:355-359`); when `body_columns` is empty, skip (UNPLACEABLE) rather than place
-   target-relative. Convert the 31 `run_layout` tests in `tests/test_layout_engine.py` to pass
-   `body_columns` where they expect placement; add a fail-closed test that exercises `run_layout`
-   (not the dataclass ctor). This is the last Phase-1 item.
-2. **EPUB mark-survival** (design EPUB track) — extend the mark-only disposition to
-   `EpubProcessor.render_plan` (`epub_processor.py:454`) so `marks_only` is meaningful for EPUB.
-3. **Surface `marks_only` in the CLI** (`cli.py:463`) and/or clarify `attempted_count` so a
+**Phase-1 within-page placement is COMPLETE** (MP1a measure≡render, MP1b margin discipline,
+MP1d mark-survival, MP1c fail-closed). Remaining, in rough priority:
+1. **EPUB parity** (design EPUB track) — `EpubProcessor.render_plan` (`epub_processor.py:454`)
+   is a separate path that got NONE of MP1c/MP1d: extend the mark-only disposition (so EPUB
+   `marks_only` is meaningful) and the fail-closed policy to EPUB. Highest-value gap.
+2. **Surface `marks_only` in the CLI** (`cli.py:463`) and/or clarify `attempted_count` so a
    mark-only note isn't reported as fully "skipped."
-4. **Then** the broader roadmap (design §5): expanded-canvas `--page-mode` (OPTIONAL), global
-   solver, scene-owns-note-body, OCR.
-5. **Product validation** — a real end-to-end `halfblood annotate` run via OpenRouter + visual check.
+3. **Broader roadmap** (design §5): expanded-canvas `--page-mode` (OPTIONAL), global solver,
+   scene-owns-note-body, OCR milestone.
+4. **Product validation** — a real end-to-end `halfblood annotate` run via OpenRouter + visual
+   check (still owed; no LLM run has happened).
+5. **Small MP1c follow-ups** (from the review, non-blocking): a dedicated test for
+   "inline fails AND `body_columns` empty → fail-closed skip"; harden the pre-existing permissive
+   guard in `test_occupancy_layout.py:302` (`test_narrow_outer_margin_shrinks_or_skips`).
 
 ## Other Notes
 - **Never push. Local-only.** Merges are `--no-ff` to local `main`. Rollback of this session's
-  feats: `git revert -m 1 8c777f3` and `git revert -m 1 6441973` (NOT `reset --hard` — would
-  kill the uncommitted `CLAUDE.md`).
+  feats: `git revert -m 1 253c9ca`, `git revert -m 1 8c777f3`, `git revert -m 1 6441973` (NOT
+  `reset --hard` — would kill the uncommitted `CLAUDE.md`).
 - **Pre-existing dirty tree (leave alone):** `M CLAUDE.md`, untracked
   `.claude/skills/halfblood-roadmap/`, `docs/superpowers/plans/2026-07-11-...`.
 - **Codex standard:** SDD build → `~/dev-harness/scripts/codex-safe.sh --workspace <repo>
