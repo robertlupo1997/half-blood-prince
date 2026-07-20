@@ -185,6 +185,7 @@ class RenderReport(_StrictModel):
     report_version: str = "1.0"
     rendered: tuple[str, ...] = ()
     skipped: tuple[SkipRecord, ...] = ()
+    marks_only: tuple[str, ...] = ()
     warnings: tuple[AnchorWarning, ...] = ()
     degradation_flags: tuple[DegradationFlag, ...] = ()
     output_hashes: tuple[OutputHash, ...] = ()
@@ -199,6 +200,11 @@ class RenderReport(_StrictModel):
             raise ValueError("skipped annotation ids must be unique")
         if set(self.rendered).intersection(skipped_ids):
             raise ValueError("rendered and skipped annotation ids must be disjoint")
+
+        if len(set(self.marks_only)) != len(self.marks_only):
+            raise ValueError("marks_only annotation ids must be unique")
+        if not set(self.marks_only).issubset(skipped_ids):
+            raise ValueError("marks_only ids must be a subset of skipped ids")
 
         self.degradation_flags = tuple(dict.fromkeys(self.degradation_flags))
         return self

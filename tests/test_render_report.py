@@ -211,3 +211,35 @@ def test_same_major_newer_minor_report_version_is_accepted() -> None:
     payload["report_version"] = "1.7"
     restored = load_render_report(payload)
     assert restored.rendered == ("ann-a",)
+
+
+# ---------------------------------------------------------------------------
+# marks_only — a mark that rendered even though its note was skipped (MP1d).
+# marks_only is a subset of the skipped ids (the disposition is orthogonal to
+# the rendered/skipped partition, never overlapping rendered).
+# ---------------------------------------------------------------------------
+
+
+def test_marks_only_subset_of_skipped_is_accepted() -> None:
+    report = RenderReport(
+        rendered=(),
+        skipped=(SkipRecord(annotation_id="ann-a", reason=SkipReason.UNPLACEABLE),),
+        marks_only=("ann-a",),
+    )
+    assert report.marks_only == ("ann-a",)
+
+
+def test_marks_only_id_not_in_skipped_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        RenderReport(
+            skipped=(SkipRecord(annotation_id="ann-a", reason=SkipReason.UNPLACEABLE),),
+            marks_only=("ann-b",),
+        )
+
+
+def test_duplicate_marks_only_id_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        RenderReport(
+            skipped=(SkipRecord(annotation_id="ann-a", reason=SkipReason.UNPLACEABLE),),
+            marks_only=("ann-a", "ann-a"),
+        )

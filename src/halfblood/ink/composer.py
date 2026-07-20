@@ -532,6 +532,7 @@ class InkComposer:
         style: InkStyleProfile,
         *,
         handwriting_mode: HandwritingMode = "typeset",
+        mark_only: bool = False,
     ) -> CompositionResult:
         if request.annotation.id != request.resolved.annotation_id:
             raise ValueError("annotation.id must match resolved.annotation_id")
@@ -578,10 +579,11 @@ class InkComposer:
         mark_role = _MARK_ROLES.get(request.annotation.mark_intent)
         if mark_role is not None:
             roles.append(mark_role)
-        if note_edge is not None and target_edge is not None:
-            roles.append(RoughRole.CONNECTOR)
-        if doodle_kind is not None:
-            roles.append(RoughRole.DOODLE)
+        if not mark_only:
+            if note_edge is not None and target_edge is not None:
+                roles.append(RoughRole.CONNECTOR)
+            if doodle_kind is not None:
+                roles.append(RoughRole.DOODLE)
 
         groups: list[InkGroup] = []
         total_paths = 0

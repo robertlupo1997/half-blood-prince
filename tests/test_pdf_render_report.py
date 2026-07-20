@@ -22,8 +22,10 @@ from unittest.mock import patch
 import fitz
 import pytest
 
+import halfblood.document_processor as hdp
 from halfblood.document_processor import DocumentProcessor
 from halfblood.ink.model import InkRole
+from halfblood.layout.engine import LayoutResult
 from halfblood.models.annotations import Annotation, MarkIntent, TargetSelector
 from halfblood.models.documents import (
     AnnotationPlan,
@@ -32,7 +34,7 @@ from halfblood.models.documents import (
     Unit,
 )
 from halfblood.models.legacy import AnnotationType
-from halfblood.models.rendering import RenderReport, SkipReason
+from halfblood.models.rendering import RenderReport, SkipReason, SkipRecord
 from halfblood.renderers import PdfRenderer
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -700,3 +702,100 @@ class TestRenderPlanVectorIntegration:
             assert rpage.get_drawings(), "vector marks must be present on the rotated page"
         finally:
             result.close()
+
+
+# ---------------------------------------------------------------------------
+# MP1d — mark-survives-unplaceable-note: a target mark still renders even when
+# its margin note is skipped as unplaceable, recorded in report.marks_only.
+# ---------------------------------------------------------------------------
+
+
+def _force_unplaceable(page, requests, occupancy, measurer, config=None, body_columns=()):  # type: ignore[no-untyped-def]
+    """A layout_page_annotations spy: every resolved request is skipped UNPLACEABLE."""
+    return LayoutResult(
+        placed=(),
+        skipped=tuple(
+            SkipRecord(
+                annotation_id=r.annotation_id,
+                reason=SkipReason.UNPLACEABLE,
+                detail="forced unplaceable for test",
+            )
+            for r in requests
+        ),
+        degradation_flags=(),
+    )
+
+
+class TestMarkSurvivesUnplaceableNote:
+    def test_mark_renders_when_note_is_unplaceable(
+        self, processor: DocumentProcessor, sample_pdf: Path, tmp_path: Path
+    ) -> None:
+        ann = _ann("a1", _PAGE_TEXT[2])  # resolves on page 2; mark_intent=UNDERLINE
+        plan = _plan((2, [ann]))
+        out = tmp_path / "out.pdf"
+
+        captured: list = []
+        real_render = PdfRenderer.render_scene
+
+        def render_spy(self_inner, page, scene):  # type: ignore[no-untyped-def]
+            captured.append(scene)
+            return real_render(self_inner, page, scene)
+
+        real_layout = hdp.layout_page_annotations
+        hdp.layout_page_annotations = _force_unplaceable
+        try:
+            with patch.object(PdfRenderer, "render_scene", render_spy):
+                report = processor.render_plan(str(sample_pdf), plan, str(out))
+        finally:
+            hdp.layout_page_annotations = real_layout
+
+        # The note itself was skipped as unplaceable...
+        assert "a1" not in report.rendered
+        assert any(
+            s.annotation_id == "a1" and s.reason == SkipReason.UNPLACEABLE
+            for s in report.skipped
+        )
+        # ...but its on-target mark still rendered.
+        assert "a1" in report.marks_only
+
+        # A mark-only scene reached the renderer: an underline group, and NO
+        # connector / doodle / handwriting group (the doodle role is not
+        # note_box-gated, so this guards the mark_only compose contract).
+        mark_scenes = [
+            s for s in captured if any(g.role == InkRole.UNDERLINE for g in s.groups)
+        ]
+        assert mark_scenes, "expected an underline mark scene for the skipped note"
+        for scene in mark_scenes:
+            roles = {g.role for g in scene.groups}
+            assert InkRole.CONNECTOR not in roles
+            assert InkRole.DOODLE not in roles
+            assert InkRole.HANDWRITING not in roles
+
+    def test_marks_only_excludes_notes_without_a_mark(
+        self, processor: DocumentProcessor, sample_pdf: Path, tmp_path: Path
+    ) -> None:
+        # mark_intent=NONE → nothing to survive; must not appear in marks_only.
+        ann = Annotation(
+            id="nomark",
+            target=TargetSelector(exact=_PAGE_TEXT[2]),
+            annotation_type=AnnotationType.CORRECTION,
+            content="A note with no target mark.",
+            confidence=0.9,
+            requested_placement="margin_right",
+            mark_intent=MarkIntent.NONE,
+        )
+        plan = _plan((2, [ann]))
+        out = tmp_path / "out.pdf"
+
+        real_layout = hdp.layout_page_annotations
+        hdp.layout_page_annotations = _force_unplaceable
+        try:
+            report = processor.render_plan(str(sample_pdf), plan, str(out))
+        finally:
+            hdp.layout_page_annotations = real_layout
+
+        assert "nomark" not in report.marks_only
+        assert any(
+            s.annotation_id == "nomark" and s.reason == SkipReason.UNPLACEABLE
+            for s in report.skipped
+        )
