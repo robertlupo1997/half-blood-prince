@@ -689,8 +689,13 @@ class TestRenderPlanVectorIntegration:
         out = tmp_path / "out.pdf"
         report = processor.render_plan(str(src), plan, str(out))
 
-        assert "r1" in report.rendered, (
-            "the target on the rotated page must resolve, compose, and render"
+        # This single-line page has no inferable body columns, so the margin note
+        # fails closed (MP1c). Its on-target underline mark still survives (MP1d) —
+        # which is exactly the rotated-page vector seam under test.
+        assert "r1" not in report.rendered
+        assert "r1" in report.marks_only, (
+            "the target mark must survive on the rotated page even when the note is "
+            "fail-closed as unplaceable"
         )
 
         result = fitz.open(str(out))
