@@ -5,13 +5,40 @@
 read-only consults (`.superpowers/sdd/margin-discipline-design-consult-report.md` = mechanics;
 `.superpowers/sdd/margin-strategy-consult-report.md` = strategy).
 
-> **Provisional decisions made autonomously** (owner was away; owner's standing instruction
-> is "go with what Codex thinks is best"). All are flagged **[CONFIRM]** for owner review:
-> 1. Placement model = **gutter-first, geometry-gated** (Codex overrode the owner's tentative
->    "hybrid by intent").
-> 2. Thin-margin behavior = **expand the output canvas by default**, with a **faithful /
->    preserve-size mode** as a designed-in option (`--page-mode edition|faithful`).
-> 3. OCR = **architecture now, implementation later** (a separate milestone).
+> **Decisions made autonomously** (owner delegated: "research what's best for the average
+> individual, decide, don't ask"). RESOLVED — no owner confirmation required:
+> 1. Placement model = **gutter-first, geometry-gated** (Codex overrode "hybrid by intent").
+> 2. Thin-margin default = **`faithful` (preserve exact page size), shrink-or-skip, never
+>    cover text** — because the average person's *PDFs* are textbooks/technical/scans where
+>    layout & page numbers matter (research §0). Expanded-canvas `edition` mode is retained
+>    as an **optional, lower-priority** feature (`--page-mode edition|faithful`, default
+>    `faithful`) — a deliberate divergence from Codex's "expand by default," grounded in the
+>    average user's actual formats.
+> 3. OCR = **architecture now, implementation later** (separate milestone).
+> 4. **EPUB is a first-class parallel track**, not an afterthought (research §0): it's the
+>    dominant trade-book format and reflowable, so it needs its own placement approach.
+
+## 0. Research findings (2026-07-19) — the average individual's formats
+
+Web research (ebook format prevalence, 2025–26): **EPUB is the dominant open standard** for
+trade books — Kindle (72% of the e-reader market, EPUB-based since 2023), Kobo, Apple Books,
+Nook, and library apps (Libby/OverDrive) — and it is **reflowable** (no fixed page/canvas).
+**PDF is the minority for trade books**, used mainly for **textbooks, technical/academic
+books, and scans**, valued because it **preserves exact layout**. Reading is dominated by
+phones/tablets/e-readers.
+
+Consequences that reshape this design:
+- The entire "expand vs preserve the canvas" debate is **PDF-only** — EPUB has no canvas.
+  So expanded-canvas is downgraded from "premium default" (Codex strategy) to an **optional
+  mode**; `faithful` (preserve size, graceful shrink/skip) is the better default for the
+  actual PDF audience (reference/technical readers who want page fidelity).
+- **`faithful` default = Phase 1's within-page gutter discipline** — so the research-driven
+  default and the pragmatic first build are the same thing. Good.
+- The rich "Snape scrawl" vector-ink aesthetic (rotation, connectors, hand-drawn marks)
+  inherently needs **fixed layout** — it works in PDF, not in reflowable EPUB (which annotates
+  via HTML/CSS). Open question for a later phase: should EPUB *input* optionally render to a
+  fixed-layout annotated **PDF output** so EPUB books can get the full aesthetic? (Deferred;
+  noted so the pipeline keeps output-format flexibility.)
 
 ## 1. Problem & evidence
 
@@ -117,14 +144,16 @@ Recommended first build: **Phase 1** — it stops the bleeding (notes off the wo
 contracts the rest depends on, without committing to canvas expansion before you've confirmed
 the page-size call.
 
-## 6. Open decisions for the owner
-- **[CONFIRM] Page-size default** — `edition` (widen) vs `faithful` (preserve size) as the
-  default; or build both (recommended: both, default `edition`).
-- **[CONFIRM] Appetite / sequencing** — Phase 1 now then reassess, vs commit to the Phase 1–4
-  arc up front.
-- **Mark-survives-unplaceable-note** — today a skipped note also drops its mark. If a mark
-  should still appear when its note can't be placed, the placed/skipped contract needs a
-  separate mark-only disposition (Codex mechanics §7). Treat as a Phase-1 contract decision.
+## 6. Decisions (resolved — owner delegated)
+- **Page-size default → `faithful`** (preserve size, shrink-or-skip), `edition` optional and
+  lower priority. Rationale: research §0 (average PDF audience is reference/technical).
+- **Sequencing → build Phase 1 now, reassess after.** Don't commit the whole arc up front.
+- **Mark-survives-unplaceable-note → YES** (decided): a mark should still render even if its
+  note can't be placed cleanly. This needs a mark-only disposition separate from the note's
+  placed/skipped status (Codex mechanics §7). Fold into Phase 1's contract (a note skip must
+  not suppress its target mark). Rationale: the mark on the word is low-risk (it's *on* the
+  target, never in a margin) and is often the most useful signal; dropping it because the
+  commentary didn't fit is the wrong trade for the average reader.
 
 ## 7. Principal risks
 - Expanded pages: crop/media box, rotation, links, bookmarks, forms, annotation preservation —
