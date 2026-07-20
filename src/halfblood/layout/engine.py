@@ -344,19 +344,29 @@ def run_layout(
                 )
                 continue
 
+        # Fail closed: without inferred body columns there is no reliable outer
+        # margin to place into, so skip rather than fall back to a target-relative
+        # margin (which could land a note over the opposite column or off-page).
+        # Inline/between_lines placement above is target-local and is exempt.
+        if margin_strips is None:
+            skipped.append(
+                _skip_unplaceable(
+                    request.annotation_id,
+                    "No body columns were inferred; failing closed rather than "
+                    "placing relative to the target.",
+                )
+            )
+            if DegradationFlag.NOTE_SKIPPED_UNFITTABLE not in degradation_flags:
+                degradation_flags.append(DegradationFlag.NOTE_SKIPPED_UNFITTABLE)
+            continue
+
         preferred: _MarginSide = (
             "margin_left" if request.requested_placement == "margin_left" else "margin_right"
         )
         opposite: _MarginSide = "margin_left" if preferred == "margin_right" else "margin_right"
-        if margin_strips is not None:
-            margin_widths = {
-                side: strip[1] - strip[0] for side, strip in margin_strips.items()
-            }
-        else:
-            margin_widths = {
-                "margin_right": page_rect.x1 - target_rect.x1 - config.margin_gap,
-                "margin_left": target_rect.x0 - page_rect.x0 - config.margin_gap,
-            }
+        margin_widths = {
+            side: strip[1] - strip[0] for side, strip in margin_strips.items()
+        }
         candidate_sides = [
             side for side in (preferred, opposite) if margin_widths[side] >= config.margin_min_width
         ]

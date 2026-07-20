@@ -323,8 +323,6 @@ def test_narrow_outer_margin_shrinks_or_skips_never_overlaps_body() -> None:
 
 def test_pageoccupancy_accepts_zero_body_columns_with_low_confidence() -> None:
     # A PageOccupancy with no body_columns and low confidence should be constructable.
-    # The engine must fail-closed for such pages: notes should be skipped, not placed
-    # in a wrong margin derived from header/footer geometry.
     occ = PageOccupancy(
         obstacles=(SurfaceRect(x0=72.0, y0=30.0, x1=540.0, y1=50.0),),
         words=(SurfaceRect(x0=100.0, y0=30.0, x1=200.0, y1=50.0),),
@@ -333,6 +331,20 @@ def test_pageoccupancy_accepts_zero_body_columns_with_low_confidence() -> None:
     )
     assert occ.body_columns == ()
     assert occ.confidence == 0.0
+
+    # And the engine FAILS CLOSED for such a page (MP1c): run_layout with the
+    # occupancy's empty body_columns must SKIP a margin note rather than place it
+    # in a margin guessed from the target's position.
+    req = _req("a1", placement="margin_right")
+    result = run_layout(
+        [req], _PAGE, list(occ.obstacles), _FM, body_columns=occ.body_columns
+    )
+    assert "a1" not in [a.annotation_id for a in result.placed], (
+        "margin note must not be placed when no body columns were inferred"
+    )
+    assert "a1" in [s.annotation_id for s in result.skipped], (
+        "margin note must be skipped (fail-closed) when no body columns were inferred"
+    )
 
 
 # ---------------------------------------------------------------------------

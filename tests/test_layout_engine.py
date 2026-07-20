@@ -23,6 +23,7 @@ from halfblood.layout.engine import (
     NoteRequest,
     run_layout,
 )
+from halfblood.layout.occupancy import TextColumn
 from halfblood.models.annotations import Placement
 from halfblood.models.legacy import AnnotationType
 from halfblood.models.rendering import (
@@ -50,6 +51,27 @@ _NARROW_BODY = SurfaceRect(x0=5.0, y0=50.0, x1=95.0, y1=742.0)
 
 # Standard body block used when we want to assert notes don't invade body text.
 _BODY = SurfaceRect(x0=60.0, y0=72.0, x1=500.0, y1=720.0)
+
+# Body columns matching _BODY. Since MP1c the engine fails closed for margin
+# placement unless real column geometry is supplied: right strip = (510, 604)
+# → width 94; left strip = (8, 50) → width 42; both ≥ margin_min_width (40).
+_BODY_COLS = (TextColumn(x0=60.0, x1=500.0),)
+
+# Columns on _NARROW_PAGE where BOTH column-derived strips are degenerate
+# (right = (105, 92), left = (8, -5), both < 40) → both-margins-degenerate skip.
+_NARROW_COLS = (TextColumn(x0=5.0, x1=95.0),)
+
+# Columns on _SHIFTED_PAGE (x0=50..x1=550): right strip = (410, 542) → width 132.
+_SHIFTED_COLS = (TextColumn(x0=100.0, x1=400.0),)
+
+# Columns whose RIGHT strip is degenerate on _PAGE (col.x1=560 → right strip
+# = (570, 604) → width 34 < 40, not a candidate) while the left strip
+# = (8, 50) → width 42 remains usable → forces a column-driven side switch.
+_SWITCH_COLS = (TextColumn(x0=60.0, x1=560.0),)
+
+# Mirror: LEFT strip degenerate on _PAGE (col.x0=40 → left strip = (8, 30) →
+# width 22 < 40) while the right strip = (510, 604) → width 94 is usable.
+_SWITCH_COLS_LEFT = (TextColumn(x0=40.0, x1=500.0),)
 
 _DEFAULT_CFG = LayoutConfig()
 
@@ -156,12 +178,41 @@ def test_empty_requests_produce_empty_result() -> None:
 
 
 # ---------------------------------------------------------------------------
+# 1b. Fail-closed when body columns can't be inferred (MP1c)
+#
+# Without inferred columns the engine cannot know where the true outer margin
+# is, so margin placement must SKIP rather than fall back to a target-relative
+# margin. Inline placement is target-local and is exempt from this rule.
+# ---------------------------------------------------------------------------
+
+
+def test_margin_request_without_columns_fails_closed() -> None:
+    req = _req("a1", placement="margin_right")
+    result = run_layout([req], _PAGE, [], _FM)  # no body_columns
+    assert "a1" not in _placed_ids(result), "margin note must not be placed without columns"
+    assert "a1" in _skipped_ids(result), "margin note must be skipped without columns"
+    skip = {r.annotation_id: r for r in result.skipped}["a1"]
+    assert skip.reason == SkipReason.UNPLACEABLE
+    assert DegradationFlag.NOTE_SKIPPED_UNFITTABLE in result.degradation_flags
+
+
+def test_inline_request_without_columns_still_places_inline() -> None:
+    # The fail-closed rule is margin-only: inline/between_lines placement is
+    # target-local and does not depend on column geometry, so it must still place.
+    req = _req("inline-ok", placement="inline", anchor=_anchor(100.0, 350.0, 400.0, 364.0))
+    result = run_layout([req], _PAGE, [], _FM)  # no body_columns
+    assert "inline-ok" in _placed_ids(result), "inline placement must survive without columns"
+    ann = next(a for a in result.placed if a.annotation_id == "inline-ok")
+    assert ann.resolved_placement == "inline"
+
+
+# ---------------------------------------------------------------------------
 # 2. Layout result structure
 # ---------------------------------------------------------------------------
 
 
 def test_placed_annotation_has_note_box() -> None:
-    result = run_layout([_req("a1")], _PAGE, [_BODY], _FM)
+    result = run_layout([_req("a1")], _PAGE, [_BODY], _FM, body_columns=_BODY_COLS)
     assert result.placed, "Expected at least one placed annotation"
     for ann in result.placed:
         assert ann.note_box is not None, f"{ann.annotation_id} placed but note_box is None"
@@ -170,7 +221,7 @@ def test_placed_annotation_has_note_box() -> None:
 
 def test_all_annotations_either_placed_or_skipped() -> None:
     reqs = [_req(f"n{i}") for i in range(5)]
-    result = run_layout(reqs, _PAGE, [], _FM)
+    result = run_layout(reqs, _PAGE, [], _FM, body_columns=_BODY_COLS)
     placed = set(_placed_ids(result))
     skipped = set(_skipped_ids(result))
     assert placed.isdisjoint(skipped), "IDs must not appear in both placed and skipped"
@@ -181,21 +232,19 @@ def test_all_annotations_either_placed_or_skipped() -> None:
 
 def test_placed_annotation_preserves_annotation_id_and_source_locator() -> None:
     req = _req("xyz", source_locator="ch:3/p:7")
-    result = run_layout([req], _PAGE, [], _FM)
+    result = run_layout([req], _PAGE, [], _FM, body_columns=_BODY_COLS)
     placed_map = {a.annotation_id: a for a in result.placed}
-    skipped_ids = _skipped_ids(result)
-    assert "xyz" in placed_map or "xyz" in skipped_ids, "Annotation must appear in placed or skipped"
-    if "xyz" in placed_map:
-        assert placed_map["xyz"].source_locator == "ch:3/p:7"
+    assert "xyz" in placed_map, "a single note with usable margins must be placed"
+    assert placed_map["xyz"].source_locator == "ch:3/p:7"
 
 
 def test_placed_annotation_preserves_requested_placement() -> None:
     req = _req("a1", placement="margin_right")
-    result = run_layout([req], _PAGE, [], _FM)
-    if result.placed:
-        assert result.placed[0].requested_placement == "margin_right", (
-            "requested_placement must be preserved even when resolved_placement differs"
-        )
+    result = run_layout([req], _PAGE, [], _FM, body_columns=_BODY_COLS)
+    assert result.placed
+    assert result.placed[0].requested_placement == "margin_right", (
+        "requested_placement must be preserved even when resolved_placement differs"
+    )
 
 
 def test_layout_result_has_degradation_flags_field() -> None:
@@ -217,7 +266,7 @@ def test_warning_placed_before_correction_regardless_of_input_order() -> None:
         _req("correction-1", annotation_type=AnnotationType.CORRECTION, confidence=0.9),
         _req("warning-1", annotation_type=AnnotationType.WARNING, confidence=0.5),
     ]
-    result = run_layout(reqs, _PAGE, [], _FM)
+    result = run_layout(reqs, _PAGE, [], _FM, body_columns=_BODY_COLS)
     ids = _placed_ids(result)
     assert "warning-1" in ids and "correction-1" in ids
     assert ids.index("warning-1") < ids.index("correction-1"), (
@@ -230,12 +279,12 @@ def test_high_confidence_placed_before_low_confidence_same_type() -> None:
         _req("low-c", annotation_type=AnnotationType.INSIGHT, confidence=0.3),
         _req("high-c", annotation_type=AnnotationType.INSIGHT, confidence=0.9),
     ]
-    result = run_layout(reqs, _PAGE, [], _FM)
+    result = run_layout(reqs, _PAGE, [], _FM, body_columns=_BODY_COLS)
     ids = _placed_ids(result)
-    if "high-c" in ids and "low-c" in ids:
-        assert ids.index("high-c") < ids.index("low-c"), (
-            "Higher confidence must be placed first within the same annotation type"
-        )
+    assert "high-c" in ids and "low-c" in ids
+    assert ids.index("high-c") < ids.index("low-c"), (
+        "Higher confidence must be placed first within the same annotation type"
+    )
 
 
 def test_stable_id_tiebreak_same_type_and_confidence() -> None:
@@ -245,9 +294,10 @@ def test_stable_id_tiebreak_same_type_and_confidence() -> None:
         _req("a-note", annotation_type=AnnotationType.INSIGHT, confidence=0.7),
         _req("m-note", annotation_type=AnnotationType.INSIGHT, confidence=0.7),
     ]
-    result = run_layout(reqs, _PAGE, [], _FM)
+    result = run_layout(reqs, _PAGE, [], _FM, body_columns=_BODY_COLS)
     ids = _placed_ids(result)
     placed_subset = [i for i in ids if i in {"a-note", "m-note", "z-note"}]
+    assert placed_subset, "the tiebreak notes must actually place"
     assert placed_subset == sorted(placed_subset), (
         "Annotation IDs must be sorted ascending as the stable tiebreak"
     )
@@ -268,7 +318,8 @@ def test_placed_notes_stay_within_page_bounds() -> None:
         _req("bot", anchor=_anchor(200.0, 791.0, 400.0, 792.0)), # target AT bottom edge
         _req("mid", anchor=_anchor(100.0, 400.0, 400.0, 412.0)), # safe mid-page
     ]
-    result = run_layout(reqs, _PAGE, [], _FM)
+    result = run_layout(reqs, _PAGE, [], _FM, body_columns=_BODY_COLS)
+    assert result.placed, "edge-anchored notes must place within the page"
     for ann in result.placed:
         assert ann.note_box is not None
         assert _within(ann.note_box, _PAGE), (
@@ -281,7 +332,8 @@ def test_non_origin_page_box_note_placed_right_of_target() -> None:
     # x=(200, 550). A naive engine that assumes x0=0 may miscompute the margin.
     anchor = _anchor(100.0, 300.0, 200.0, 314.0)
     req = _req("a1", placement="margin_right", anchor=anchor)
-    result = run_layout([req], _SHIFTED_PAGE, [], _FM)
+    result = run_layout([req], _SHIFTED_PAGE, [], _FM, body_columns=_SHIFTED_COLS)
+    assert result.placed, "note must place in the shifted-page right margin"
     for ann in result.placed:
         assert ann.note_box is not None
         assert _within(ann.note_box, _SHIFTED_PAGE), (
@@ -311,12 +363,13 @@ def test_vertical_intervals_on_same_side_never_overlap() -> None:
         _req(f"n{i}", anchor=_anchor(100.0, 360.0, 400.0, 374.0))
         for i in range(5)
     ]
-    result = run_layout(reqs, _PAGE, [], _FM)
+    result = run_layout(reqs, _PAGE, [], _FM, body_columns=_BODY_COLS)
     right_boxes = [
         ann.note_box
         for ann in result.placed
         if ann.note_box is not None and ann.resolved_placement == "margin_right"
     ]
+    assert len(right_boxes) >= 2, "need multiple right-margin notes to test non-overlap"
     tol = _DEFAULT_CFG.overlap_tolerance
     for i, a in enumerate(right_boxes):
         for j, b in enumerate(right_boxes):
@@ -335,40 +388,40 @@ def test_vertical_intervals_on_same_side_never_overlap() -> None:
 def test_preferred_side_retained_when_right_margin_is_wide() -> None:
     # Target ends at x=300 on a 612-wide page → 302pt right margin, clearly usable.
     req = _req("a1", placement="margin_right", anchor=_anchor(100.0, 350.0, 300.0, 364.0))
-    result = run_layout([req], _PAGE, [], _FM)
-    if result.placed:
-        ann = result.placed[0]
-        assert ann.resolved_placement == "margin_right", (
-            "Preferred right side must be retained when the right margin is wide"
-        )
-        assert not any(w.code == AnchorWarningCode.SIDE_SWITCHED for w in ann.warnings)
+    result = run_layout([req], _PAGE, [], _FM, body_columns=_BODY_COLS)
+    assert result.placed
+    ann = result.placed[0]
+    assert ann.resolved_placement == "margin_right", (
+        "Preferred right side must be retained when the right margin is wide"
+    )
+    assert not any(w.code == AnchorWarningCode.SIDE_SWITCHED for w in ann.warnings)
 
 
-def test_target_hugging_right_edge_switches_to_left() -> None:
-    # Target at x=[570, 610] on 612-wide page → right margin = 2pt (degenerate).
-    # NAIVE: keeps requested placement even though it's off-page.
-    req = _req("a1", placement="margin_right", anchor=_anchor(570.0, 350.0, 610.0, 364.0))
-    result = run_layout([req], _PAGE, [_BODY], _FM)
-    placed_map = {a.annotation_id: a for a in result.placed}
-    if "a1" in placed_map:
-        ann = placed_map["a1"]
-        assert ann.resolved_placement == "margin_left", (
-            "Must switch to left when right margin is degenerate"
-        )
-        assert any(w.code == AnchorWarningCode.SIDE_SWITCHED for w in ann.warnings), (
-            "SIDE_SWITCHED warning required"
-        )
+def test_narrow_preferred_right_margin_switches_to_left() -> None:
+    # MP1c: side switching is driven by the COLUMN-derived margin, not the target
+    # position. _SWITCH_COLS makes the right strip degenerate (width 34 < 40) while
+    # the left strip (width 42) is usable, so a margin_right request switches left.
+    req = _req("a1", placement="margin_right", anchor=_anchor(100.0, 350.0, 400.0, 364.0))
+    result = run_layout([req], _PAGE, [_BODY], _FM, body_columns=_SWITCH_COLS)
+    assert "a1" in _placed_ids(result), "note must place on the usable left side"
+    ann = {a.annotation_id: a for a in result.placed}["a1"]
+    assert ann.resolved_placement == "margin_left", (
+        "Must switch to left when the right column margin is too narrow"
+    )
+    assert any(w.code == AnchorWarningCode.SIDE_SWITCHED for w in ann.warnings), (
+        "SIDE_SWITCHED warning required"
+    )
 
 
-def test_target_hugging_left_edge_switches_to_right() -> None:
-    # Target at x=[2, 30] → left margin = 2pt (degenerate).
-    req = _req("a1", placement="margin_left", anchor=_anchor(2.0, 350.0, 30.0, 364.0))
-    result = run_layout([req], _PAGE, [_BODY], _FM)
-    placed_map = {a.annotation_id: a for a in result.placed}
-    if "a1" in placed_map:
-        ann = placed_map["a1"]
-        assert ann.resolved_placement == "margin_right"
-        assert any(w.code == AnchorWarningCode.SIDE_SWITCHED for w in ann.warnings)
+def test_narrow_preferred_left_margin_switches_to_right() -> None:
+    # Mirror: _SWITCH_COLS_LEFT makes the left strip degenerate (width 22 < 40)
+    # while the right strip (width 94) is usable, so a margin_left request switches.
+    req = _req("a1", placement="margin_left", anchor=_anchor(100.0, 350.0, 400.0, 364.0))
+    result = run_layout([req], _PAGE, [_BODY], _FM, body_columns=_SWITCH_COLS_LEFT)
+    assert "a1" in _placed_ids(result), "note must place on the usable right side"
+    ann = {a.annotation_id: a for a in result.placed}["a1"]
+    assert ann.resolved_placement == "margin_right"
+    assert any(w.code == AnchorWarningCode.SIDE_SWITCHED for w in ann.warnings)
 
 
 # ---------------------------------------------------------------------------
@@ -383,13 +436,13 @@ def test_note_shifted_from_preferred_slot_gets_warning() -> None:
     req_second = _req("second", annotation_type=AnnotationType.INSIGHT,
                       anchor=_anchor(100.0, 352.0, 400.0, 366.0))
     # CORRECTION > INSIGHT in priority, so "first" is placed first.
-    result = run_layout([req_second, req_first], _PAGE, [], _FM)
+    result = run_layout([req_second, req_first], _PAGE, [], _FM, body_columns=_BODY_COLS)
     placed_map = {a.annotation_id: a for a in result.placed}
-    if "second" in placed_map:
-        warning_codes = {w.code for w in placed_map["second"].warnings}
-        assert warning_codes & {AnchorWarningCode.SHIFTED, AnchorWarningCode.SIDE_SWITCHED}, (
-            "The shifted/second note must carry SHIFTED or SIDE_SWITCHED"
-        )
+    assert "second" in placed_map, "the second (shifted) note must place"
+    warning_codes = {w.code for w in placed_map["second"].warnings}
+    assert warning_codes & {AnchorWarningCode.SHIFTED, AnchorWarningCode.SIDE_SWITCHED}, (
+        "The shifted/second note must carry SHIFTED or SIDE_SWITCHED"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -410,11 +463,11 @@ def test_scale_never_falls_below_configured_minimum() -> None:
 
     tracker = ScaleTracker()
     cfg = LayoutConfig(min_scale=0.7)
-    run_layout([_req("big")], _PAGE, [], tracker, config=cfg)
-    if tracker.min_seen < float("inf"):
-        assert tracker.min_seen >= cfg.min_scale - 1e-9, (
-            f"Scale went to {tracker.min_seen}, below min_scale={cfg.min_scale}"
-        )
+    run_layout([_req("big")], _PAGE, [], tracker, config=cfg, body_columns=_BODY_COLS)
+    assert tracker.min_seen < float("inf"), "the measurer must run during margin placement"
+    assert tracker.min_seen >= cfg.min_scale - 1e-9, (
+        f"Scale went to {tracker.min_seen}, below min_scale={cfg.min_scale}"
+    )
 
 
 def test_scale_reduction_produces_scale_reduced_warning() -> None:
@@ -425,12 +478,12 @@ def test_scale_reduction_produces_scale_reduced_warning() -> None:
                 return (min(60.0, max_width), 900.0)  # too tall at full scale
             return (min(60.0, max_width), 14.0)         # fits at reduced scale
 
-    result = run_layout([_req("a1")], _PAGE, [], TwoPassMeasurer())
-    if result.placed:
-        ann = result.placed[0]
-        assert any(w.code == AnchorWarningCode.SCALE_REDUCED for w in ann.warnings), (
-            "A note that required scale reduction must carry SCALE_REDUCED warning"
-        )
+    result = run_layout([_req("a1")], _PAGE, [], TwoPassMeasurer(), body_columns=_BODY_COLS)
+    assert result.placed
+    ann = result.placed[0]
+    assert any(w.code == AnchorWarningCode.SCALE_REDUCED for w in ann.warnings), (
+        "A note that required scale reduction must carry SCALE_REDUCED warning"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -446,28 +499,28 @@ def test_inline_request_falls_back_to_margin() -> None:
     # Dense body_occupancy blocks the inline slot → fallback to a margin.
     body = [SurfaceRect(x0=60.0, y0=72.0, x1=500.0, y1=720.0)]
     req = _req("a1", placement="inline", anchor=_anchor(100.0, 350.0, 400.0, 364.0))
-    result = run_layout([req], _PAGE, body, _FM)
+    result = run_layout([req], _PAGE, body, _FM, body_columns=_BODY_COLS)
     placed_map = {a.annotation_id: a for a in result.placed}
-    if "a1" in placed_map:
-        ann = placed_map["a1"]
-        assert ann.resolved_placement in ("margin_left", "margin_right"), (
-            f"inline must fall back to a margin, got {ann.resolved_placement!r}"
-        )
-        assert ann.requested_placement == "inline", "requested_placement must be preserved"
+    assert "a1" in placed_map, "inline must fall back to a margin when the gap is blocked"
+    ann = placed_map["a1"]
+    assert ann.resolved_placement in ("margin_left", "margin_right"), (
+        f"inline must fall back to a margin, got {ann.resolved_placement!r}"
+    )
+    assert ann.requested_placement == "inline", "requested_placement must be preserved"
 
 
 def test_between_lines_request_falls_back_to_margin_when_no_gap() -> None:
     # Body occupancy from y=72 to y=720 covers the interline region around the target.
     body = [SurfaceRect(x0=60.0, y0=72.0, x1=500.0, y1=720.0)]
     req = _req("a1", placement="between_lines", anchor=_anchor(100.0, 350.0, 400.0, 364.0))
-    result = run_layout([req], _PAGE, body, _FM)
+    result = run_layout([req], _PAGE, body, _FM, body_columns=_BODY_COLS)
     placed_map = {a.annotation_id: a for a in result.placed}
-    if "a1" in placed_map:
-        ann = placed_map["a1"]
-        assert ann.resolved_placement in ("margin_left", "margin_right"), (
-            f"between_lines must fall back to margin when no gap, got {ann.resolved_placement!r}"
-        )
-        assert ann.requested_placement == "between_lines"
+    assert "a1" in placed_map, "between_lines must fall back to a margin when no gap"
+    ann = placed_map["a1"]
+    assert ann.resolved_placement in ("margin_left", "margin_right"), (
+        f"between_lines must fall back to margin when no gap, got {ann.resolved_placement!r}"
+    )
+    assert ann.requested_placement == "between_lines"
 
 
 # ---------------------------------------------------------------------------
@@ -477,7 +530,8 @@ def test_between_lines_request_falls_back_to_margin_when_no_gap() -> None:
 
 def test_note_does_not_invade_body_occupancy() -> None:
     req = _req("a1", anchor=_anchor(100.0, 350.0, 400.0, 364.0))
-    result = run_layout([req], _PAGE, [_BODY], _FM)
+    result = run_layout([req], _PAGE, [_BODY], _FM, body_columns=_BODY_COLS)
+    assert result.placed, "note must place (in the margin, outside the body) to test non-invasion"
     tol = _DEFAULT_CFG.overlap_tolerance
     for ann in result.placed:
         if ann.note_box is not None:
@@ -499,7 +553,7 @@ def test_note_does_not_invade_body_occupancy() -> None:
 
 def test_both_margins_degenerate_yields_skip_not_off_page_geometry() -> None:
     req = _req("a1", anchor=_anchor(5.0, 350.0, 95.0, 364.0))
-    result = run_layout([req], _NARROW_PAGE, [_NARROW_BODY], _FM)
+    result = run_layout([req], _NARROW_PAGE, [_NARROW_BODY], _FM, body_columns=_NARROW_COLS)
 
     assert "a1" not in _placed_ids(result), "Degenerate note must NOT appear in placed"
     assert "a1" in _skipped_ids(result), "Both-margins-degenerate must yield a skip"
@@ -514,19 +568,19 @@ def test_both_margins_degenerate_yields_skip_not_off_page_geometry() -> None:
 
 def test_skip_record_has_unplaceable_reason() -> None:
     req = _req("a1", anchor=_anchor(5.0, 350.0, 95.0, 364.0))
-    result = run_layout([req], _NARROW_PAGE, [_NARROW_BODY], _FM)
+    result = run_layout([req], _NARROW_PAGE, [_NARROW_BODY], _FM, body_columns=_NARROW_COLS)
     skip_map = {r.annotation_id: r for r in result.skipped}
-    if "a1" in skip_map:
-        assert skip_map["a1"].reason == SkipReason.UNPLACEABLE
+    assert "a1" in skip_map, "both-margins-degenerate note must be skipped"
+    assert skip_map["a1"].reason == SkipReason.UNPLACEABLE
 
 
 def test_skip_produces_note_skipped_unfittable_degradation_flag() -> None:
     req = _req("a1", anchor=_anchor(5.0, 350.0, 95.0, 364.0))
-    result = run_layout([req], _NARROW_PAGE, [_NARROW_BODY], _FM)
-    if "a1" in _skipped_ids(result):
-        assert DegradationFlag.NOTE_SKIPPED_UNFITTABLE in result.degradation_flags, (
-            "A skipped-unfittable note must set NOTE_SKIPPED_UNFITTABLE degradation flag"
-        )
+    result = run_layout([req], _NARROW_PAGE, [_NARROW_BODY], _FM, body_columns=_NARROW_COLS)
+    assert "a1" in _skipped_ids(result)
+    assert DegradationFlag.NOTE_SKIPPED_UNFITTABLE in result.degradation_flags, (
+        "A skipped-unfittable note must set NOTE_SKIPPED_UNFITTABLE degradation flag"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -542,8 +596,8 @@ def test_layout_is_deterministic() -> None:
         _req("a3", annotation_type=AnnotationType.INSIGHT,
              anchor=_anchor(100.0, 400.0, 400.0, 414.0)),
     ]
-    r1 = run_layout(reqs, _PAGE, [_BODY], _FM)
-    r2 = run_layout(reqs, _PAGE, [_BODY], _FM)
+    r1 = run_layout(reqs, _PAGE, [_BODY], _FM, body_columns=_BODY_COLS)
+    r2 = run_layout(reqs, _PAGE, [_BODY], _FM, body_columns=_BODY_COLS)
     assert r1 == r2, "run_layout must return identical results for identical inputs"
 
 
@@ -560,7 +614,7 @@ def test_terminates_within_configured_attempt_budget() -> None:
         _req(f"n{i}", anchor=_anchor(100.0, 350.0, 400.0, 364.0))
         for i in range(20)
     ]
-    result = run_layout(reqs, _PAGE, [], _FM, config=cfg)
+    result = run_layout(reqs, _PAGE, [], _FM, config=cfg, body_columns=_BODY_COLS)
     placed = set(_placed_ids(result))
     skipped = set(_skipped_ids(result))
     all_ids = {r.annotation_id for r in reqs}
@@ -584,16 +638,13 @@ def test_multi_quad_anchor_produces_valid_disposition() -> None:
         ),
     )
     req = _req("multi", anchor=anchor)
-    result = run_layout([req], _PAGE, [], _FM)
+    result = run_layout([req], _PAGE, [], _FM, body_columns=_BODY_COLS)
     placed_ids = _placed_ids(result)
-    skipped_ids = _skipped_ids(result)
-    assert "multi" in placed_ids or "multi" in skipped_ids, (
-        "multi-quad annotation must appear in placed or skipped"
-    )
-    if "multi" in placed_ids:
-        ann = next(a for a in result.placed if a.annotation_id == "multi")
-        assert ann.note_box is not None
-        assert _within(ann.note_box, _PAGE)
+    # With usable columns the multi-quad target places deterministically.
+    assert "multi" in placed_ids, "multi-quad annotation must place with usable columns"
+    ann = next(a for a in result.placed if a.annotation_id == "multi")
+    assert ann.note_box is not None
+    assert _within(ann.note_box, _PAGE)
 
 
 # ---------------------------------------------------------------------------
