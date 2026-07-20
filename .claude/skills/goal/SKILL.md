@@ -13,7 +13,8 @@ or a stop-and-flag condition trips.
 
 ## The lean model (roles)
 
-- **Build → Codex** (`gpt-5.6-sol`), free to Claude usage — dispatched via `codex exec`.
+- **Build → Codex** (`gpt-5.6-sol`), free to Claude usage — dispatched via the sandboxed,
+  delete-guarded `~/dev-harness/scripts/codex-safe.sh` (not raw `codex exec`).
 - **Drive → Sonnet** — picks the task, authors the brief + failing tests, dispatches
   Codex, runs the gate, merges, logs. If this session is not already Sonnet, spawn a
   Sonnet subagent (`Agent`, `model:"sonnet"`) for the driving so the expensive session
@@ -69,11 +70,19 @@ until the owner has watched the loop succeed and loosens them:
    work (never recalled from memory). Author/adjust the failing tests (**controller
    owns `tests/`; Codex must never touch them**); confirm they fail for the intended
    reason. Snapshot: `sha256sum tests/*.py > .superpowers/sdd/<pX-tY>.testsums`.
-4. **Dispatch Codex.** `codex exec --sandbox workspace-write -C <repo> -m gpt-5.6-sol
-   -c model_reasoning_effort=high -o .superpowers/sdd/<pX-tY>-report.md <
-   .superpowers/sdd/<pX-tY>-brief.md` (run in background + Monitor if long).
+4. **Dispatch Codex** via the sandboxed, delete-guarded wrapper (NOT raw `codex exec` —
+   the wrapper adds the OS `workspace-write` sandbox + a NO-DELETE preamble + a post-run
+   git sweep that RESTORES any tracked file Codex deleted/renamed and exits 3; the bare
+   `sha256sum` tripwire only guards *test* files, not tracked-file deletion):
+   `timeout 1500 ~/dev-harness/scripts/codex-safe.sh --workspace <repo> --brief
+   .superpowers/sdd/<pX-tY>-brief.md --out .superpowers/sdd/<pX-tY>-report.md --model
+   gpt-5.6-sol --effort high` (run in background + Monitor if long). A non-zero exit 3 =
+   Codex attempted a deletion (auto-restored) → treat as **STOP-FLAG** and inspect.
+   (Audited 2026-07-19: the `codex-linux-sandbox` Landlock/seccomp sandbox is confirmed
+   working on this WSL2 host — the old bubblewrap concern is obsolete.)
 5. **Tripwire.** `sha256sum -c .superpowers/sdd/<pX-tY>.testsums` — Codex touched ZERO
-   test files. Mismatch → **STOP-FLAG**.
+   test files. Mismatch → **STOP-FLAG**. (Tracked-source deletion is separately caught by
+   the codex-safe.sh git sweep in step 4.)
 6. **Gate.** `.venv/bin/pytest tests/ -q && .venv/bin/ruff check src tests eval &&
    .venv/bin/mypy src/halfblood`. Red → author a focused fix brief, re-dispatch Codex
    (**max 2 fix attempts**). Still red → **STOP-FLAG** (never merge red).
