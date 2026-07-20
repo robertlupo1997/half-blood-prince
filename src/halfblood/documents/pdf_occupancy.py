@@ -97,20 +97,21 @@ def _make_run(
 
 
 def _body_candidates(runs: list[_LineRun], page_rect: fitz.Rect) -> list[_LineRun]:
-    block_lines: dict[int, set[int]] = defaultdict(set)
-    for run in runs:
-        block_lines[run.block_no].add(run.line_no)
-
     top_limit = float(page_rect.y0) + float(page_rect.height) * 0.08
     bottom_limit = float(page_rect.y1) - float(page_rect.height) * 0.08
-    candidates: list[_LineRun] = []
+
+    block_centers: dict[int, list[float]] = defaultdict(list)
     for run in runs:
         center_y = (run.rect.y0 + run.rect.y1) / 2.0
-        isolated = len(block_lines[run.block_no]) == 1
-        if isolated and (center_y < top_limit or center_y > bottom_limit):
-            continue
-        candidates.append(run)
-    return candidates
+        block_centers[run.block_no].append(center_y)
+
+    furniture_blocks = {
+        block_no
+        for block_no, centers in block_centers.items()
+        if all(center < top_limit for center in centers)
+        or all(center > bottom_limit for center in centers)
+    }
+    return [run for run in runs if run.block_no not in furniture_blocks]
 
 
 def _x0_clusters(lines: list[_LineRun]) -> list[list[_LineRun]]:

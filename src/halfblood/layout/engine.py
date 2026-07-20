@@ -60,6 +60,7 @@ class LayoutConfig:
     overlap_tolerance: float = 2.0
     margin_min_width: float = 40.0
     margin_gap: float = 10.0
+    page_edge_pad: float = 8.0
 
 
 @dataclass(frozen=True)
@@ -303,9 +304,9 @@ def run_layout(
 
     if body_columns:
         right_strip_x0 = max(column.x1 for column in body_columns) + config.margin_gap
-        right_strip_x1 = page_rect.x1 - 8.0
+        right_strip_x1 = page_rect.x1 - config.page_edge_pad
         left_strip_x1 = min(column.x0 for column in body_columns) - config.margin_gap
-        left_strip_x0 = page_rect.x0 + 8.0
+        left_strip_x0 = page_rect.x0 + config.page_edge_pad
         margin_strips: dict[_MarginSide, tuple[float, float]] | None = {
             "margin_right": (right_strip_x0, right_strip_x1),
             "margin_left": (left_strip_x0, left_strip_x1),

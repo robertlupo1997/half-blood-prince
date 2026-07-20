@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import hashlib
 import importlib.resources
-import inspect
 import logging
 import math
 import os
@@ -116,18 +115,6 @@ class PageContent:
     text: str
     width: float
     height: float
-
-
-class _PdfBodyOccupancy(list[fitz.Rect]):
-    """Fitz obstacle sequence that preserves columns through legacy wrappers."""
-
-    def __init__(
-        self,
-        obstacles: Sequence[fitz.Rect],
-        body_columns: Sequence[TextColumn],
-    ) -> None:
-        super().__init__(obstacles)
-        self.body_columns = tuple(body_columns)
 
 
 # --------------------------------------------------------------------------
@@ -900,27 +887,16 @@ class DocumentProcessor:
 
                 # --- Layout phase ---
                 if requests:
-                    body_fitz = _PdfBodyOccupancy(
-                        [fitz_rect_from_surf(rect) for rect in page_occ.obstacles],
-                        page_occ.body_columns,
+                    body_fitz = [
+                        fitz_rect_from_surf(rect) for rect in page_occ.obstacles
+                    ]
+                    layout_result = layout_page_annotations(
+                        page,
+                        requests,
+                        body_fitz,
+                        measurer,
+                        body_columns=page_occ.body_columns,
                     )
-                    if "body_columns" in inspect.signature(
-                        layout_page_annotations
-                    ).parameters:
-                        layout_result = layout_page_annotations(
-                            page,
-                            requests,
-                            body_fitz,
-                            measurer,
-                            body_columns=page_occ.body_columns,
-                        )
-                    else:
-                        layout_result = layout_page_annotations(
-                            page,
-                            requests,
-                            body_fitz,
-                            measurer,
-                        )
                 else:
                     layout_result = LayoutResult(
                         placed=(),
@@ -1470,8 +1446,6 @@ def layout_page_annotations(
     cfg = config if config is not None else LayoutConfig()
     page_rect = surf_rect_from_fitz(page.rect)
     body_surf = [surf_rect_from_fitz(rect) for rect in body_occupancy]
-    if not body_columns and isinstance(body_occupancy, _PdfBodyOccupancy):
-        body_columns = body_occupancy.body_columns
     return run_layout(
         requests,
         page_rect,

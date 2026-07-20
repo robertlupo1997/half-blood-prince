@@ -30,7 +30,12 @@ from pathlib import Path
 import fitz
 import pytest
 
-from halfblood.documents.pdf_occupancy import PdfTextLayerOccupancyProvider
+from halfblood.documents.pdf_occupancy import (
+    PdfTextLayerOccupancyProvider,
+    _body_candidates,
+    _infer_columns,
+    _LineRun,
+)
 from halfblood.layout.engine import (
     LayoutConfig,
     NoteRequest,
@@ -568,4 +573,67 @@ def test_7_note_demo_zero_body_word_overlaps() -> None:
             f"  {aid}: note={nb}, word={wr}"
             for aid, nb, wr in overlapping[:10]  # cap output
         )
+    )
+
+
+# ---------------------------------------------------------------------------
+# 12. Multi-line running headers/footers must not inflate body columns
+#
+# White-box tests of the column-inference furniture filter (finding MP1b-4).
+# ``_body_candidates`` currently only excludes *single-line* isolated blocks in
+# the top/bottom 8% band, so a two-line running header that shares the body's
+# left edge but runs wider leaks its right edge into the inferred body column.
+# The fix must exclude a block only when the WHOLE block sits inside the band
+# (never over-excluding a body block that merely dips into it).
+# ---------------------------------------------------------------------------
+
+# Letter page; header band is the top 8% → y-center < 792 * 0.08 ≈ 63.36.
+_HF_PAGE = fitz.Rect(0.0, 0.0, 612.0, 792.0)
+
+
+def _run(x0: float, y0: float, x1: float, y1: float, block: int, line: int) -> _LineRun:
+    return _LineRun(
+        rect=SurfaceRect(x0=x0, y0=y0, x1=x1, y1=y1),
+        block_no=block,
+        line_no=line,
+    )
+
+
+def test_multiline_running_header_does_not_inflate_body_column() -> None:
+    # Two-line running header (block 0), both lines fully inside the top band,
+    # left-aligned with the body (x0=100) but running wider (x1=560).
+    header = [
+        _run(100.0, 8.0, 560.0, 20.0, block=0, line=0),   # center 14 < 63.36
+        _run(100.0, 24.0, 560.0, 36.0, block=0, line=1),  # center 30 < 63.36
+    ]
+    # Six-line body block (block 1), narrower (x1=400), well below the band.
+    body = [
+        _run(100.0, 120.0 + i * 20.0, 400.0, 132.0 + i * 20.0, block=1, line=i)
+        for i in range(6)
+    ]
+    columns, _confidence = _infer_columns(
+        _body_candidates(header + body, _HF_PAGE), _HF_PAGE
+    )
+    assert columns, "expected an inferred body column"
+    assert max(col.x1 for col in columns) <= 420.0, (
+        "multi-line running header leaked its right edge into the body column: "
+        f"{columns}"
+    )
+
+
+def test_body_block_dipping_into_header_band_is_not_excluded() -> None:
+    # A single body block (block 0) whose first line sits high (center 55, inside
+    # the top band) but which continues well into the body. It must NOT be
+    # dropped as furniture — only blocks entirely within the band are furniture.
+    body = [_run(100.0, 50.0, 400.0, 60.0, block=0, line=0)]  # center 55 < 63.36
+    body += [
+        _run(100.0, 120.0 + i * 20.0, 400.0, 132.0 + i * 20.0, block=0, line=i + 1)
+        for i in range(5)
+    ]
+    columns, _confidence = _infer_columns(
+        _body_candidates(body, _HF_PAGE), _HF_PAGE
+    )
+    assert columns, "body block dipping into the header band must still yield a column"
+    assert any(abs(col.x1 - 400.0) < 5.0 for col in columns), (
+        f"expected a body column ending near x1=400; got {columns}"
     )

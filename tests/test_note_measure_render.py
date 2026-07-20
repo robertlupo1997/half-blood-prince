@@ -100,8 +100,8 @@ def test_long_note_box_fits_wrapped_render(tmp_path: Path) -> None:
     captured: dict[str, ResolvedAnnotation] = {}
     real = dp.layout_page_annotations
 
-    def spy(page, requests, occupancy, measurer, config=None):  # type: ignore[no-untyped-def]
-        result = real(page, requests, occupancy, measurer, config)
+    def spy(page, requests, occupancy, measurer, config=None, body_columns=()):  # type: ignore[no-untyped-def]
+        result = real(page, requests, occupancy, measurer, config, body_columns=body_columns)
         for placed in result.placed:
             captured[placed.annotation_id] = placed
         return result
