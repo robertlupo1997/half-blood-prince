@@ -319,3 +319,28 @@ def test_connector_leaves_note_near_edge_facing_target() -> None:
     assert req.target_edge.x == pytest.approx(100.0), (
         "connector must land on the nearest target quad's right edge (x=100)"
     )
+
+
+def test_mark_only_suppresses_connector_and_doodle_roles() -> None:
+    # A DOODLE_NOTE carrying an underline mark: a normal compose requests
+    # UNDERLINE + CONNECTOR + DOODLE. mark_only=True must request ONLY the mark.
+    # The DOODLE role is NOT note_box-gated, so this is the contract that keeps a
+    # skipped DOODLE_NOTE from drawing a doodle against a missing note box (MP1d).
+    ann = _annotation(
+        annotation_type=AnnotationType.DOODLE_NOTE,
+        mark_intent=MarkIntent.UNDERLINE,
+    )
+
+    normal = RecordingRough()
+    _composer(normal).compose(_request(ann=ann), load_builtin_style())
+    # Sanity: without mark_only these roles ARE requested (keeps the test non-vacuous).
+    assert RoughRole.DOODLE in normal.roles
+    assert RoughRole.CONNECTOR in normal.roles
+
+    marked = RecordingRough()
+    _composer(marked).compose(_request(ann=ann), load_builtin_style(), mark_only=True)
+    assert RoughRole.UNDERLINE in marked.roles, "the target mark must still render"
+    assert RoughRole.DOODLE not in marked.roles, "mark_only must suppress the doodle role"
+    assert RoughRole.CONNECTOR not in marked.roles, (
+        "mark_only must suppress the connector role"
+    )

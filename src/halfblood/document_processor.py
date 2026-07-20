@@ -55,6 +55,7 @@ from halfblood.documents import (
 )
 from halfblood.documents.pdf_occupancy import PdfTextLayerOccupancyProvider
 from halfblood.ink.composer import (
+    _MARK_ROLES,
     BuiltinRoughInkEngine,
     ComposeRequest,
     DefaultPathPostprocessor,
@@ -824,6 +825,7 @@ class DocumentProcessor:
                 ann_by_id[ann.id] = (unit, ann)
 
         rendered_ids: list[str] = []
+        marks_only_ids: list[str] = []
         skip_records: list[SkipRecord] = []
         warnings: list[AnchorWarning] = []
         degradation_flags: list[DegradationFlag] = []
@@ -908,6 +910,7 @@ class DocumentProcessor:
                 degradation_flags.extend(layout_result.degradation_flags)
 
                 # --- Drawing phase ---
+                req_by_id = {request.annotation_id: request for request in requests}
                 for resolved_ann in layout_result.placed:
                     _, ann = ann_by_id[resolved_ann.annotation_id]
                     page_bounds = SurfaceRect(
@@ -968,6 +971,49 @@ class DocumentProcessor:
                 # Layout skips (UNPLACEABLE etc.)
                 for skip in layout_result.skipped:
                     skip_records.append(skip)
+                    note_request = req_by_id.get(skip.annotation_id)
+                    if (
+                        note_request is None
+                        or note_request.anchor is None
+                        or not note_request.anchor.quads
+                    ):
+                        continue
+
+                    _, ann = ann_by_id[skip.annotation_id]
+                    if _MARK_ROLES.get(ann.mark_intent) is None:
+                        continue
+
+                    mark_resolved = ResolvedAnnotation(
+                        annotation_id=ann.id,
+                        source_locator=note_request.source_locator,
+                        requested_placement=note_request.requested_placement,
+                        resolved_placement=note_request.requested_placement,
+                        anchor=note_request.anchor,
+                        note_box=None,
+                        render_seed=note_request.render_seed,
+                    )
+                    page_bounds = SurfaceRect(
+                        x0=page.rect.x0,
+                        y0=page.rect.y0,
+                        x1=page.rect.x1,
+                        y1=page.rect.y1,
+                    )
+                    compose_request = ComposeRequest(
+                        annotation=ann,
+                        resolved=mark_resolved,
+                        document_seed=plan.document_seed,
+                        page_bounds=page_bounds,
+                        obstacles=page_occ.obstacles,
+                    )
+                    composition = composer.compose(
+                        compose_request,
+                        style,
+                        handwriting_mode=self._handwriting_engine,
+                        mark_only=True,
+                    )
+                    scene_result = renderer.render_scene(page, composition.scene)
+                    if scene_result.rendered:
+                        marks_only_ids.append(ann.id)
 
                 # Resolution misses (MISSING_TARGET)
                 for ann_id in resolution_miss_ids:
@@ -999,6 +1045,7 @@ class DocumentProcessor:
         return RenderReport(
             rendered=tuple(rendered_ids),
             skipped=tuple(skip_records),
+            marks_only=tuple(marks_only_ids),
             warnings=tuple(warnings),
             degradation_flags=tuple(dict.fromkeys(degradation_flags)),
             output_hashes=(OutputHash(role="pdf", sha256=output_sha256),),
