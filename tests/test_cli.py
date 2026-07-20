@@ -93,14 +93,6 @@ class _FakeCliProvider:
 class _FakePdfProcessor:
     load_calls: list[str] = []
     render_calls: list[str] = []
-    last_handwriting_engine: str | None = None
-
-    def __init__(
-        self, font_path: str | None = None, handwriting_engine: str = "typeset"
-    ) -> None:
-        # P3-T12b threads --handwriting-engine to the PDF processor via
-        # _processor_for; accept and record it so construction still succeeds.
-        type(self).last_handwriting_engine = handwriting_engine
 
     def load(self, path: str) -> list[PageContent]:
         type(self).load_calls.append(path)
@@ -413,7 +405,6 @@ def test_annotate_typeset_engine_dispatches_normally(
     )
     assert result.exit_code == 0, result.output
     assert _no_traceback(result), f"raw exception leaked: {result.exception!r}"
-    assert _FakePdfProcessor.last_handwriting_engine == "typeset"
 
 
 def test_procedural_engine_rejected_before_provider_and_generator(

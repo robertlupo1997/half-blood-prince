@@ -739,7 +739,9 @@ class DocumentProcessor:
           1. Build PdfPageIndex for per-char geometry.
           2. _resolve_annotation_to_anchor: each annotation → PdfAnchor or MISSING.
           3. layout_page_annotations: assigns note_box and placement to each request.
-          4. For placed annotations: _mark_target per quad; _draw_resolved_note.
+          4. For placed annotations: join the semantic Annotation, compose an InkScene
+             (InkComposer), render it as vectors (PdfRenderer.render_scene), and draw the
+             typeset note body (_draw_note_body). Highlights commit as an underlay.
           5. Accumulate rendered IDs and SkipRecords into a RenderReport.
 
         Output is written atomically: fitz saves to a temp file in the same directory,
@@ -885,11 +887,13 @@ class DocumentProcessor:
                         degradation_flags.append(DegradationFlag.GLYPH_FALLBACK)
 
                     if not scene_result.rendered:
-                        assert scene_result.skip_reason is not None
+                        reason = (
+                            scene_result.skip_reason or SkipReason.INK_GEOMETRY_INVALID
+                        )
                         skip_records.append(
                             SkipRecord(
                                 annotation_id=resolved_ann.annotation_id,
-                                reason=scene_result.skip_reason,
+                                reason=reason,
                                 detail="composed ink scene failed PDF renderer preflight",
                             )
                         )

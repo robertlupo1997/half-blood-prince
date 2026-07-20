@@ -217,13 +217,11 @@ def _processor_for(
     """
     suffix = path.suffix.lower()
     if suffix == ".pdf":
-        if handwriting_engine == "procedural":
-            if font_path is not None:
-                return DocumentProcessor(
-                    font_path=str(font_path),
-                    handwriting_engine=handwriting_engine,
-                )
-            return DocumentProcessor(handwriting_engine=handwriting_engine)
+        # `handwriting_engine` is accepted for signature stability but intentionally
+        # NOT threaded to the PDF processor: `annotate` rejects `procedural` before
+        # this point (P3-T5 NO-GO), so only `typeset` — the DocumentProcessor default
+        # — ever reaches here. Threading a value that can only be the default adds no
+        # behavior and would couple every DocumentProcessor construction assertion to it.
         if font_path is not None:
             return DocumentProcessor(font_path=str(font_path))
         return DocumentProcessor()
