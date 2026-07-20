@@ -523,6 +523,44 @@ def test_selector_for_builds_an_exact_selector() -> None:
 
 
 # ---------------------------------------------------------------------------
+# MP2a — wrap_cross_node_segments derives mark-intent class from legacy V1 type
+#
+# wrap_cross_node_segments is public API; tests call it directly with a legacy
+# Annotation (no mark_intent field).  After MP2a the function must derive the
+# effective intent from the _MARK_INTENTS migration mapping and attach the
+# corresponding hbp-mark-{intent} class to every mark span it emits.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("atype", "expected_intent_class"),
+    [
+        (AnnotationType.CROSSED_OUT, "hbp-mark-strike"),
+        (AnnotationType.INSIGHT, "hbp-mark-circle"),
+    ],
+    ids=["crossed_out->strike", "insight->circle"],
+)
+def test_wrap_cross_node_segments_derives_intent_from_legacy_annotation(
+    atype: AnnotationType, expected_intent_class: str
+) -> None:
+    """Legacy Annotation (no mark_intent) must yield the V1-mapped intent class on mark spans."""
+    soup = _soup(_ONE_BLOCK_XHTML)
+    match = locate_across_nodes(soup.body, selector_for(_CROSS_TARGET))
+    assert match is not None
+
+    EpubProcessor(seed=3).wrap_cross_node_segments(
+        soup, match.segments, _ann(1, _CROSS_TARGET, atype=atype)
+    )
+
+    marks = soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
+    assert marks, f"{atype.value} annotation must produce at least one mark span"
+    for mark in marks:
+        assert expected_intent_class in mark["class"], (
+            f"mark span for {atype.value} must carry {expected_intent_class}; got {mark['class']!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # P2-T9 fold-in #1 — render_plan / render_annotations markup-structure parity
 #
 # render_annotations routes through the single-node _locate_text fallback path.
@@ -612,4 +650,10 @@ def test_render_plan_and_render_annotations_produce_same_span_count(
     # The wrapped text must be identical regardless of which path placed it.
     assert v1_targets[0].get_text() == v2_targets[0].get_text(), (
         "target span text must be the same from both render paths"
+    )
+    # MP2a: render_plan (V2 path) must attach the intent-derived mark class.
+    # The V2 annotation has mark_intent=CIRCLE (see _v2_acids_plan), so the
+    # intent class must be hbp-mark-circle.
+    assert "hbp-mark-circle" in v2_targets[0]["class"], (
+        "render_plan target span must carry hbp-mark-circle (mark_intent=CIRCLE)"
     )
