@@ -159,6 +159,7 @@ class ResolvedAnnotation(_StrictModel):
     resolved_placement: Placement
     anchor: ResolvedAnchor | None = None
     note_box: SurfaceRect | None = None
+    note_scale: float = Field(default=1.0, gt=0)
     render_seed: int = Field(ge=0, le=2**64 - 1)
     warnings: tuple[AnchorWarning, ...] = ()
 

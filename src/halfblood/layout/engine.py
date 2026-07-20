@@ -316,6 +316,7 @@ def run_layout(
                         resolved_placement=request.requested_placement,
                         anchor=request.anchor,
                         note_box=inline_box,
+                        note_scale=1.0,
                         render_seed=request.render_seed,
                         warnings=(),
                     )
@@ -419,6 +420,7 @@ def run_layout(
                 resolved_placement=side,
                 anchor=request.anchor,
                 note_box=note_box,
+                note_scale=scale,
                 render_seed=request.render_seed,
                 warnings=tuple(warnings),
             )

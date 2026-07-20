@@ -154,6 +154,45 @@ _MIN_MARGIN_WIDTH = 40.0
 _PAGE_EDGE_PAD = 12.0
 
 
+def _wrap_text_with_font(
+    text: str,
+    max_width: float,
+    fontsize: float,
+    font: Any,
+) -> list[str]:
+    """Greedily wrap text using only the supplied font metric."""
+    words = text.split()
+    if not words:
+        return [""]
+
+    def split_word(word: str) -> list[str]:
+        chunks: list[str] = []
+        current_chunk = ""
+        for char in word:
+            candidate = current_chunk + char
+            if current_chunk and font.text_length(candidate, fontsize=fontsize) > max_width:
+                chunks.append(current_chunk)
+                current_chunk = char
+            else:
+                current_chunk = candidate
+        if current_chunk:
+            chunks.append(current_chunk)
+        return chunks
+
+    wrapped_words = [chunk for word in words for chunk in split_word(word)]
+    lines: list[str] = []
+    current = wrapped_words[0]
+    for word in wrapped_words[1:]:
+        candidate = f"{current} {word}"
+        if font.text_length(candidate, fontsize=fontsize) <= max_width:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return lines
+
+
 class DocumentProcessor:
     """Extracts text from PDFs and renders Half-Blood-Prince-style
     handwritten margin annotations back onto them.
@@ -171,9 +210,9 @@ class DocumentProcessor:
 
         def measure(self, text: str, max_width: float, scale: float) -> tuple[float, float]:
             fontsize = self._base_fontsize * scale
-            # Clamp width to the column; approximate line height as fontsize * 1.3.
-            width = min(max_width, self._font.text_length(text, fontsize=fontsize))
-            return (width, fontsize * 1.3)
+            lines = _wrap_text_with_font(text, max_width, fontsize, self._font)
+            width = max(self._font.text_length(line, fontsize=fontsize) for line in lines)
+            return (width, len(lines) * fontsize * 1.3)
 
     def __init__(
         self,
@@ -700,7 +739,10 @@ class DocumentProcessor:
         note_rect = fitz_rect_from_surf(resolved_ann.note_box)
         ink = self._ink_color(annotation.annotation_type)
         angle = self._organic_angle(annotation.content)
-        fontsize = _FONT_SIZE_BY_TYPE.get(annotation.annotation_type, 9.0)
+        fontsize = (
+            _FONT_SIZE_BY_TYPE.get(annotation.annotation_type, 9.0)
+            * resolved_ann.note_scale
+        )
 
         shape = page.new_shape()
 
@@ -782,7 +824,12 @@ class DocumentProcessor:
         skip_records: list[SkipRecord] = []
         warnings: list[AnchorWarning] = []
         degradation_flags: list[DegradationFlag] = []
-        measurer = self._LayoutMeasurer(self._measure_font)
+        # Use the largest per-type font so smaller note types are slightly
+        # over-reserved: layout errs toward fit and never renderer overflow.
+        measurer = self._LayoutMeasurer(
+            self._measure_font,
+            base_fontsize=max(_FONT_SIZE_BY_TYPE.values()),
+        )
 
         doc = fitz.open(input_path)
         try:
@@ -1333,40 +1380,7 @@ class DocumentProcessor:
         `fontsize`, using the resolved handwriting font's real metrics
         (or Helvetica's, as a stand-in for Helvetica-Oblique).
         """
-        words = text.split()
-        if not words:
-            return [""]
-
-        def split_word(word: str) -> list[str]:
-            chunks: list[str] = []
-            current_chunk = ""
-            for char in word:
-                candidate = current_chunk + char
-                if (
-                    current_chunk
-                    and self._measure_font.text_length(candidate, fontsize=fontsize)
-                    > max_width
-                ):
-                    chunks.append(current_chunk)
-                    current_chunk = char
-                else:
-                    current_chunk = candidate
-            if current_chunk:
-                chunks.append(current_chunk)
-            return chunks
-
-        wrapped_words = [chunk for word in words for chunk in split_word(word)]
-        lines: list[str] = []
-        current = wrapped_words[0]
-        for word in wrapped_words[1:]:
-            candidate = f"{current} {word}"
-            if self._measure_font.text_length(candidate, fontsize=fontsize) <= max_width:
-                current = candidate
-            else:
-                lines.append(current)
-                current = word
-        lines.append(current)
-        return lines
+        return _wrap_text_with_font(text, max_width, fontsize, self._measure_font)
 
     # ------------------------------------------------------------
     # Convenience: flatten an AnnotationPlan
