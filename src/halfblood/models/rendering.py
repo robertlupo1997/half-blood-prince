@@ -119,6 +119,7 @@ class DegradationFlag(str, Enum):  # noqa: UP042  # Preserve the pinned string-e
     PROCEDURAL_STROKE_FALLBACK = "procedural_stroke_fallback"
     GLYPH_FALLBACK = "glyph_fallback"
     EPUB_NO_TARGET_GEOMETRY = "epub_no_target_geometry"
+    EPUB_DENSE_NOTES_BLOCK_FALLBACK = "epub_dense_notes_block_fallback"
     SVG_UNSUPPORTED_TEXT_NOTE = "svg_unsupported_text_note"
     NOTE_SKIPPED_UNFITTABLE = "note_skipped_unfittable"
     CONNECTOR_ROUTING_FALLBACK = "connector_routing_fallback"

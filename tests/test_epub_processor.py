@@ -836,3 +836,77 @@ def test_nl1_v1_render_annotations_uses_cluster_with_derived_ids(
     assert backlink.get("href") == f"#{expected_ref_id}", (
         "V1 back-link href must point to the derived noteref id"
     )
+
+
+# ---------------------------------------------------------------------------
+# NL3 — V1 path density check
+# ---------------------------------------------------------------------------
+
+# Four non-overlapping phrases in one <p> — matching the NL3 dense paragraph
+# used in test_epub_render_report.py so both test suites target the same DOM.
+_NL3_V1_DENSE_CONTENT = (
+    "<h1>Dense Test Chapter</h1>"
+    "<p>Heat the armadillo bile gently until it shimmers,"
+    " then add powdered asphodel root while stirring,"
+    " followed by the wormwood infusion clockwise,"
+    " and finally seal with essence of Dittany.</p>"
+)
+_NL3_V1_TARGETS = [
+    "armadillo bile gently until it shimmers",
+    "powdered asphodel root while stirring",
+    "wormwood infusion clockwise",
+    "essence of Dittany",
+]
+
+
+def test_nl3_v1_four_notes_cluster_is_dense(tmp_path: Path) -> None:
+    """NL3 V1 path: render_annotations must flip the cluster to dense
+    (hbp-note-cluster-dense present, hbp-note-cluster-floatable absent) when
+    4 annotations land on the same block.  V1 returns None, so only DOM is
+    checked here — no RenderReport available."""
+    # Build a minimal inline EPUB with the dense paragraph as its second chapter
+    # (nav → ordinal 1, ch1 placeholder → ordinal 2, ch2 dense → ordinal 3).
+    _dense_page = 3
+
+    book = epub.EpubBook()
+    book.set_identifier("hbp-nl3-v1-dense-test")
+    book.set_title("NL3 V1 Dense Test")
+    book.set_language("en")
+    ch1 = epub.EpubHtml(uid="ch1", file_name="ch1.xhtml", lang="en")
+    ch1.content = "<h1>Placeholder</h1><p>Nothing here.</p>"
+    ch2 = epub.EpubHtml(uid="ch2", file_name="ch2.xhtml", lang="en")
+    ch2.content = _NL3_V1_DENSE_CONTENT
+    for item in (ch1, ch2, epub.EpubNcx(), epub.EpubNav()):
+        book.add_item(item)
+    book.toc = [ch1, ch2]
+    book.spine = ["nav", ch1, ch2]
+    src = tmp_path / "nl3_v1_src.epub"
+    epub.write_epub(str(src), book)
+
+    annotations = [
+        _ann(_dense_page, target) for target in _NL3_V1_TARGETS
+    ]
+    out = tmp_path / "nl3_v1_out.epub"
+    EpubProcessor(seed=5).render_annotations(str(src), annotations, str(out))
+
+    with zipfile.ZipFile(out) as zf:
+        ch2_bytes = _chapter_bytes(zf, "ch2.xhtml")
+    soup = BeautifulSoup(ch2_bytes, "lxml")
+
+    clusters = soup.find_all(True, class_="hbp-note-cluster")
+    assert len(clusters) >= 1, (
+        "NL3 V1: must produce at least one cluster for a 4-note input"
+    )
+    dense_clusters = [
+        c for c in clusters if "hbp-note-cluster-dense" in (c.get("class") or [])
+    ]
+    assert dense_clusters, (
+        "NL3 V1: render_annotations must produce hbp-note-cluster-dense when 4 notes "
+        "land on the same block"
+    )
+    for cluster in dense_clusters:
+        cls = set(cluster.get("class") or [])
+        assert "hbp-note-cluster-floatable" not in cls, (
+            f"NL3 V1: dense cluster must not carry hbp-note-cluster-floatable; "
+            f"got {cls!r}"
+        )

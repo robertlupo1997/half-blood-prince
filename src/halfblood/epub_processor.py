@@ -116,6 +116,8 @@ _NOMINAL_PAGE_HEIGHT = 800.0
 
 _ANNOTATION_STYLESHEET_PATH = "style/hbp-annotations.css"
 
+_DENSE_CLUSTER_NOTE_COUNT = 4
+
 _BLOCK_TAGS = (
     "p",
     "div",
@@ -172,6 +174,9 @@ _ANNOTATION_CSS = """
 .hbp-note-cluster {
     display: block;
     margin: 0.4em 0 0.8em 1.2em;
+}
+.hbp-note-cluster-dense {
+    clear: both;
 }
 .hbp-note {
     font-family: "Caveat", "Bradley Hand", "Segoe Print", "Comic Sans MS", cursive;
@@ -529,6 +534,7 @@ class EpubProcessor:
         rendered_ids: list[str] = []
         skip_records: list[SkipRecord] = []
         stylesheet: epub.EpubItem | None = None
+        dense_cluster_emitted = False
 
         for unit in plan.units:
             annotations: list[V2Annotation] = unit.annotations
@@ -607,6 +613,8 @@ class EpubProcessor:
 
             item.set_content(str(soup).encode("utf-8"))
             if chapter_rendered:
+                if soup.select_one(".hbp-note-cluster-dense") is not None:
+                    dense_cluster_emitted = True
                 if stylesheet is None:
                     stylesheet = self._ensure_annotation_stylesheet(book)
                 self._link_annotation_stylesheet(item, stylesheet)
@@ -622,10 +630,15 @@ class EpubProcessor:
         # optional regeneration is disabled.
         write_options = {"epub3_pages": False} if rendered_ids and is_epub3 else None
         epub.write_epub(output_path, book, write_options)
+        degradation_flags = [DegradationFlag.EPUB_NO_TARGET_GEOMETRY]
+        if dense_cluster_emitted:
+            degradation_flags.append(
+                DegradationFlag.EPUB_DENSE_NOTES_BLOCK_FALLBACK
+            )
         return RenderReport(
             rendered=tuple(rendered_ids),
             skipped=tuple(skip_records),
-            degradation_flags=(DegradationFlag.EPUB_NO_TARGET_GEOMETRY,),
+            degradation_flags=tuple(degradation_flags),
         )
 
     def render_annotations(
@@ -1020,6 +1033,12 @@ class EpubProcessor:
         note_tag.append(backlink)
         note_tag.append(NavigableString(self._format_note_text(annotation)))
         cluster.append(note_tag)
+        cluster_classes = cast(list[str], cluster.get("class") or [])
+        if len(cluster.select(".hbp-note")) >= _DENSE_CLUSTER_NOTE_COUNT:
+            if "hbp-note-cluster-floatable" in cluster_classes:
+                cluster_classes.remove("hbp-note-cluster-floatable")
+            if "hbp-note-cluster-dense" not in cluster_classes:
+                cluster_classes.append("hbp-note-cluster-dense")
 
     # ------------------------------------------------------------
     # Small helpers
