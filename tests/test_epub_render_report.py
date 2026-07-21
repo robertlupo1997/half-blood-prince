@@ -585,7 +585,8 @@ def test_mark_intent_and_annotation_type_are_orthogonal(
         ch2_bytes = _chapter_bytes(zf, "ch2.xhtml")
     soup = BeautifulSoup(ch2_bytes, "lxml")
     targets = soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
-    notes = soup.find_all("span", class_=lambda c: c and "hbp-note" in c)
+    # NL1: notes are now <aside> elements inside cluster <div>s — search any tag.
+    notes = soup.find_all(True, class_="hbp-note")
     assert len(targets) == 1
     assert len(notes) == 1
     target_cls = set(targets[0]["class"])
@@ -620,11 +621,12 @@ def test_none_intent_creates_note_without_target_span(
         css_count = _hbp_css_count(zf, "ch1.xhtml")
     soup = BeautifulSoup(ch1_bytes, "lxml")
     targets = soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
-    notes = soup.find_all("span", class_=lambda c: c and "hbp-note" in c)
+    # NL1: notes are now <aside> elements inside cluster <div>s — search any tag.
+    notes = soup.find_all(True, class_="hbp-note")
     # No target span — NONE intent leaves the matched text node untouched.
     assert len(targets) == 0, "NONE intent must not emit any hbp-target span"
-    # Exactly one note span still inserted.
-    assert len(notes) == 1, "NONE intent must still insert exactly one hbp-note span"
+    # Exactly one note element still inserted.
+    assert len(notes) == 1, "NONE intent must still insert exactly one hbp-note element"
     # Target text is still present in the chapter (text node not split or removed).
     assert b"bezoar is a stone taken from" in ch1_bytes, (
         "target text must remain intact in the chapter when mark_intent is NONE"
@@ -705,4 +707,338 @@ def test_annotation_stylesheet_contains_intent_css_rules(
     for intent_slug in ("underline", "circle", "strike", "highlight", "caret"):
         assert f".hbp-mark-{intent_slug}" in css_text, (
             f"stylesheet must contain a .hbp-mark-{intent_slug} rule"
+        )
+
+
+# ---------------------------------------------------------------------------
+# EPUB-NL1 — semantic note DOM + stable ordering
+#
+# These tests are authored by the controller and MUST FAIL on HEAD before
+# Codex implements NL1.  They pin the exact contract from
+# nl1-semantic-note-dom-brief.md:
+#
+#   • Same-block ordering: two annotations on one block → one cluster, plan order.
+#   • EPUB 3 note shape: <aside> with id, class, epub:type="footnote", back-link.
+#   • EPUB 2 fallback: <div> note, no epub:type, bidirectional links still present.
+#   • NONE intent noteref: noteref at target end, target text preserved, note in cluster.
+#   • Bidirectional invariant: all noteref hrefs and back-link hrefs resolve, ids unique.
+#   • Report/text invariants: rendered/skipped semantics unchanged; body text subsequence.
+# ---------------------------------------------------------------------------
+
+
+def test_nl1_same_block_notes_form_one_cluster_in_plan_order(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """NL1 live defect: two annotations on the same block must share ONE cluster,
+    and notes must appear in plan (processing) order.
+
+    The old insert_after approach called insert_after twice, each time inserting
+    directly after the <p>, reversing the order (second note ended up first).
+    After NL1, notes are appended into a shared cluster in plan order.
+    """
+    ann1_id = "ann-block-first"
+    ann2_id = "ann-block-second"
+    plan = _plan(
+        [
+            _unit(
+                _CH2_ORDINAL,
+                [
+                    _ann(ann1_id, "ancient potion requires careful"),
+                    _ann(ann2_id, "stirring at dawn"),
+                ],
+            )
+        ]
+    )
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch2_bytes = _chapter_bytes(zf, "ch2.xhtml")
+    soup = BeautifulSoup(ch2_bytes, "lxml")
+
+    clusters = soup.find_all(True, class_="hbp-note-cluster")
+    assert len(clusters) == 1, (
+        "two annotations on the same block must share exactly one cluster; "
+        f"found {len(clusters)}"
+    )
+    cluster = clusters[0]
+    notes = cluster.find_all(True, class_="hbp-note")
+    assert len(notes) == 2, (
+        f"cluster must contain both notes; found {len(notes)}"
+    )
+    # Plan order: ann1 before ann2
+    note_ids = [n.get("id") for n in notes]
+    assert note_ids == [f"hbp-note-{ann1_id}", f"hbp-note-{ann2_id}"], (
+        f"notes must appear in plan order inside the cluster; got {note_ids!r}"
+    )
+    # Per-chapter noteref counter: ann1 gets '1', ann2 gets '2'
+    ref1 = soup.find(id=f"hbp-ref-{ann1_id}")
+    ref2 = soup.find(id=f"hbp-ref-{ann2_id}")
+    assert ref1 is not None, f"noteref for {ann1_id!r} not found"
+    assert ref2 is not None, f"noteref for {ann2_id!r} not found"
+    assert ref1.get_text(strip=True) == "1", (
+        f"first noteref must display '1'; got {ref1.get_text(strip=True)!r}"
+    )
+    assert ref2.get_text(strip=True) == "2", (
+        f"second noteref must display '2'; got {ref2.get_text(strip=True)!r}"
+    )
+
+
+def test_nl1_epub3_note_is_aside_with_id_and_epub_type(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """NL1 EPUB 3: note must be rendered as <aside> carrying id, hbp-note class,
+    and epub:type='footnote'; noteref must link to it; note back-link must link
+    back to the noteref id."""
+    ann_id = "ann-epub3-shape"
+    plan = _plan([_unit(_CH1_ORDINAL, [_ann(ann_id, "bezoar is a stone taken from")])])
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+
+    # Note must be <aside> with correct id and class
+    note = soup.find("aside", id=f"hbp-note-{ann_id}")
+    assert note is not None, "EPUB 3 note must be rendered as <aside>"
+    assert "hbp-note" in (note.get("class") or []), (
+        "EPUB 3 <aside> must carry hbp-note class"
+    )
+    # epub:type="footnote" must appear in the raw chapter bytes (namespace attr)
+    assert b'epub:type="footnote"' in ch1_bytes, (
+        'EPUB 3 <aside> must carry epub:type="footnote"'
+    )
+    # Noteref (the inline counter link) must exist and point to the note
+    noteref = soup.find(id=f"hbp-ref-{ann_id}")
+    assert noteref is not None, f"noteref #hbp-ref-{ann_id} not found"
+    assert noteref.get("href") == f"#hbp-note-{ann_id}", (
+        "noteref href must point to the note id"
+    )
+    # Back-link inside the note must point back to the noteref
+    backlink = note.find("a", class_="hbp-note-backlink")
+    assert backlink is not None, "EPUB 3 note must contain a back-link <a>"
+    assert backlink.get("href") == f"#hbp-ref-{ann_id}", (
+        "back-link href must point to the noteref id"
+    )
+
+
+def test_nl1_epub2_note_is_div_without_epub_type(
+    epub_src: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NL1 EPUB 2: when book.version does not start with '3', notes must be
+    rendered as <div> without epub:type or epub namespace — but back-link and
+    noteref bidirectional links must still be present."""
+    # Intercept epub.read_epub to force the in-memory book to appear as EPUB 2.0.
+    # EpubProcessor reads book.version via this call; setting it on the returned
+    # object is sufficient since we never round-trip through write_epub for this check.
+    _real_read_epub = epub.read_epub
+
+    def _epub2_read(path: str, *args: object, **kwargs: object) -> object:
+        book = _real_read_epub(path, *args, **kwargs)
+        book.version = "2.0"
+        return book
+
+    monkeypatch.setattr(epub, "read_epub", _epub2_read)
+
+    ann_id = "ann-epub2-div"
+    plan = _plan([_unit(_CH1_ORDINAL, [_ann(ann_id, "bezoar is a stone taken from")])])
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+
+    # Note must be <div>, not <aside>
+    note = soup.find("div", id=f"hbp-note-{ann_id}")
+    assert note is not None, "EPUB 2 note must be rendered as <div>"
+    assert soup.find("aside", id=f"hbp-note-{ann_id}") is None, (
+        "EPUB 2 must not use <aside> for notes"
+    )
+    assert "hbp-note" in (note.get("class") or []), (
+        "EPUB 2 <div> note must carry hbp-note class"
+    )
+    # No epub:type in the chapter bytes (neither on the note nor the noteref)
+    assert b"epub:type" not in ch1_bytes, (
+        "EPUB 2 output must not contain any epub:type attribute"
+    )
+    # Noteref still present (links still bidirectional)
+    noteref = soup.find(id=f"hbp-ref-{ann_id}")
+    assert noteref is not None, "EPUB 2 must still include a noteref"
+    assert noteref.get("href") == f"#hbp-note-{ann_id}", (
+        "EPUB 2 noteref href must point to the note id"
+    )
+    # Back-link inside the div note must point back to the noteref
+    backlink = note.find("a", class_="hbp-note-backlink")
+    assert backlink is not None, "EPUB 2 note must still contain a back-link <a>"
+    assert backlink.get("href") == f"#hbp-ref-{ann_id}", (
+        "EPUB 2 back-link href must point to the noteref id"
+    )
+
+
+def test_nl1_none_intent_has_noteref_at_target_end_and_note_in_cluster(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """NL1 NONE intent: no hbp-target mark span; noteref inserted at the end of
+    the target text (after the last char, before the rest of the paragraph);
+    original target text preserved character-for-character; note still in cluster."""
+    ann_id = "ann-none-noteref"
+    plan = _plan(
+        [
+            _unit(
+                _CH1_ORDINAL,
+                [
+                    _ann(
+                        ann_id,
+                        "bezoar is a stone taken from",
+                        mark_intent=MarkIntent.NONE,
+                    )
+                ],
+            )
+        ]
+    )
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+
+    # No mark span (NONE leaves target text unwrapped)
+    targets = soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
+    assert len(targets) == 0, "NONE intent must not wrap target in hbp-target span"
+
+    # Target text preserved verbatim in the chapter bytes
+    assert b"bezoar is a stone taken from" in ch1_bytes, (
+        "target text must remain in the chapter even with NONE intent"
+    )
+
+    # Noteref must be present and point to the note
+    noteref = soup.find(id=f"hbp-ref-{ann_id}")
+    assert noteref is not None, "NONE intent must still insert a noteref <a>"
+    assert noteref.get("href") == f"#hbp-note-{ann_id}", (
+        "NONE noteref href must point to the note id"
+    )
+    # The noteref's containing block must hold the target text
+    # (noteref is split into the text node at the target's end)
+    block = noteref.find_parent(lambda t: t.name in ("p", "div", "li", "h1", "h2", "h3"))
+    assert block is not None, "noteref must be inside a block element"
+    assert "bezoar is a stone taken from" in block.get_text(), (
+        "the block containing the noteref must also contain the target text"
+    )
+
+    # Note is still placed in a cluster
+    cluster = soup.find(True, class_="hbp-note-cluster")
+    assert cluster is not None, "NONE intent must still produce a cluster div"
+    note = cluster.find(True, class_="hbp-note")
+    assert note is not None, "NONE intent must still produce a note inside the cluster"
+    assert note.get("id") == f"hbp-note-{ann_id}", (
+        f"NONE note id must be hbp-note-{ann_id}"
+    )
+
+
+def test_nl1_bidirectional_links_all_resolve(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """NL1 bidirectional invariant (3-annotation sweep): every noteref href resolves
+    to a note id in the same chapter; every back-link href resolves to a noteref id;
+    all hbp- ids are unique per chapter."""
+    anns = [
+        _ann("ann-bi-1", "bezoar is a stone taken from"),
+        _ann("ann-bi-2", "First heat the flask"),  # unique; "Stir clockwise three times" repeats twice
+        _ann("ann-bi-3", "fine powder on heating"),
+    ]
+    plan = _plan([_unit(_CH1_ORDINAL, anns)])
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+
+    # Collect all ids in the chapter
+    all_ids = {
+        tag.get("id")
+        for tag in soup.find_all(True)
+        if tag.get("id")
+    }
+
+    # All noterefs must href-resolve to a note id
+    noterefs = soup.find_all(True, class_="hbp-noteref")
+    assert len(noterefs) == 3, f"expected 3 noterefs; got {len(noterefs)}"
+    for ref in noterefs:
+        href = ref.get("href", "")
+        assert href.startswith("#"), f"noteref href must be a fragment; got {href!r}"
+        target_id = href[1:]
+        assert target_id in all_ids, (
+            f"noteref href {href!r} does not resolve to any id in the chapter"
+        )
+        assert target_id.startswith("hbp-note-"), (
+            f"noteref must point to a note id; got {target_id!r}"
+        )
+
+    # All notes must have a back-link that href-resolves to a noteref id
+    notes = soup.find_all(True, class_="hbp-note")
+    assert len(notes) == 3, f"expected 3 notes; got {len(notes)}"
+    for note in notes:
+        backlink = note.find("a", class_="hbp-note-backlink")
+        assert backlink is not None, f"note {note.get('id')!r} has no back-link"
+        href = backlink.get("href", "")
+        assert href.startswith("#"), f"back-link href must be a fragment; got {href!r}"
+        target_id = href[1:]
+        assert target_id in all_ids, (
+            f"back-link href {href!r} does not resolve to any id in the chapter"
+        )
+        assert target_id.startswith("hbp-ref-"), (
+            f"back-link must point to a noteref id; got {target_id!r}"
+        )
+
+    # All hbp- ids must be unique
+    note_ids = [n.get("id") for n in notes]
+    ref_ids = [r.get("id") for r in noterefs]
+    all_hbp_ids = note_ids + ref_ids
+    assert len(all_hbp_ids) == len(set(all_hbp_ids)), (
+        f"all hbp- ids must be unique per chapter; duplicates in {all_hbp_ids!r}"
+    )
+
+
+def test_nl1_body_text_preserved_and_report_semantics_unchanged(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """NL1 invariants: RenderReport rendered/skipped semantics are unchanged by the
+    DOM restructure; original body text is preserved as a subsequence (noteref digits
+    and back-link counters are the only additive text — nothing is removed or reordered).
+    """
+    ann_id = "ann-text-inv"
+    plan = _plan(
+        [_unit(_CH1_ORDINAL, [_ann(ann_id, "bezoar is a stone taken from")])]
+    )
+    report, out = _render(epub_src, plan, tmp_path)
+
+    # RenderReport semantics must be unchanged by NL1 DOM restructure
+    assert report.rendered == (ann_id,)
+    assert report.skipped == ()
+    assert report.marks_only == ()
+    assert DegradationFlag.EPUB_NO_TARGET_GEOMETRY in report.degradation_flags
+
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+
+    # NL1 structural invariant: rendered annotations must place notes in cluster divs.
+    # This assertion fails on HEAD (no clusters) and passes after NL1 is implemented.
+    clusters = soup.find_all(True, class_="hbp-note-cluster")
+    assert len(clusters) >= 1, (
+        "NL1: rendered annotations must produce at least one hbp-note-cluster div"
+    )
+
+    # Remove NL1 additive content: cluster divs (with aside notes + back-links)
+    # and noteref anchors (digit-only inline markers).
+    for cluster in clusters:
+        cluster.extract()
+    for noteref in soup.find_all(True, class_="hbp-noteref"):
+        noteref.extract()
+
+    remaining = soup.body.get_text() if soup.body else ""
+    # Every original phrase from _CH1_CONTENT must survive in the remaining text
+    for phrase in (
+        "bezoar is a stone taken from the stomach of a goat",
+        "Stir clockwise three times",
+        "asphodel",
+        "fine powder on heating",
+        "First heat the flask",
+    ):
+        assert phrase in remaining, (
+            f"original body phrase {phrase!r} missing after removing NL1 additive content"
         )

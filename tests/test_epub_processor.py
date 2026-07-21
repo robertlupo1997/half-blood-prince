@@ -325,13 +325,16 @@ def test_warning_note_carries_its_glyph_prefix(tmp_path: Path) -> None:
     )
     with zipfile.ZipFile(out) as zf:
         root = etree.fromstring(_chapter_bytes(zf, "ch2.xhtml"))
+    # NL1: notes are now <aside> (EPUB 3) inside a cluster <div>, not bare <span>.
     notes = [
         el
-        for el in root.findall(".//x:span", _XHTML_NS)
+        for el in root.findall(".//x:aside", _XHTML_NS)
         if "hbp-note" in (el.get("class") or "")
     ]
     assert len(notes) == 1
-    assert notes[0].text == "⚠ ALWAYS. No exceptions."
+    # NL1: the aside now contains a back-link <a> before the note text, so
+    # `.text` is the text before the first child (None or empty); use itertext().
+    assert "⚠ ALWAYS. No exceptions." in "".join(notes[0].itertext())
 
 
 def test_annotation_css_reaches_the_written_chapter_exactly_once(tmp_path: Path) -> None:
@@ -509,16 +512,21 @@ def test_wrap_cross_node_segments_preserves_markup_and_text() -> None:
     block = soup.find("p")
     # inline tags survive
     assert block.find("em") is not None and block.find("strong") is not None
-    # exactly one note; the marked slices concatenate to the quote
-    notes = soup.find_all("span", class_=lambda c: c and "hbp-note" in c)
+    # exactly one note; the marked slices concatenate to the quote.
+    # NL1: notes are now <aside> elements inside a cluster <div> — search any tag.
+    notes = soup.find_all(True, class_="hbp-note")
     assert len(notes) == 1
     marks = soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
     assert normalize("".join(m.get_text() for m in marks)) == normalize(_CROSS_TARGET)
     # result is valid XHTML
     etree.fromstring(str(soup).encode("utf-8"))
-    # original book text preserved once the added note is removed (no dup/loss)
-    for note in notes:
-        note.extract()
+    # original book text preserved once NL1 additive content is removed.
+    # NL1 adds: cluster div (with aside note + back-link) after the block, and
+    # a noteref digit inline after the last mark span.  Extract both, then compare.
+    for cluster in soup.find_all(True, class_="hbp-note-cluster"):
+        cluster.extract()
+    for noteref in soup.find_all(True, class_="hbp-noteref"):
+        noteref.extract()
     assert normalize(soup.body.get_text()) == before_body_text
 
 
@@ -696,7 +704,8 @@ def test_render_plan_and_render_annotations_produce_same_span_count(
 
     v1_soup = BeautifulSoup(v1_bytes, "lxml")
     v1_targets = v1_soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
-    v1_notes = v1_soup.find_all("span", class_=lambda c: c and "hbp-note" in c)
+    # NL1: notes are now <aside> elements inside cluster <div>s — search any tag.
+    v1_notes = v1_soup.find_all(True, class_="hbp-note")
 
     # --- render_plan (P2-T9 V2 path) ---
     out_v2 = tmp_path / "v2.epub"
@@ -707,13 +716,14 @@ def test_render_plan_and_render_annotations_produce_same_span_count(
 
     v2_soup = BeautifulSoup(v2_bytes, "lxml")
     v2_targets = v2_soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
-    v2_notes = v2_soup.find_all("span", class_=lambda c: c and "hbp-note" in c)
+    # NL1: notes are now <aside> elements inside cluster <div>s — search any tag.
+    v2_notes = v2_soup.find_all(True, class_="hbp-note")
 
-    # Both paths must produce exactly one target span and one note span.
+    # Both paths must produce exactly one target span and one note element.
     assert len(v1_targets) == 1, "render_annotations must produce one hbp-target span"
     assert len(v2_targets) == 1, "render_plan must produce one hbp-target span"
-    assert len(v1_notes) == 1, "render_annotations must produce one hbp-note span"
-    assert len(v2_notes) == 1, "render_plan must produce one hbp-note span"
+    assert len(v1_notes) == 1, "render_annotations must produce one hbp-note element"
+    assert len(v2_notes) == 1, "render_plan must produce one hbp-note element"
     # The wrapped text must be identical regardless of which path placed it.
     assert v1_targets[0].get_text() == v2_targets[0].get_text(), (
         "target span text must be the same from both render paths"
@@ -723,4 +733,106 @@ def test_render_plan_and_render_annotations_produce_same_span_count(
     # intent class must be hbp-mark-circle.
     assert "hbp-mark-circle" in v2_targets[0]["class"], (
         "render_plan target span must carry hbp-mark-circle (mark_intent=CIRCLE)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# EPUB-NL1 — semantic note DOM + stable ordering (tests pinned before Codex)
+#
+# These tests are authored by the controller and MUST FAIL on HEAD before
+# Codex implements NL1.  They pin the exact contract from nl1-semantic-note-dom-brief.md:
+#
+#   • Nested-anchor safety: noteref placed after outermost <a>, not inside it.
+#   • V1 render_annotations parity: cluster + aside structure; derived p{page}-n{k} ids.
+# ---------------------------------------------------------------------------
+
+_NESTED_ANCHOR_XHTML = (
+    '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+    '<p>See <a href="https://example.com">the sopophorous bean notes</a> for details.</p>'
+    "</body></html>"
+)
+_NESTED_ANCHOR_TARGET = "sopophorous bean notes"
+
+
+def test_nl1_noteref_not_nested_in_anchor() -> None:
+    """NL1 nested-anchor safety: when the target text lives inside an <a href>,
+    the noteref <a> must be placed AFTER the outermost enclosing <a>, never
+    nested inside it (which would produce invalid <a>…<a>…</a>…</a> HTML)."""
+    soup = _soup(_NESTED_ANCHOR_XHTML)
+    match = locate_across_nodes(soup.body, selector_for(_NESTED_ANCHOR_TARGET))
+    assert match is not None, "target inside <a> must still be locatable"
+
+    EpubProcessor(seed=1).wrap_cross_node_segments(
+        soup, match.segments, _ann(1, _NESTED_ANCHOR_TARGET, atype=AnnotationType.INSIGHT)
+    )
+
+    # No <a> may be nested inside another <a>
+    for anchor in soup.find_all("a"):
+        inner = anchor.find_all("a")
+        assert len(inner) == 0, (
+            f"noteref must not nest inside <a>; found nested <a> inside {anchor!r}"
+        )
+    # Noteref must still be present in the output
+    noterefs = soup.find_all(True, class_="hbp-noteref")
+    assert len(noterefs) >= 1, "a noteref must be inserted even when target is inside <a>"
+    # The noteref's parent must be the same <p>, not the original <a href=...>
+    orig_link = soup.find("a", href="https://example.com")
+    assert orig_link is not None
+    noteref = noterefs[0]
+    assert noteref.find_parent("a") is None, (
+        "noteref must not have an <a> ancestor (would be nested anchor)"
+    )
+    assert noteref.parent is orig_link.parent, (
+        "noteref must be a sibling of the original <a>, placed after it in the <p>"
+    )
+
+
+def test_nl1_v1_render_annotations_uses_cluster_with_derived_ids(
+    tmp_path: Path,
+) -> None:
+    """NL1 V1 path: render_annotations must produce the same cluster/<aside> DOM
+    structure as render_plan; annotation ids must be derived deterministically
+    as 'p{page}-n{k}' (1-based per chapter)."""
+    annotations = [
+        _ann(
+            page=_ACIDS_PAGE,
+            target="turns blue litmus red",
+            content="Correct observation.",
+            atype=AnnotationType.INSIGHT,
+            confidence=0.9,
+        )
+    ]
+    out = tmp_path / "v1_nl1.epub"
+    EpubProcessor(seed=5).render_annotations(str(FIXTURE), annotations, str(out))
+    with zipfile.ZipFile(out) as zf:
+        ch2_bytes = _chapter_bytes(zf, "ch2.xhtml")
+    soup = BeautifulSoup(ch2_bytes, "lxml")
+
+    # Cluster div must be present (NL1 shared helper)
+    clusters = soup.find_all(True, class_="hbp-note-cluster")
+    assert len(clusters) == 1, (
+        "V1 render_annotations must produce exactly one cluster div"
+    )
+    # Note inside the cluster must be <aside> (EPUB 3 fixture)
+    note = clusters[0].find("aside", class_="hbp-note")
+    assert note is not None, (
+        "V1 render_annotations must produce an <aside> note inside the cluster (EPUB 3)"
+    )
+    # Derived id: p{page}-n{k} (page=3, first annotation on that chapter → k=1)
+    expected_note_id = f"hbp-note-p{_ACIDS_PAGE}-n1"
+    expected_ref_id = f"hbp-ref-p{_ACIDS_PAGE}-n1"
+    assert note.get("id") == expected_note_id, (
+        f"V1 derived note id must be {expected_note_id!r}; got {note.get('id')!r}"
+    )
+    # Noteref in the chapter body must link to the note
+    noteref = soup.find(id=expected_ref_id)
+    assert noteref is not None, f"V1 noteref {expected_ref_id!r} not found in chapter"
+    assert noteref.get("href") == f"#{expected_note_id}", (
+        "V1 noteref href must point to the derived note id"
+    )
+    # Back-link inside the note must point back to the noteref
+    backlink = note.find("a", class_="hbp-note-backlink")
+    assert backlink is not None, "V1 note must contain a back-link <a>"
+    assert backlink.get("href") == f"#{expected_ref_id}", (
+        "V1 back-link href must point to the derived noteref id"
     )
