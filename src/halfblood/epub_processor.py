@@ -20,7 +20,7 @@ as inline HTML/CSS rather than absolutely positioned margin notes:
 
 * The target passage is wrapped in a ``<span class="hbp-target ...">``
   that gets an ink-colored underline/highlight/strikethrough depending on
-  :class:`~halfblood.models.AnnotationType`.
+  its mark intent.
 * The Prince's commentary is written immediately after it, inside a
   ``<span class="hbp-note ...">`` styled with a cursive "handwriting"
   font, a slight per-note rotation (via CSS ``transform: rotate(...)``)
@@ -66,7 +66,8 @@ from halfblood.documents import (
 from halfblood.documents.epub import _has_overlapping_exact, _owner_map
 from halfblood.models import Annotation, AnnotationPlan, AnnotationType
 from halfblood.models.annotations import Annotation as V2Annotation
-from halfblood.models.annotations import TargetSelector
+from halfblood.models.annotations import MarkIntent, TargetSelector
+from halfblood.models.documents import _MARK_INTENTS
 from halfblood.models.documents import AnnotationPlan as V2AnnotationPlan
 from halfblood.models.rendering import DegradationFlag, RenderReport, SkipReason, SkipRecord
 
@@ -121,26 +122,30 @@ _ANNOTATION_CSS = """
 .hbp-target {
     position: relative;
 }
-.hbp-target-correction {
+.hbp-mark-underline {
     border-bottom: 2px solid currentColor;
 }
-.hbp-target-warning {
-    background: rgba(216, 62, 27, 0.20);
-    font-weight: bold;
+.hbp-mark-circle {
+    border: 1.5px solid currentColor;
+    border-radius: 0.6em;
+    padding: 0 0.15em;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
 }
-.hbp-target-crossed_out {
+.hbp-mark-strike {
     text-decoration: line-through;
     text-decoration-color: currentColor;
     text-decoration-thickness: 2px;
 }
-.hbp-target-doodle_note {
-    border-bottom: 1px dotted currentColor;
+.hbp-mark-highlight {
+    background: rgba(216, 62, 27, 0.20);
 }
-.hbp-target-improvement,
-.hbp-target-insight,
-.hbp-target-invention,
-.hbp-target-shortcut {
-    border-bottom: 1px solid currentColor;
+.hbp-mark-caret::after {
+    content: "\\2038";
+    font-weight: bold;
+}
+.hbp-target-warning {
+    font-weight: bold;
 }
 
 .hbp-note {
@@ -553,15 +558,7 @@ class EpubProcessor:
                     )
                     continue
 
-                legacy_ann = Annotation(
-                    page=unit.ordinal,
-                    target_text=ann.target.exact,
-                    annotation_type=ann.annotation_type,
-                    content=ann.content,
-                    confidence=ann.confidence,
-                    position=ann.requested_placement,
-                )
-                self.wrap_cross_node_segments(soup, fresh_match.segments, legacy_ann)
+                self.wrap_cross_node_segments(soup, fresh_match.segments, ann)
                 rendered_ids.append(ann.id)
                 chapter_rendered += 1
 
@@ -719,8 +716,17 @@ class EpubProcessor:
         before, matched, after = raw[:start], raw[start:end], raw[end:]
 
         type_slug = annotation.annotation_type.value
+        mark_intent = self._effective_mark_intent(annotation)
 
-        mark_tag = soup.new_tag("span", attrs={"class": f"hbp-target hbp-target-{type_slug}"})
+        mark_tag = soup.new_tag(
+            "span",
+            attrs={
+                "class": (
+                    f"hbp-target hbp-target-{type_slug} "
+                    f"hbp-mark-{mark_intent.value}"
+                )
+            },
+        )
         mark_tag.string = matched
         mark_tag["style"] = f"color:{self._ink_hex(annotation.annotation_type)};"
 
@@ -748,55 +754,23 @@ class EpubProcessor:
         self,
         soup: BeautifulSoup,
         segments: Sequence[CrossNodeSegment],
-        annotation: Annotation,
+        annotation: Annotation | V2Annotation,
     ) -> None:
-        """Wrap ordered DOM text slices and append one note after the last slice."""
-        type_slug = annotation.annotation_type.value
-        last_mark: Tag | None = None
-
-        for segment_index in range(len(segments) - 1, -1, -1):
-            segment = segments[segment_index]
-            if segment.start >= segment.end:
-                continue
-
-            raw = str(segment.node)
-            before = raw[: segment.start]
-            matched = raw[segment.start : segment.end]
-            after = raw[segment.end :]
-            if not matched.strip():
-                continue
-
-            mark_tag = soup.new_tag(
-                "span",
-                attrs={"class": f"hbp-target hbp-target-{type_slug}"},
-            )
-            mark_tag.string = matched
-            mark_tag["style"] = f"color:{self._ink_hex(annotation.annotation_type)};"
-
-            replacements: list[NavigableString | Tag] = []
-            if before:
-                replacements.append(NavigableString(before))
-            replacements.append(mark_tag)
-            if after:
-                replacements.append(NavigableString(after))
-
-            segment.node.replace_with(*replacements)
-            if last_mark is None:
-                last_mark = mark_tag
-
-        if last_mark is None:
+        """Apply an optional mark and one note to ordered DOM text slices."""
+        mark_intent = self._effective_mark_intent(annotation)
+        last_segment = next(
+            (
+                segment
+                for segment in reversed(segments)
+                if segment.start < segment.end
+                and str(segment.node)[segment.start : segment.end].strip()
+            ),
+            None,
+        )
+        if last_segment is None:
             return
 
-        note_tag = soup.new_tag(
-            "span",
-            attrs={
-                "class": f"hbp-note hbp-note-{type_slug}",
-                "style": self._note_style(annotation),
-                "title": f"{type_slug} (confidence {annotation.confidence:.2f})",
-            },
-        )
-        note_tag.string = self._format_note_text(annotation)
-        note_anchor = last_mark.find_parent(
+        block_anchor = last_segment.node.find_parent(
             (
                 "p",
                 "div",
@@ -818,7 +792,82 @@ class EpubProcessor:
                 "h6",
             )
         )
-        (note_anchor or last_mark).insert_after(note_tag)
+
+        last_mark: Tag | None = None
+        if mark_intent is not MarkIntent.NONE:
+            last_mark = self._wrap_mark_segments(
+                soup, segments, annotation, mark_intent
+            )
+
+        note_anchor: Tag | NavigableString = block_anchor or last_mark or last_segment.node
+        self._insert_note(soup, note_anchor, annotation)
+
+    def _wrap_mark_segments(
+        self,
+        soup: BeautifulSoup,
+        segments: Sequence[CrossNodeSegment],
+        annotation: Annotation | V2Annotation,
+        mark_intent: MarkIntent,
+    ) -> Tag | None:
+        """Wrap every non-whitespace target segment with intent-aware markup."""
+        type_slug = annotation.annotation_type.value
+        last_mark: Tag | None = None
+
+        for segment_index in range(len(segments) - 1, -1, -1):
+            segment = segments[segment_index]
+            if segment.start >= segment.end:
+                continue
+
+            raw = str(segment.node)
+            before = raw[: segment.start]
+            matched = raw[segment.start : segment.end]
+            after = raw[segment.end :]
+            if not matched.strip():
+                continue
+
+            mark_tag = soup.new_tag(
+                "span",
+                attrs={
+                    "class": (
+                        f"hbp-target hbp-target-{type_slug} "
+                        f"hbp-mark-{mark_intent.value}"
+                    )
+                },
+            )
+            mark_tag.string = matched
+            mark_tag["style"] = f"color:{self._ink_hex(annotation.annotation_type)};"
+
+            replacements: list[NavigableString | Tag] = []
+            if before:
+                replacements.append(NavigableString(before))
+            replacements.append(mark_tag)
+            if after:
+                replacements.append(NavigableString(after))
+
+            segment.node.replace_with(*replacements)
+            if last_mark is None:
+                last_mark = mark_tag
+
+        return last_mark
+
+    def _insert_note(
+        self,
+        soup: BeautifulSoup,
+        anchor: Tag | NavigableString,
+        annotation: Annotation | V2Annotation,
+    ) -> None:
+        """Insert exactly one annotation note after the resolved target anchor."""
+        type_slug = annotation.annotation_type.value
+        note_tag = soup.new_tag(
+            "span",
+            attrs={
+                "class": f"hbp-note hbp-note-{type_slug}",
+                "style": self._note_style(annotation),
+                "title": f"{type_slug} (confidence {annotation.confidence:.2f})",
+            },
+        )
+        note_tag.string = self._format_note_text(annotation)
+        anchor.insert_after(note_tag)
 
     # ------------------------------------------------------------
     # Small helpers
@@ -827,6 +876,15 @@ class EpubProcessor:
     @staticmethod
     def _ink_hex(annotation_type: AnnotationType) -> str:
         return _rgb_to_hex(_INK_PALETTE.get(annotation_type, _DEFAULT_INK))
+
+    @staticmethod
+    def _effective_mark_intent(
+        annotation: Annotation | V2Annotation,
+    ) -> MarkIntent:
+        """Return the explicit V2 intent or the pinned legacy migration intent."""
+        if isinstance(annotation, V2Annotation):
+            return annotation.mark_intent
+        return _MARK_INTENTS[annotation.annotation_type]
 
     @staticmethod
     def _opacity(confidence: float) -> float:
@@ -847,14 +905,14 @@ class EpubProcessor:
         sign = rnd.choice((-1, 1))
         return magnitude * sign
 
-    def _note_style(self, annotation: Annotation) -> str:
+    def _note_style(self, annotation: Annotation | V2Annotation) -> str:
         ink_hex = self._ink_hex(annotation.annotation_type)
         opacity = self._opacity(annotation.confidence)
-        angle = self._organic_angle(annotation.content or annotation.target_text)
+        angle = self._organic_angle(annotation.content)
         return f"color:{ink_hex}; opacity:{opacity:.2f}; transform:rotate({angle:.1f}deg);"
 
     @staticmethod
-    def _format_note_text(annotation: Annotation) -> str:
+    def _format_note_text(annotation: Annotation | V2Annotation) -> str:
         prefix = _NOTE_PREFIX_BY_TYPE.get(annotation.annotation_type, "")
         return f"{prefix}{annotation.content}"
 

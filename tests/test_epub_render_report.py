@@ -22,6 +22,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from bs4 import BeautifulSoup
 from ebooklib import epub
 from lxml import etree
 
@@ -91,6 +92,7 @@ def _ann(
     prefix: str | None = None,
     suffix: str | None = None,
     ann_type: AnnotationType = AnnotationType.INSIGHT,
+    mark_intent: MarkIntent = MarkIntent.CIRCLE,
 ) -> Annotation:
     return Annotation(
         id=ann_id,
@@ -99,7 +101,7 @@ def _ann(
         content="Snape's commentary.",
         confidence=0.9,
         requested_placement="margin_right",
-        mark_intent=MarkIntent.CIRCLE,
+        mark_intent=mark_intent,
     )
 
 
@@ -502,3 +504,199 @@ def test_metadata_and_spine_survive(epub_src: Path, tmp_path: Path) -> None:
     # Unmodified ch2 intact.
     ch2_text = pages[_CH2_ORDINAL - 1].text
     assert "ancient potion" in ch2_text.lower()
+
+
+# ---------------------------------------------------------------------------
+# MP2a — mark-intent parity
+#
+# render_plan must derive visual mark classes from ann.mark_intent, not from
+# annotation_type geometry rules.  MarkIntent.NONE means note-only: no
+# hbp-target span is emitted but the annotation is still counted as rendered
+# and the stylesheet is still linked to its chapter.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("mark_intent", "intent_slug"),
+    [
+        (MarkIntent.UNDERLINE, "underline"),
+        (MarkIntent.CIRCLE, "circle"),
+        (MarkIntent.STRIKE, "strike"),
+        (MarkIntent.HIGHLIGHT, "highlight"),
+        (MarkIntent.CARET, "caret"),
+    ],
+    ids=["underline", "circle", "strike", "highlight", "caret"],
+)
+def test_target_span_class_list_contains_mark_intent(
+    epub_src: Path,
+    tmp_path: Path,
+    mark_intent: MarkIntent,
+    intent_slug: str,
+) -> None:
+    """render_plan target span must carry exactly hbp-target, hbp-target-{type}, hbp-mark-{intent}."""
+    plan = _plan(
+        [
+            _unit(
+                _CH1_ORDINAL,
+                [_ann(_ANN_UNIQUE, "bezoar is a stone taken from", mark_intent=mark_intent)],
+            )
+        ]
+    )
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+    targets = soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
+    assert len(targets) == 1, "exactly one target span expected for a unique single-node target"
+    cls = set(targets[0]["class"])
+    expected = {"hbp-target", "hbp-target-insight", f"hbp-mark-{intent_slug}"}
+    assert cls == expected, (
+        f"target span class set must be exactly {expected!r}; got {cls!r}"
+    )
+
+
+def test_mark_intent_and_annotation_type_are_orthogonal(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """WARNING type + CIRCLE intent → hbp-target-warning AND hbp-mark-circle on target; hbp-note-warning on note."""
+    plan = _plan(
+        [
+            _unit(
+                _CH2_ORDINAL,
+                [
+                    _ann(
+                        "ann-ortho",
+                        "ancient potion requires careful",
+                        ann_type=AnnotationType.WARNING,
+                        mark_intent=MarkIntent.CIRCLE,
+                    )
+                ],
+            )
+        ]
+    )
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch2_bytes = _chapter_bytes(zf, "ch2.xhtml")
+    soup = BeautifulSoup(ch2_bytes, "lxml")
+    targets = soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
+    notes = soup.find_all("span", class_=lambda c: c and "hbp-note" in c)
+    assert len(targets) == 1
+    assert len(notes) == 1
+    target_cls = set(targets[0]["class"])
+    assert "hbp-target-warning" in target_cls, "type class must reflect annotation_type"
+    assert "hbp-mark-circle" in target_cls, "intent class must reflect mark_intent"
+    note_cls = set(notes[0]["class"])
+    assert "hbp-note-warning" in note_cls, "note class must reflect annotation_type"
+
+
+def test_none_intent_creates_note_without_target_span(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """MarkIntent.NONE: no hbp-target span emitted; exactly one hbp-note; rendered, not skipped; stylesheet linked."""
+    ann_id = "ann-none-intent"
+    plan = _plan(
+        [
+            _unit(
+                _CH1_ORDINAL,
+                [
+                    _ann(
+                        ann_id,
+                        "bezoar is a stone taken from",
+                        mark_intent=MarkIntent.NONE,
+                    )
+                ],
+            )
+        ]
+    )
+    report, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+        css_count = _hbp_css_count(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+    targets = soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
+    notes = soup.find_all("span", class_=lambda c: c and "hbp-note" in c)
+    # No target span — NONE intent leaves the matched text node untouched.
+    assert len(targets) == 0, "NONE intent must not emit any hbp-target span"
+    # Exactly one note span still inserted.
+    assert len(notes) == 1, "NONE intent must still insert exactly one hbp-note span"
+    # Target text is still present in the chapter (text node not split or removed).
+    assert b"bezoar is a stone taken from" in ch1_bytes, (
+        "target text must remain intact in the chapter when mark_intent is NONE"
+    )
+    # Annotation is rendered, not skipped.
+    assert report.rendered == (ann_id,)
+    assert report.skipped == ()
+    assert report.marks_only == ()
+    # Stylesheet is linked even though no mark was painted.
+    assert css_count == 1, "NONE-intent annotation must still trigger stylesheet linking"
+
+
+def test_cross_node_fragments_all_carry_intent_class(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """Each hbp-target fragment from a cross-node match must carry hbp-mark-{intent}."""
+    # "asphodel root dissolves to fine powder on heating" spans <em> and <strong>.
+    plan = _plan(
+        [
+            _unit(
+                _CH1_ORDINAL,
+                [
+                    _ann(
+                        "ann-cross-intent",
+                        "asphodel root dissolves to fine powder on heating",
+                        mark_intent=MarkIntent.STRIKE,
+                    )
+                ],
+            )
+        ]
+    )
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+    targets = soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
+    # Cross-node target produces multiple fragment spans.
+    assert len(targets) >= 2, (
+        "cross-node target must produce multiple hbp-target fragments"
+    )
+    for frag in targets:
+        cls = set(frag["class"])
+        assert "hbp-mark-strike" in cls, (
+            f"every hbp-target fragment must carry hbp-mark-strike; got {cls!r}"
+        )
+
+
+def test_overlapping_skipped_annotation_is_not_in_marks_only(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """Regression guard: the EPUB render path never populates marks_only (N/A per contract §5)."""
+    plan = _plan(
+        [
+            _unit(
+                _CH2_ORDINAL,
+                [
+                    _ann(_ANN_OVERLAP_A, "ancient potion requires careful"),
+                    _ann(_ANN_OVERLAP_B, "potion requires careful stirring"),
+                ],
+            )
+        ]
+    )
+    report, _ = _render(epub_src, plan, tmp_path)
+    assert _ANN_OVERLAP_B not in report.marks_only
+    assert report.marks_only == ()
+
+
+def test_annotation_stylesheet_contains_intent_css_rules(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """After render_plan the injected stylesheet must define a rule for each visual intent."""
+    plan = _plan([_unit(_CH1_ORDINAL, [_ann(_ANN_UNIQUE, "bezoar is a stone taken from")])])
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        css_files = [n for n in zf.namelist() if n.endswith("hbp-annotations.css")]
+        assert css_files, "annotation stylesheet must be present in the archive"
+        css_text = zf.read(css_files[0]).decode("utf-8")
+    for intent_slug in ("underline", "circle", "strike", "highlight", "caret"):
+        assert f".hbp-mark-{intent_slug}" in css_text, (
+            f"stylesheet must contain a .hbp-mark-{intent_slug} rule"
+        )
