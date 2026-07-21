@@ -169,21 +169,34 @@ _ANNOTATION_CSS = """
     font-weight: bold;
 }
 
+.hbp-note-cluster {
+    display: block;
+    margin: 0.4em 0 0.8em 1.2em;
+}
 .hbp-note {
     font-family: "Caveat", "Bradley Hand", "Segoe Print", "Comic Sans MS", cursive;
-    display: inline-block;
-    margin: 0 0.4em;
+    display: block;
+    margin: 0 0 0.5em 0;
     line-height: 1.2;
+    overflow-wrap: break-word;
     white-space: normal;
-    vertical-align: baseline;
 }
-@supports (float: right) {
-    .hbp-note {
+.hbp-noteref {
+    font-size: 0.75em;
+    vertical-align: super;
+    text-decoration: none;
+}
+.hbp-note-backlink {
+    text-decoration: none;
+    margin-right: 0.3em;
+}
+@media (min-width: 40em) {
+    .hbp-note-cluster-floatable {
         float: right;
         clear: right;
-        width: 9em;
+        width: 30%;
+        max-width: 12em;
         margin: 0.2em 0 0.6em 0.9em;
-        text-align: left;
     }
 }
 .hbp-note-correction {
@@ -976,7 +989,10 @@ class EpubProcessor:
             if "hbp-note-cluster" in sibling_classes:
                 cluster = next_sibling
         if cluster is None:
-            cluster = soup.new_tag("div", attrs={"class": "hbp-note-cluster"})
+            cluster = soup.new_tag(
+                "div",
+                attrs={"class": "hbp-note-cluster hbp-note-cluster-floatable"},
+            )
             cluster_anchor.insert_after(cluster)
 
         note_attrs = {
