@@ -43,22 +43,25 @@ until the owner has watched the loop succeed and loosens them:
 
 - **Rollback tag.** Before the first iteration of a run, if no `pre-overnight-*` tag
   exists at `main`'s current HEAD, create one: `git tag pre-overnight-<YYYY-MM-DD>`.
-  This is the one-command rollback point (`git reset --hard pre-overnight-<date>`).
-- **First-night cap = 2.** Count `feat:` merges on `main` since the newest
-  `pre-overnight-*` tag (`git log <tag>..main --oneline | grep -c '^\w* feat:'`... i.e.
-  merges added this run). If **≥ 2**, do NOT start another task — **stop the loop** and
-  report "first-night cap reached; owner should eyeball the merged chain and loosen the
-  cap before continuing." A bad brief that compounds across 2 merges is recoverable;
-  across 10 is a mess.
+  Rollback = `git revert -m 1 <each merge>`, newest first. **Never `git reset --hard`** —
+  it would destroy the pre-existing uncommitted `CLAUDE.md` rewrite.
+- **Merge-count cap: RETIRED by owner instruction (2026-07-20, Session 28)** after three
+  supervised runs (S24, S27, S28) validated the loop end-to-end. **Do NOT stop on merge
+  count.** The stop signal is QUALITY DEGRADATION, not progress: stop-flag if two
+  consecutive tasks each need 2+ fix redispatches, or a review NO-GO can't be resolved,
+  or any other STOP-FLAG condition below trips. Do not re-impose a numeric cap from older
+  handoffs/memories — this line supersedes them.
 - **Validate attended first.** The very first ever run of this loop must be watched by
   the owner (one iteration), in the exact overnight config, before any unattended use.
+  (Satisfied; retained for the record.)
 
 ## One iteration
 
-1. **Orient.** `git status` must be clean; if not → **STOP-FLAG**. Apply *First-night
-   safety*: ensure the `pre-overnight-*` tag exists (create it if not), and if `feat:`
-   merges since that tag have reached the cap → **stop the loop** ("cap reached"). Read
-   the tail of `.superpowers/sdd/progress.md`,
+1. **Orient.** `git status` must be clean beyond the known pre-existing dirt
+   (`M CLAUDE.md` + untracked `.claude/skills/halfblood-roadmap/`,
+   `docs/superpowers/plans/2026-07-11-…`); anything else → **STOP-FLAG**. Ensure the
+   `pre-overnight-*` tag exists (create it if not). No merge-count cap (retired — see
+   above). Read the tail of `.superpowers/sdd/progress.md`,
    `.superpowers/sdd/phase1-orchestration-runbook.md`, and the active plan
    (`docs/superpowers/plans/…`). Identify the next **unstarted** task (P1-T6 is next as
    of Session 13) and confirm its scope against the plan before writing the brief. None
