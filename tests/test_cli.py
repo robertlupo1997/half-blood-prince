@@ -541,7 +541,10 @@ def test_render_summary_empty_marks_only_omits_qualifier(
     )
     result, printed = _annotate_with_report(runner, monkeypatch, tmp_path, report)
     assert result.exit_code == 0, result.output
-    assert "Rendered 1 / Skipped 1" in printed
+    summary_lines = [line.strip() for line in printed.splitlines()]
+    assert "Rendered 1 / Skipped 1" in summary_lines, (
+        f"expected exact summary line; got lines: {summary_lines!r}"
+    )
     assert "mark-only" not in printed
 
 

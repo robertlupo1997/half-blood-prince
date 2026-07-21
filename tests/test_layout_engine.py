@@ -206,6 +206,20 @@ def test_inline_request_without_columns_still_places_inline() -> None:
     assert ann.resolved_placement == "inline"
 
 
+def test_inline_request_fails_then_no_columns_skips_unplaceable() -> None:
+    # When the inline slot itself is unavailable (anchor near the top of the page
+    # means the note box would fall above y=0) AND no body_columns are supplied,
+    # the fail-closed guard must skip the note UNPLACEABLE rather than silently
+    # falling back to a target-relative margin.
+    req = _req("inline-fail", placement="inline", anchor=_anchor(100.0, 10.0, 400.0, 24.0))
+    result = run_layout([req], _PAGE, [], _FM)  # no body_columns; inline slot off-page
+    assert "inline-fail" not in _placed_ids(result), "inline must not be placed when slot is off-page"
+    assert "inline-fail" in _skipped_ids(result), "must be skipped after inline fails + no columns"
+    skip = {r.annotation_id: r for r in result.skipped}["inline-fail"]
+    assert skip.reason == SkipReason.UNPLACEABLE
+    assert DegradationFlag.NOTE_SKIPPED_UNFITTABLE in result.degradation_flags
+
+
 # ---------------------------------------------------------------------------
 # 2. Layout result structure
 # ---------------------------------------------------------------------------
