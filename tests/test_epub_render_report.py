@@ -705,10 +705,18 @@ def test_annotation_stylesheet_contains_intent_css_rules(
         css_files = [n for n in zf.namelist() if n.endswith("hbp-annotations.css")]
         assert css_files, "annotation stylesheet must be present in the archive"
         css_text = zf.read(css_files[0]).decode("utf-8")
-    for intent_slug in ("underline", "circle", "strike", "highlight", "caret"):
+    # CARET is intentionally excluded here: NL4 removes .hbp-mark-caret::after
+    # and replaces it with a real DOM glyph span styled by .hbp-caret-glyph.
+    # The class hbp-mark-caret is still applied to the mark span itself (see
+    # test_target_span_class_list_contains_mark_intent for that assertion), but
+    # no longer needs a CSS rule of its own.
+    for intent_slug in ("underline", "circle", "strike", "highlight"):
         assert f".hbp-mark-{intent_slug}" in css_text, (
             f"stylesheet must contain a .hbp-mark-{intent_slug} rule"
         )
+    assert ".hbp-caret-glyph" in css_text, (
+        "stylesheet must contain a .hbp-caret-glyph rule (NL4 replaces ::after)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1487,4 +1495,136 @@ def test_nl3_model_enum_value_and_report_version() -> None:
     )
     assert RenderReport().report_version == "1.0", (
         "NL3: RenderReport.report_version must remain '1.0' after the additive flag"
+    )
+
+
+# ---------------------------------------------------------------------------
+# NL4 — real-DOM caret glyph
+# ---------------------------------------------------------------------------
+
+_NL4_CARET_TARGET = "bezoar is a stone taken from"
+_NL4_CROSS_NODE_TARGET = "asphodel root dissolves to fine powder on heating"
+_NL4_ANN_CARET = "nl4-ann-caret"
+_NL4_ANN_CROSS = "nl4-ann-cross"
+
+
+def test_nl4_caret_glyph_on_single_node_target(epub_src: Path, tmp_path: Path) -> None:
+    """NL4: a CARET annotation on a single text node produces exactly one
+    span.hbp-caret-glyph with aria-hidden='true' and text '‸', as the last
+    child of the mark span; body text is character-identical outside the glyph."""
+    plan = _plan([_unit(_CH1_ORDINAL, [
+        _ann(_NL4_ANN_CARET, _NL4_CARET_TARGET, mark_intent=MarkIntent.CARET),
+    ])])
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+
+    # Exactly one glyph in the chapter
+    glyphs = soup.find_all("span", class_="hbp-caret-glyph")
+    assert len(glyphs) == 1, (
+        f"NL4: exactly one hbp-caret-glyph expected for a single CARET annotation; "
+        f"got {len(glyphs)}"
+    )
+    glyph = glyphs[0]
+    assert glyph.get("aria-hidden") == "true", (
+        "NL4: hbp-caret-glyph must carry aria-hidden='true'"
+    )
+    assert glyph.get_text() == "‸", (
+        f"NL4: hbp-caret-glyph text must be ‸ (U+2038); got {glyph.get_text()!r}"
+    )
+
+    # Glyph must be the last child of its parent mark span
+    parent = glyph.parent
+    assert parent is not None and "hbp-mark-caret" in (parent.get("class") or []), (
+        "NL4: hbp-caret-glyph must be a child of the hbp-mark-caret span"
+    )
+    assert parent.contents[-1] == glyph, (
+        "NL4: hbp-caret-glyph must be the last child of the mark span"
+    )
+
+    # Mark span text (excluding glyph) is character-identical to the original target
+    text_without_glyph = parent.get_text().replace("‸", "")
+    assert text_without_glyph == _NL4_CARET_TARGET, (
+        f"NL4: mark span text without glyph must equal the original target; "
+        f"got {text_without_glyph!r}"
+    )
+
+
+def test_nl4_caret_glyph_on_final_fragment_only_for_cross_node(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """NL4: a cross-node CARET target (≥2 mark fragments) gets the glyph on the
+    FINAL fragment in document order only; exactly one glyph per annotation."""
+    plan = _plan([_unit(_CH1_ORDINAL, [
+        _ann(_NL4_ANN_CROSS, _NL4_CROSS_NODE_TARGET, mark_intent=MarkIntent.CARET),
+    ])])
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+
+    # The target spans <em>asphodel</em> and <strong>fine powder</strong> → ≥2 fragments
+    fragments = soup.find_all("span", class_="hbp-mark-caret")
+    assert len(fragments) >= 2, (
+        f"NL4: cross-node CARET must produce ≥2 hbp-mark-caret fragments; "
+        f"got {len(fragments)}"
+    )
+
+    # Exactly one glyph total, inside the last fragment in document order
+    glyphs = soup.find_all("span", class_="hbp-caret-glyph")
+    assert len(glyphs) == 1, (
+        f"NL4: exactly one hbp-caret-glyph expected for one cross-node annotation; "
+        f"got {len(glyphs)}"
+    )
+    last_fragment = fragments[-1]
+    assert glyphs[0].parent == last_fragment, (
+        "NL4: hbp-caret-glyph must be inside the LAST fragment in document order"
+    )
+    assert last_fragment.contents[-1] == glyphs[0], (
+        "NL4: hbp-caret-glyph must be the last child of the final fragment"
+    )
+
+
+@pytest.mark.parametrize(
+    "intent",
+    [MarkIntent.UNDERLINE, MarkIntent.CIRCLE, MarkIntent.STRIKE, MarkIntent.HIGHLIGHT],
+    ids=["underline", "circle", "strike", "highlight"],
+)
+def test_nl4_no_caret_glyph_for_non_caret_intent(
+    epub_src: Path, tmp_path: Path, intent: MarkIntent
+) -> None:
+    """NL4 regression guard: non-CARET intents must produce zero hbp-caret-glyph
+    elements.  Must pass both before and after NL4 is implemented."""
+    plan = _plan([_unit(_CH1_ORDINAL, [
+        _ann(_NL4_ANN_CARET, _NL4_CARET_TARGET, mark_intent=intent),
+    ])])
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+    glyphs = soup.find_all("span", class_="hbp-caret-glyph")
+    assert not glyphs, (
+        f"NL4: intent {intent.value!r} must not produce hbp-caret-glyph elements; "
+        f"found {len(glyphs)}"
+    )
+
+
+def test_nl4_css_no_after_rule_and_caret_glyph_rule(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """NL4 stylesheet contract: .hbp-mark-caret::after must be absent (prevents
+    double-render on capable engines); .hbp-caret-glyph must be present with
+    font-weight: bold."""
+    plan = _plan([_unit(_CH1_ORDINAL, [_ann(_NL4_ANN_CARET, _NL4_CARET_TARGET)])])
+    _, out = _render(epub_src, plan, tmp_path)
+    css_text = _get_css_text(out)
+
+    assert ".hbp-mark-caret::after" not in css_text, (
+        "NL4: .hbp-mark-caret::after must be removed from the stylesheet"
+    )
+    glyph_rule = re.search(r"\.hbp-caret-glyph\s*\{([^}]+)\}", css_text)
+    assert glyph_rule, "NL4: .hbp-caret-glyph rule not found in stylesheet"
+    assert re.search(r"font-weight\s*:\s*bold", glyph_rule.group(1)), (
+        "NL4: .hbp-caret-glyph must include font-weight: bold"
     )
