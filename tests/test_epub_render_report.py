@@ -18,6 +18,7 @@ No network calls are made anywhere in this file.
 from __future__ import annotations
 
 import posixpath
+import re
 import zipfile
 from pathlib import Path
 
@@ -1042,3 +1043,197 @@ def test_nl1_body_text_preserved_and_report_semantics_unchanged(
         assert phrase in remaining, (
             f"original body phrase {phrase!r} missing after removing NL1 additive content"
         )
+
+
+# ---------------------------------------------------------------------------
+# EPUB-NL2 — block-first note CSS + progressive width-gated float
+#
+# These tests are controller-authored and MUST FAIL on HEAD (NL1 branch) before
+# Codex implements NL2.  Contract from nl2-block-first-css-brief.md:
+#
+#   • Cluster carries hbp-note-cluster-floatable (EPUB 2 + EPUB 3, unconditional).
+#   • _ANNOTATION_CSS: block-first base rules for cluster/note/noteref/backlink.
+#   • @media (min-width: 40em) replaces @supports; float/width on floatable class.
+#   • Negative pins: @supports gone, inline-block gone, no px in hbp rules.
+#   • Untouched: .hbp-mark-* rules present; .hbp-note has Caveat font-family.
+# ---------------------------------------------------------------------------
+
+
+def _get_css_text(out: Path) -> str:
+    """Extract the injected hbp-annotations.css from a rendered EPUB archive."""
+    with zipfile.ZipFile(out) as zf:
+        css_files = [n for n in zf.namelist() if n.endswith("hbp-annotations.css")]
+        assert css_files, "hbp-annotations.css not found in EPUB archive"
+        return zf.read(css_files[0]).decode("utf-8")
+
+
+def test_nl2_cluster_carries_floatable_class_epub3(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """NL2 EPUB 3: every hbp-note-cluster must also carry hbp-note-cluster-floatable."""
+    plan = _plan([_unit(_CH1_ORDINAL, [_ann(_ANN_UNIQUE, "bezoar is a stone taken from")])])
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+    clusters = soup.find_all(True, class_="hbp-note-cluster")
+    assert len(clusters) >= 1, "must produce at least one cluster"
+    for cluster in clusters:
+        cls = set(cluster.get("class") or [])
+        assert "hbp-note-cluster-floatable" in cls, (
+            f"NL2 EPUB 3: every cluster must also carry hbp-note-cluster-floatable; "
+            f"got {cls!r}"
+        )
+
+
+def test_nl2_cluster_carries_floatable_class_epub2(
+    epub_src: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NL2 EPUB 2: hbp-note-cluster-floatable must be emitted in the EPUB 2 branch too."""
+    _real_read_epub = epub.read_epub
+
+    def _epub2_read(path: str, *args: object, **kwargs: object) -> object:
+        book = _real_read_epub(path, *args, **kwargs)
+        book.version = "2.0"
+        return book
+
+    monkeypatch.setattr(epub, "read_epub", _epub2_read)
+
+    plan = _plan([_unit(_CH1_ORDINAL, [_ann(_ANN_UNIQUE, "bezoar is a stone taken from")])])
+    _, out = _render(epub_src, plan, tmp_path)
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+    clusters = soup.find_all(True, class_="hbp-note-cluster")
+    assert len(clusters) >= 1, "EPUB 2 must still produce a cluster"
+    for cluster in clusters:
+        cls = set(cluster.get("class") or [])
+        assert "hbp-note-cluster-floatable" in cls, (
+            f"NL2 EPUB 2: every cluster must carry hbp-note-cluster-floatable; "
+            f"got {cls!r}"
+        )
+
+
+def test_nl2_css_block_first_base_rules(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """NL2 stylesheet must contain the block-first base rules:
+    .hbp-note-cluster (display:block), .hbp-note (overflow-wrap:break-word),
+    .hbp-noteref (vertical-align:super), .hbp-note-backlink present."""
+    plan = _plan([_unit(_CH1_ORDINAL, [_ann(_ANN_UNIQUE, "bezoar is a stone taken from")])])
+    _, out = _render(epub_src, plan, tmp_path)
+    css_text = _get_css_text(out)
+
+    # .hbp-note-cluster rule: display: block
+    cluster_rule = re.search(
+        r"\.hbp-note-cluster\s*\{([^}]+)\}", css_text
+    )
+    assert cluster_rule, "NL2: .hbp-note-cluster rule block not found in stylesheet"
+    assert re.search(r"display\s*:\s*block", cluster_rule.group(1)), (
+        "NL2: .hbp-note-cluster must have display: block"
+    )
+
+    # .hbp-note rule: overflow-wrap: break-word
+    note_rule = re.search(r"\.hbp-note\s*\{([^}]+)\}", css_text)
+    assert note_rule, "NL2: .hbp-note rule block not found"
+    assert re.search(r"overflow-wrap\s*:\s*break-word", note_rule.group(1)), (
+        "NL2: .hbp-note must have overflow-wrap: break-word"
+    )
+
+    # .hbp-noteref rule: vertical-align: super
+    noteref_rule = re.search(r"\.hbp-noteref\s*\{([^}]+)\}", css_text)
+    assert noteref_rule, "NL2: .hbp-noteref rule block not found"
+    assert re.search(r"vertical-align\s*:\s*super", noteref_rule.group(1)), (
+        "NL2: .hbp-noteref must have vertical-align: super"
+    )
+
+    # .hbp-note-backlink rule present
+    assert ".hbp-note-backlink" in css_text, (
+        "NL2: .hbp-note-backlink rule must be present in the stylesheet"
+    )
+
+
+def test_nl2_css_media_float_enhancement(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """NL2 stylesheet must contain an @media (min-width: 40em) block with
+    .hbp-note-cluster-floatable carrying float:right, width:30%, max-width:12em."""
+    plan = _plan([_unit(_CH1_ORDINAL, [_ann(_ANN_UNIQUE, "bezoar is a stone taken from")])])
+    _, out = _render(epub_src, plan, tmp_path)
+    css_text = _get_css_text(out)
+
+    # @media block with 40em width gate
+    assert re.search(r"@media[^{]*min-width\s*:\s*40em", css_text), (
+        "NL2: stylesheet must contain @media (min-width: 40em)"
+    )
+    # .hbp-note-cluster-floatable with float: right inside @media
+    assert ".hbp-note-cluster-floatable" in css_text, (
+        "NL2: .hbp-note-cluster-floatable must appear in the stylesheet"
+    )
+    # float: right and width: 30% must be present (inside the @media block)
+    assert re.search(r"float\s*:\s*right", css_text), (
+        "NL2: float: right must appear in the stylesheet (inside @media)"
+    )
+    assert re.search(r"width\s*:\s*30%", css_text), (
+        "NL2: width: 30% must be on .hbp-note-cluster-floatable"
+    )
+    assert re.search(r"max-width\s*:\s*12em", css_text), (
+        "NL2: max-width: 12em must be on .hbp-note-cluster-floatable"
+    )
+
+
+def test_nl2_css_negative_pins(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """NL2 negative: @supports removed; inline-block removed; no position:absolute;
+    no px unit in any hbp rule block."""
+    plan = _plan([_unit(_CH1_ORDINAL, [_ann(_ANN_UNIQUE, "bezoar is a stone taken from")])])
+    _, out = _render(epub_src, plan, tmp_path)
+    css_text = _get_css_text(out)
+
+    assert "@supports" not in css_text, (
+        "NL2: @supports must be removed from the stylesheet"
+    )
+    assert "inline-block" not in css_text, (
+        "NL2: display:inline-block must be removed from the stylesheet"
+    )
+    assert not re.search(r"position\s*:\s*absolute", css_text), (
+        "NL2: position:absolute must not appear in the stylesheet"
+    )
+    # No px units in NL2-owned rule blocks (em/% only).
+    # .hbp-mark-* and .hbp-target* rules are exempt — their px borders are
+    # pinned by the MP2a contract and NL2 is explicitly forbidden from touching them.
+    _nl2_selector_patterns = [
+        r"\.hbp-note-cluster\s*\{([^}]+)\}",
+        r"\.hbp-note\s*\{([^}]+)\}",
+        r"\.hbp-noteref\s*\{([^}]+)\}",
+        r"\.hbp-note-backlink\s*\{([^}]+)\}",
+        r"\.hbp-note-cluster-floatable\s*\{([^}]+)\}",
+    ]
+    for pat in _nl2_selector_patterns:
+        for block in re.findall(pat, css_text):
+            assert "px" not in block, (
+                f"NL2: px unit found in a NL2-owned rule block: {block.strip()!r}"
+            )
+
+
+def test_nl2_css_untouched_mark_rules_and_caveat_font(
+    epub_src: Path, tmp_path: Path
+) -> None:
+    """NL2 must not remove .hbp-mark-* rules or the Caveat font-family from .hbp-note."""
+    plan = _plan([_unit(_CH1_ORDINAL, [_ann(_ANN_UNIQUE, "bezoar is a stone taken from")])])
+    _, out = _render(epub_src, plan, tmp_path)
+    css_text = _get_css_text(out)
+
+    # .hbp-mark-* rules untouched (spot-check 4 intents)
+    for slug in ("underline", "circle", "strike", "highlight"):
+        assert f".hbp-mark-{slug}" in css_text, (
+            f"NL2 must not remove .hbp-mark-{slug} from the stylesheet"
+        )
+
+    # .hbp-note font-family must still include Caveat (handwriting font)
+    note_rule = re.search(r"\.hbp-note\s*\{([^}]+)\}", css_text)
+    assert note_rule, ".hbp-note rule block not found"
+    assert "Caveat" in note_rule.group(1), (
+        "NL2: .hbp-note must still list 'Caveat' in font-family"
+    )
