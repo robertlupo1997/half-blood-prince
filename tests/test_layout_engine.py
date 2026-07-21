@@ -720,3 +720,229 @@ def test_between_lines_request_succeeds_when_gap_is_free() -> None:
     assert ann.note_box.y1 <= 350.0 + 1e-6, (
         f"note_box must sit above target y0=350; got note_box.y1={ann.note_box.y1}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 17. P3-S1 — Greedy-seam characterization (drift-detectors, PASS before & after)
+# ---------------------------------------------------------------------------
+#
+# These tests pin the EXACT output of ``run_layout`` on a dense 6-note, two-column
+# fixture.  They are characterization tests (drift-detectors) that MUST PASS on
+# current HEAD *and* after the P3-S1 greedy-seam extraction refactor.  They are
+# intentionally NOT red tests; the "confirm they fail" step is waived for this task
+# because the refactor is zero-behavior-change (noted in the P3-S1 report).
+#
+# Expectation built by running commit 65c3752 (HEAD at time of authoring) on
+# 2026-07-21 and pinning the output verbatim.  See capture script in
+# .superpowers/sdd/p3s1-codex-out.md for reproducer.
+#
+# Two-column page: min(x0)=60, max(x1)=500 — outer strip geometry identical to
+# the single-column _BODY_COLS; two columns are used to match the brief's wording.
+# ---------------------------------------------------------------------------
+
+_CHAR_COLS = (TextColumn(x0=60.0, x1=280.0), TextColumn(x0=320.0, x1=500.0))
+
+
+class DenseMeasurer:
+    """Content-keyed measurer for the P3-S1 characterization fixture.
+
+    * Text containing "SCALE_REDUCE" → height 900*scale (fits only at scale≤0.8).
+    * Text containing "SKIP"         → height 1200*scale (never fits, even at min_scale=0.7).
+    * Otherwise                      → height 14*scale   (always fits comfortably).
+    Width is always min(60.0, max_width).
+    """
+
+    def measure(self, text: str, max_width: float, scale: float) -> tuple[float, float]:
+        if "SCALE_REDUCE" in text:
+            return (min(60.0, max_width), 900.0 * scale)
+        if "SKIP" in text:
+            return (min(60.0, max_width), 1200.0 * scale)
+        return (min(60.0, max_width), 14.0 * scale)
+
+
+_CHAR_NOTES = [
+    # n1: WARNING, conf=0.9 → highest priority (WARNING beats CORRECTION/etc.)
+    NoteRequest(
+        annotation_id="n1",
+        source_locator="p:1",
+        annotation_type=AnnotationType.WARNING,
+        confidence=0.9,
+        content="Dangerous shortcut here.",
+        requested_placement="margin_right",
+        anchor=_anchor(100.0, 200.0, 400.0, 214.0),
+        render_seed=1,
+    ),
+    # n2: CORRECTION, conf=0.8 → sort slot 2
+    NoteRequest(
+        annotation_id="n2",
+        source_locator="p:1",
+        annotation_type=AnnotationType.CORRECTION,
+        confidence=0.8,
+        content="Wrong formula.",
+        requested_placement="margin_right",
+        anchor=_anchor(100.0, 250.0, 400.0, 264.0),
+        render_seed=2,
+    ),
+    # n3: CORRECTION, conf=0.7 → sort slot 3
+    NoteRequest(
+        annotation_id="n3",
+        source_locator="p:1",
+        annotation_type=AnnotationType.CORRECTION,
+        confidence=0.7,
+        content="See corrected method.",
+        requested_placement="margin_right",
+        anchor=_anchor(100.0, 400.0, 400.0, 414.0),
+        render_seed=3,
+    ),
+    # n4: INSIGHT, conf=0.9 → sort slot 5 (INSIGHT lower priority than CORRECTION)
+    NoteRequest(
+        annotation_id="n4",
+        source_locator="p:1",
+        annotation_type=AnnotationType.INSIGHT,
+        confidence=0.9,
+        content="Novel approach possible.",
+        requested_placement="margin_right",
+        anchor=_anchor(100.0, 600.0, 400.0, 614.0),
+        render_seed=4,
+    ),
+    # n5: CORRECTION, conf=0.5 → sort slot 4 (CORRECTION, lower conf than n2/n3)
+    #     DenseMeasurer returns 900*scale — too tall at scale=1.0 and 0.9, fits at 0.8.
+    #     → two SCALE_REDUCED warnings, then a SHIFTED warning (page-top clamp).
+    NoteRequest(
+        annotation_id="n5",
+        source_locator="p:1",
+        annotation_type=AnnotationType.CORRECTION,
+        confidence=0.5,
+        content="SCALE_REDUCE: elaborate explanation",
+        requested_placement="margin_left",
+        anchor=_anchor(100.0, 450.0, 400.0, 464.0),
+        render_seed=5,
+    ),
+    # n6: SHORTCUT, conf=0.6 → sort slot last (lowest-priority type in the fixture)
+    #     DenseMeasurer returns 1200*scale — never fits even at min_scale=0.7 (840>792).
+    #     → UNPLACEABLE / skipped; NOTE_SKIPPED_UNFITTABLE degradation flag emitted.
+    NoteRequest(
+        annotation_id="n6",
+        source_locator="p:1",
+        annotation_type=AnnotationType.SHORTCUT,
+        confidence=0.6,
+        content="SKIP: very long note",
+        requested_placement="margin_left",
+        anchor=_anchor(100.0, 600.0, 400.0, 614.0),
+        render_seed=6,
+    ),
+]
+
+
+def _char_row(ann: object) -> tuple:
+    """Extract a pinnable (id, placement, box_coords×4, scale, warnings) tuple."""
+    b = ann.note_box
+    return (
+        ann.annotation_id,
+        ann.resolved_placement,
+        round(b.x0, 2),
+        round(b.y0, 2),
+        round(b.x1, 2),
+        round(b.y1, 2),
+        round(ann.note_scale, 2),
+        tuple((w.code, w.detail) for w in ann.warnings),
+    )
+
+
+def test_p3s1_dense_characterization_snapshot() -> None:
+    """Pin exact greedy output on the 6-note two-column fixture.
+
+    Expectation built by running HEAD commit 65c3752 on 2026-07-21.
+    This test is a drift-detector: it PASSES before and after the P3-S1 extraction.
+    """
+    result = run_layout(
+        _CHAR_NOTES,
+        _PAGE,
+        [],
+        DenseMeasurer(),
+        config=LayoutConfig(),
+        body_columns=_CHAR_COLS,
+    )
+
+    # Placed notes in result order (sort produces: n1, n2, n3, n5, n4).
+    # n5 gets two SCALE_REDUCED warnings followed by one SHIFTED warning — ORDER MATTERS.
+    expected_placed = [
+        (
+            "n1", "margin_right",
+            510.0, 200.0, 570.0, 214.0,
+            1.0,
+            (),
+        ),
+        (
+            "n2", "margin_right",
+            510.0, 250.0, 570.0, 264.0,
+            1.0,
+            (),
+        ),
+        (
+            "n3", "margin_right",
+            510.0, 400.0, 570.0, 414.0,
+            1.0,
+            (),
+        ),
+        (
+            "n5", "margin_left",
+            8.0, 72.0, 50.0, 792.0,
+            0.8,
+            (
+                (AnchorWarningCode.SCALE_REDUCED, "Reduced note scale to 0.90 after larger geometry did not fit."),
+                (AnchorWarningCode.SCALE_REDUCED, "Reduced note scale to 0.80 after larger geometry did not fit."),
+                (AnchorWarningCode.SHIFTED,        "Shifted note top from y=450.00 to y=72.00 to avoid occupied space."),
+            ),
+        ),
+        (
+            "n4", "margin_right",
+            510.0, 600.0, 570.0, 614.0,
+            1.0,
+            (),
+        ),
+    ]
+    expected_skipped = [("n6", SkipReason.UNPLACEABLE)]
+    expected_flags = (DegradationFlag.NOTE_SKIPPED_UNFITTABLE,)
+
+    actual_placed = [_char_row(a) for a in result.placed]
+    actual_skipped = [(s.annotation_id, s.reason) for s in result.skipped]
+    actual_flags = tuple(result.degradation_flags)
+
+    assert actual_placed == expected_placed, (
+        f"placed rows mismatch:\n  got={actual_placed}\n  want={expected_placed}"
+    )
+    assert actual_skipped == expected_skipped, (
+        f"skipped mismatch: got={actual_skipped} want={expected_skipped}"
+    )
+    assert actual_flags == expected_flags, (
+        f"degradation_flags mismatch: got={actual_flags} want={expected_flags}"
+    )
+
+
+def test_p3s1_determinism_repeat() -> None:
+    """Same fixture twice → identical LayoutResult (greedy is deterministic)."""
+    cfg = LayoutConfig()
+    r1 = run_layout(_CHAR_NOTES, _PAGE, [], DenseMeasurer(), config=cfg, body_columns=_CHAR_COLS)
+    r2 = run_layout(_CHAR_NOTES, _PAGE, [], DenseMeasurer(), config=cfg, body_columns=_CHAR_COLS)
+    assert r1 == r2, "run_layout must be deterministic: two identical calls must return equal results"
+
+
+def test_p3s1_permutation_guard() -> None:
+    """Shuffled input order → identical LayoutResult (priority sort canonicalizes).
+
+    The sort at engine.py:282-291 orders by (type_priority, -confidence, annotation_id)
+    before any placement logic runs.  Shuffling the input must not change the output.
+    """
+    import random as _random  # local import — only needed here
+
+    shuffled = list(_CHAR_NOTES)
+    _random.seed(42)
+    _random.shuffle(shuffled)
+
+    cfg = LayoutConfig()
+    original = run_layout(_CHAR_NOTES, _PAGE, [], DenseMeasurer(), config=cfg, body_columns=_CHAR_COLS)
+    permuted = run_layout(shuffled, _PAGE, [], DenseMeasurer(), config=cfg, body_columns=_CHAR_COLS)
+    assert original == permuted, (
+        "run_layout must be permutation-invariant: the priority sort canonicalizes input order"
+    )
