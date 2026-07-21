@@ -21,15 +21,18 @@ No network calls are made anywhere in this file.
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+from rich.console import Console
 
 import halfblood.cli as cli_module
 from halfblood.config import ResolvedConfig
 from halfblood.document_processor import PageContent
 from halfblood.models import AnnotatedPage, AnnotationPlan
+from halfblood.models.rendering import RenderReport, SkipReason, SkipRecord
 from halfblood.web_preview import PreviewResult
 
 _PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n%%EOF\n"
@@ -469,3 +472,94 @@ def test_procedural_engine_gate_precedes_font_resolution(
     assert "bogus.ttf" not in result.output, (
         "font resolution ran before the procedural gate — the NO-GO was masked"
     )
+
+
+# ---------------------------------------------------------------------------
+# MP2b — render summary surfaces marks_only count
+#
+# The CLI prints "Rendered N / Skipped M" after render_plan returns.  When
+# report.marks_only is non-empty, it must append " (K mark-only)" so users
+# know how many skipped annotations still produced a visible target mark.
+# ---------------------------------------------------------------------------
+
+
+def _plan_processor_factory(report: RenderReport) -> type:
+    """Return a fake PDF processor class whose render_plan returns `report`."""
+
+    class _FakePlanProcessor:
+        def load(self, path: str) -> list[PageContent]:
+            return [PageContent(page_number=1, text="t", width=612.0, height=792.0)]
+
+        def render_plan(self, input_path: str, plan: object, output_path: str) -> RenderReport:
+            Path(output_path).write_text("pdf", encoding="utf-8")
+            return report
+
+        def annotations_from_plan(self, plan: object) -> list:
+            return []
+
+    return _FakePlanProcessor
+
+
+def _annotate_with_report(
+    runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    report: RenderReport,
+) -> tuple[object, str]:
+    """Invoke `halfblood annotate` backed by a plan-processor returning `report`.
+
+    Returns (CliRunner result, text printed to the Rich console).
+    """
+    _FakeGenerator.calls = 0
+    buf = io.StringIO()
+    # width=200 prevents Rich from wrapping the summary line at 80 chars.
+    fake_console = Console(file=buf, markup=False, highlight=False, width=200)
+    monkeypatch.setattr(cli_module, "DocumentProcessor", _plan_processor_factory(report))
+    monkeypatch.setattr(cli_module, "EpubProcessor", _FakeEpubProcessor)
+    monkeypatch.setattr(cli_module, "AnnotationGenerator", _FakeGenerator)
+    monkeypatch.setattr(cli_module, "resolve_generation_config", lambda *a, **k: _FAKE_CLI_CONFIG)
+    monkeypatch.setattr(cli_module, "build_provider", lambda *a, **k: _FakeCliProvider())
+    monkeypatch.setattr(cli_module, "console", fake_console)
+    src = tmp_path / "book.pdf"
+    src.write_bytes(_PDF_BYTES)
+    out = tmp_path / "out.pdf"
+    result = runner.invoke(cli_module.main, ["annotate", str(src), "-o", str(out)])
+    return result, buf.getvalue()
+
+
+def test_render_summary_empty_marks_only_omits_qualifier(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Empty marks_only → summary is 'Rendered N / Skipped M' with no qualifier.
+
+    Pins current behavior — must pass both before and after MP2b.
+    """
+    report = RenderReport(
+        rendered=("a1",),
+        skipped=(SkipRecord(annotation_id="s1", reason=SkipReason.MISSING_TARGET),),
+        # marks_only defaults to () — already a subset of {"s1"}
+    )
+    result, printed = _annotate_with_report(runner, monkeypatch, tmp_path, report)
+    assert result.exit_code == 0, result.output
+    assert "Rendered 1 / Skipped 1" in printed
+    assert "mark-only" not in printed
+
+
+def test_render_summary_nonempty_marks_only_appends_qualifier(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Non-empty marks_only → '(K mark-only)' appended after the skipped count.
+
+    Fails before MP2b because cli.py does not yet include the qualifier.
+    """
+    report = RenderReport(
+        rendered=("a1",),
+        skipped=(
+            SkipRecord(annotation_id="m1", reason=SkipReason.UNPLACEABLE),
+            SkipRecord(annotation_id="m2", reason=SkipReason.UNPLACEABLE),
+        ),
+        marks_only=("m1", "m2"),  # valid: subset of skipped ids {"m1", "m2"}
+    )
+    result, printed = _annotate_with_report(runner, monkeypatch, tmp_path, report)
+    assert result.exit_code == 0, result.output
+    assert "Rendered 1 / Skipped 2 (2 mark-only)" in printed

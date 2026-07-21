@@ -460,7 +460,10 @@ def annotate(
         progress.update(render_task, completed=1)
 
     if report is not None:
-        console.print(f"Rendered {report.rendered_count} / Skipped {report.skipped_count}")
+        summary = f"Rendered {report.rendered_count} / Skipped {report.skipped_count}"
+        if report.marks_only:
+            summary += f" ({len(report.marks_only)} mark-only)"
+        console.print(summary)
 
     if generator.failed_pages:
         console.print(
