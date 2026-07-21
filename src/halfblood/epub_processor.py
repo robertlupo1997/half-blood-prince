@@ -163,8 +163,7 @@ _ANNOTATION_CSS = """
 .hbp-mark-highlight {
     background: rgba(216, 62, 27, 0.20);
 }
-.hbp-mark-caret::after {
-    content: "\\2038";
+.hbp-caret-glyph {
     font-weight: bold;
 }
 .hbp-target-warning {
@@ -810,6 +809,13 @@ class EpubProcessor:
         )
         mark_tag.string = matched
         mark_tag["style"] = f"color:{self._ink_hex(annotation.annotation_type)};"
+        if mark_intent is MarkIntent.CARET:
+            caret_glyph = soup.new_tag(
+                "span",
+                attrs={"class": "hbp-caret-glyph", "aria-hidden": "true"},
+            )
+            caret_glyph.string = "‸"
+            mark_tag.append(caret_glyph)
 
         replacements: list[NavigableString | Tag] = []
         if before:
@@ -933,6 +939,16 @@ class EpubProcessor:
             segment.node.replace_with(*replacements)
             if last_mark is None:
                 last_mark = mark_tag
+                if mark_intent is MarkIntent.CARET:
+                    caret_glyph = soup.new_tag(
+                        "span",
+                        attrs={
+                            "class": "hbp-caret-glyph",
+                            "aria-hidden": "true",
+                        },
+                    )
+                    caret_glyph.string = "‸"
+                    last_mark.append(caret_glyph)
 
         return last_mark
 
