@@ -271,28 +271,15 @@ def _skip_unplaceable(annotation_id: str, detail: str) -> SkipRecord:
     )
 
 
-def run_layout(
-    requests: Sequence[NoteRequest],
+def _run_greedy(
+    request_targets: Sequence[tuple[NoteRequest, SurfaceRect]],
     page_rect: SurfaceRect,
     body_occupancy: Sequence[SurfaceRect],
+    target_occupancy: tuple[SurfaceRect, ...],
     measurer: NoteMeasurer,
-    config: LayoutConfig = LayoutConfig(),  # noqa: B008 - pinned public API
-    *,
-    body_columns: Sequence[TextColumn] = (),
+    config: LayoutConfig,
+    margin_strips: dict[_MarginSide, tuple[float, float]] | None,
 ) -> LayoutResult:
-    """Place margin annotations by priority using occupancy-based layout."""
-    ordered_requests = sorted(
-        requests,
-        key=lambda request: (
-            ANNOTATION_TYPE_PRIORITY[request.annotation_type],
-            -request.confidence,
-            request.annotation_id,
-        ),
-    )
-    request_targets = tuple(
-        (request, _target_rect(request, page_rect)) for request in ordered_requests
-    )
-    target_occupancy = tuple(target_rect for _, target_rect in request_targets)
     placed: list[ResolvedAnnotation] = []
     skipped: list[SkipRecord] = []
     degradation_flags: list[DegradationFlag] = []
@@ -301,18 +288,6 @@ def run_layout(
         "margin_left": [],
     }
     note_boxes: list[SurfaceRect] = []
-
-    if body_columns:
-        right_strip_x0 = max(column.x1 for column in body_columns) + config.margin_gap
-        right_strip_x1 = page_rect.x1 - config.page_edge_pad
-        left_strip_x1 = min(column.x0 for column in body_columns) - config.margin_gap
-        left_strip_x0 = page_rect.x0 + config.page_edge_pad
-        margin_strips: dict[_MarginSide, tuple[float, float]] | None = {
-            "margin_right": (right_strip_x0, right_strip_x1),
-            "margin_left": (left_strip_x0, left_strip_x1),
-        }
-    else:
-        margin_strips = None
 
     for request, target_rect in request_targets:
         common_forbidden = tuple(body_occupancy) + target_occupancy + tuple(note_boxes)
@@ -467,4 +442,50 @@ def run_layout(
         placed=tuple(placed),
         skipped=tuple(skipped),
         degradation_flags=tuple(degradation_flags),
+    )
+
+
+def run_layout(
+    requests: Sequence[NoteRequest],
+    page_rect: SurfaceRect,
+    body_occupancy: Sequence[SurfaceRect],
+    measurer: NoteMeasurer,
+    config: LayoutConfig = LayoutConfig(),  # noqa: B008 - pinned public API
+    *,
+    body_columns: Sequence[TextColumn] = (),
+) -> LayoutResult:
+    """Place margin annotations by priority using occupancy-based layout."""
+    ordered_requests = sorted(
+        requests,
+        key=lambda request: (
+            ANNOTATION_TYPE_PRIORITY[request.annotation_type],
+            -request.confidence,
+            request.annotation_id,
+        ),
+    )
+    request_targets = tuple(
+        (request, _target_rect(request, page_rect)) for request in ordered_requests
+    )
+    target_occupancy = tuple(target_rect for _, target_rect in request_targets)
+
+    if body_columns:
+        right_strip_x0 = max(column.x1 for column in body_columns) + config.margin_gap
+        right_strip_x1 = page_rect.x1 - config.page_edge_pad
+        left_strip_x1 = min(column.x0 for column in body_columns) - config.margin_gap
+        left_strip_x0 = page_rect.x0 + config.page_edge_pad
+        margin_strips: dict[_MarginSide, tuple[float, float]] | None = {
+            "margin_right": (right_strip_x0, right_strip_x1),
+            "margin_left": (left_strip_x0, left_strip_x1),
+        }
+    else:
+        margin_strips = None
+
+    return _run_greedy(
+        request_targets=request_targets,
+        page_rect=page_rect,
+        body_occupancy=body_occupancy,
+        target_occupancy=target_occupancy,
+        measurer=measurer,
+        config=config,
+        margin_strips=margin_strips,
     )
