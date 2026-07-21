@@ -32,6 +32,12 @@ from halfblood.models.annotations import Annotation, MarkIntent, TargetSelector
 from halfblood.models.documents import AnnotationPlan, GenerationProvenance, SourceInfo, Unit
 from halfblood.models.rendering import DegradationFlag, RenderReport, SkipReason
 
+# Silence XMLParsedAsHTMLWarning: BeautifulSoup emits this when parsing EPUB
+# XHTML chapters with the lxml HTML parser, which is intentional in the
+# epub_processor (it handles malformed XHTML). Suppressing keeps the test
+# output clean without masking real regressions.
+pytestmark = pytest.mark.filterwarnings("ignore::bs4.XMLParsedAsHTMLWarning")
+
 _XHTML_NS = {"x": "http://www.w3.org/1999/xhtml"}
 _FINGERPRINT = "a" * 64  # placeholder matching sha256 hex format
 

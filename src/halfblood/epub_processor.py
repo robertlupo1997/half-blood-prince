@@ -718,14 +718,16 @@ class EpubProcessor:
         type_slug = annotation.annotation_type.value
         mark_intent = self._effective_mark_intent(annotation)
 
+        # NONE guard: a NONE intent means no visible mark on the target text.
+        # Omit the hbp-mark-* class entirely rather than emitting hbp-mark-none,
+        # which has no CSS rule and would leave the intent silently un-rendered.
+        _mark_classes = f"hbp-target hbp-target-{type_slug}"
+        if mark_intent is not MarkIntent.NONE:
+            _mark_classes += f" hbp-mark-{mark_intent.value}"
+
         mark_tag = soup.new_tag(
             "span",
-            attrs={
-                "class": (
-                    f"hbp-target hbp-target-{type_slug} "
-                    f"hbp-mark-{mark_intent.value}"
-                )
-            },
+            attrs={"class": _mark_classes},
         )
         mark_tag.string = matched
         mark_tag["style"] = f"color:{self._ink_hex(annotation.annotation_type)};"

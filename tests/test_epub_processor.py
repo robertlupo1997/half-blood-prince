@@ -51,6 +51,12 @@ from halfblood.models.annotations import MarkIntent, TargetSelector
 from halfblood.models.documents import AnnotationPlan as V2Plan
 from halfblood.models.documents import GenerationProvenance, SourceInfo, Unit
 
+# Silence XMLParsedAsHTMLWarning: BeautifulSoup emits this when parsing EPUB
+# XHTML chapters with the lxml HTML parser, which is intentional in the
+# epub_processor (it handles malformed XHTML). Suppressing keeps the test
+# output clean without masking real regressions.
+pytestmark = pytest.mark.filterwarnings("ignore::bs4.XMLParsedAsHTMLWarning")
+
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_book.epub"
 
 _XHTML_NS = {"x": "http://www.w3.org/1999/xhtml"}
@@ -535,15 +541,34 @@ def test_selector_for_builds_an_exact_selector() -> None:
 @pytest.mark.parametrize(
     ("atype", "expected_intent_class"),
     [
-        (AnnotationType.CROSSED_OUT, "hbp-mark-strike"),
+        (AnnotationType.CORRECTION, "hbp-mark-underline"),
+        (AnnotationType.IMPROVEMENT, "hbp-mark-underline"),
+        (AnnotationType.SHORTCUT, "hbp-mark-underline"),
         (AnnotationType.INSIGHT, "hbp-mark-circle"),
+        (AnnotationType.INVENTION, "hbp-mark-circle"),
+        (AnnotationType.DOODLE_NOTE, "hbp-mark-circle"),
+        (AnnotationType.WARNING, "hbp-mark-highlight"),
+        (AnnotationType.CROSSED_OUT, "hbp-mark-strike"),
     ],
-    ids=["crossed_out->strike", "insight->circle"],
+    ids=[
+        "correction->underline",
+        "improvement->underline",
+        "shortcut->underline",
+        "insight->circle",
+        "invention->circle",
+        "doodle_note->circle",
+        "warning->highlight",
+        "crossed_out->strike",
+    ],
 )
 def test_wrap_cross_node_segments_derives_intent_from_legacy_annotation(
     atype: AnnotationType, expected_intent_class: str
 ) -> None:
-    """Legacy Annotation (no mark_intent) must yield the V1-mapped intent class on mark spans."""
+    """All 8 _MARK_INTENTS entries must produce the exact intent class on every mark span.
+
+    Uses exact set equality on hbp-mark-* classes so a span can't accidentally
+    carry multiple or wrong intent classes.
+    """
     soup = _soup(_ONE_BLOCK_XHTML)
     match = locate_across_nodes(soup.body, selector_for(_CROSS_TARGET))
     assert match is not None
@@ -555,8 +580,50 @@ def test_wrap_cross_node_segments_derives_intent_from_legacy_annotation(
     marks = soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
     assert marks, f"{atype.value} annotation must produce at least one mark span"
     for mark in marks:
-        assert expected_intent_class in mark["class"], (
-            f"mark span for {atype.value} must carry {expected_intent_class}; got {mark['class']!r}"
+        mark_classes = set(mark.get("class") or [])
+        hbp_mark_classes = {c for c in mark_classes if c.startswith("hbp-mark-")}
+        assert hbp_mark_classes == {expected_intent_class}, (
+            f"mark span for {atype.value}: expected exactly {{{expected_intent_class!r}}}; "
+            f"got {hbp_mark_classes!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# MP2c — NONE guard in _wrap_and_annotate
+#
+# When _effective_mark_intent returns NONE the V1 render path must not emit
+# an hbp-mark-none class (which has no CSS rule).  Today no _MARK_INTENTS
+# entry maps to NONE, but the guard future-proofs against a new addition.
+# ---------------------------------------------------------------------------
+
+
+def test_wrap_and_annotate_none_intent_omits_hbp_mark_class() -> None:
+    """White-box: _wrap_and_annotate with NONE intent must not emit hbp-mark-none."""
+
+    class _AlwaysNoneIntent(EpubProcessor):
+        @staticmethod
+        def _effective_mark_intent(annotation: object) -> MarkIntent:  # type: ignore[override]
+            return MarkIntent.NONE
+
+    xhtml = (
+        '<html xmlns="http://www.w3.org/1999/xhtml">'
+        "<body><p>short text here.</p></body></html>"
+    )
+    soup = _soup(xhtml)
+    node = soup.find("p").contents[0]  # NavigableString "short text here."
+    _AlwaysNoneIntent(seed=1)._wrap_and_annotate(
+        soup, node, 0, 5, _ann(1, "short", atype=AnnotationType.INSIGHT)
+    )
+
+    targets = soup.find_all("span", class_=lambda c: c and "hbp-target" in c)
+    assert targets, "must produce a target span even with NONE intent"
+    for span in targets:
+        classes = set(span.get("class") or [])
+        assert "hbp-mark-none" not in classes, (
+            f"NONE intent must not emit hbp-mark-none; classes={classes!r}"
+        )
+        assert not any(c.startswith("hbp-mark-") for c in classes), (
+            f"NONE intent must emit no hbp-mark-* class at all; classes={classes!r}"
         )
 
 

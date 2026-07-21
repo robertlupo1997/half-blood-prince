@@ -282,7 +282,9 @@ def test_two_column_page_places_notes_in_outer_margins_not_gutter() -> None:
 
 def test_narrow_outer_margin_shrinks_or_skips_never_overlaps_body() -> None:
     # Body column fills almost the full width; right outer margin is only 15pt.
-    # min_margin_width defaults to 40pt, so right margin is too narrow.
+    # min_margin_width defaults to 40pt, so right margin is degenerate (width=-3).
+    # Left margin is 42pt (8..50) — usable — so the engine deterministically
+    # column-switches to margin_left and places there.
     narrow_col = TextColumn(x0=60.0, x1=597.0)  # 15pt right, 60pt left
     page = SurfaceRect(x0=0.0, y0=0.0, x1=612.0, y1=792.0)
     body_occ = [SurfaceRect(x0=60.0, y0=72.0, x1=597.0, y1=720.0)]
@@ -299,15 +301,26 @@ def test_narrow_outer_margin_shrinks_or_skips_never_overlaps_body() -> None:
     )
 
     placed = {a.annotation_id: a for a in result.placed}
-    if "narrow-right" in placed:
-        nb = placed["narrow-right"].note_box
-        assert nb is not None
-        # Must not overlap the body occupancy rectangle.
-        for bo in body_occ:
-            assert not _rects_overlap(nb, bo, tol=1.0), (
-                f"Placed note {nb} overlaps body occupancy {bo} in narrow-margin case"
-            )
-    # If skipped, that is also acceptable (shrink-or-skip policy).
+    # Deterministic outcome: right margin is degenerate (width < 0), left margin
+    # is 42pt >= 40pt min — engine column-switches to margin_left and places.
+    assert "narrow-right" in placed, (
+        "left margin (42pt) is above minimum — engine must place after column switch"
+    )
+    ann = placed["narrow-right"]
+    assert ann.resolved_placement == "margin_left", (
+        f"expected column-switch to margin_left; got {ann.resolved_placement!r}"
+    )
+    nb = ann.note_box
+    assert nb is not None
+    # Note stays entirely left of the body column (x0=60).
+    assert nb.x1 <= narrow_col.x0, (
+        f"note_box {nb} must not enter body column starting at x={narrow_col.x0}"
+    )
+    # Must not overlap the body occupancy rectangle.
+    for bo in body_occ:
+        assert not _rects_overlap(nb, bo, tol=1.0), (
+            f"Placed note {nb} overlaps body occupancy {bo} in narrow-margin case"
+        )
 
 
 # ---------------------------------------------------------------------------
