@@ -19,6 +19,13 @@ Phase 3. Groundwork merged: P3-S1 greedy seam (`_run_greedy` in `layout/engine.p
   Scale term: `10_000*((1−scale)/(1−min_scale))²`. Connector endpoints per composer
   `_connector_edges`; crossings/length are straight-segment PROXIES (real routing is
   downstream in `rough.make_connector` — never promise rendered zero-crossing).
+- **AMENDED at S2a merge (2026-07-21): aggregation is the importance-weighted SUM
+  `soft = Σ(soft_i × importance_i)`, NOT the mean this doc's advisory phrasing implied.**
+  Reviewer-verified equivalence: every beam step processes the same note set, so total
+  importance is constant across states; at equal `omitted_importance`, placed importance W is
+  fixed, making sum and mean rank identically at every pruning point. Sub-term rounding pins
+  per the S2a test suite (e.g. `r²` scaled by truncating `ratio`; scale=0.8/min=0.7 ⇒ term
+  4444 bp). `tests/test_page_solver.py` is the arithmetic's normative reference.
 - Hard constraints (infeasible, never priced): off-page, non-finite/oversized measurement,
   scale < min_scale, margin < margin_min_width, any note/body/target/note overlap beyond
   tolerance, same-margin interval overlap, attempt over `attempt_budget`, and — MP1c — **no
