@@ -1237,3 +1237,254 @@ def test_nl2_css_untouched_mark_rules_and_caveat_font(
     assert "Caveat" in note_rule.group(1), (
         "NL2: .hbp-note must still list 'Caveat' in font-family"
     )
+
+
+# ---------------------------------------------------------------------------
+# NL3 — density + degradation
+# ---------------------------------------------------------------------------
+
+# Four non-overlapping target phrases, all in a single <p> block (ch1).
+_NL3_CH1_CONTENT = (
+    "<h1>Chapter One — Dense</h1>"
+    "<p>Heat the armadillo bile gently until it shimmers,"
+    " then add powdered asphodel root while stirring,"
+    " followed by the wormwood infusion clockwise,"
+    " and finally seal with essence of Dittany.</p>"
+)
+
+# One sparse chapter (fewer than 4 targets in any single block).
+_NL3_CH2_CONTENT = (
+    "<h1>Chapter Two — Sparse</h1>"
+    "<p>The bezoar dissolves slowly in moonwater."
+    " Add a single sprig of valerian to complete.</p>"
+)
+
+_NL3_CH1_ORDINAL = 2
+_NL3_CH2_ORDINAL = 3
+
+_NL3_ANN_1 = "nl3-ann-1"
+_NL3_ANN_2 = "nl3-ann-2"
+_NL3_ANN_3 = "nl3-ann-3"
+_NL3_ANN_4 = "nl3-ann-4"
+_NL3_ANN_SPARSE = "nl3-ann-sparse"
+
+# Ordered so zip(ids, targets) aligns correctly.
+_NL3_ANN_IDS = [_NL3_ANN_1, _NL3_ANN_2, _NL3_ANN_3, _NL3_ANN_4]
+_NL3_TARGETS = [
+    "armadillo bile gently until it shimmers",
+    "powdered asphodel root while stirring",
+    "wormwood infusion clockwise",
+    "essence of Dittany",
+]
+
+
+@pytest.fixture(scope="module")
+def nl3_epub_src(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Two-chapter EPUB for NL3 density tests.  Chapter 1 holds four unique
+    non-overlapping target phrases in a single <p>; Chapter 2 holds one."""
+    tmp = tmp_path_factory.mktemp("epub_nl3_src")
+    book = epub.EpubBook()
+    book.set_identifier("hbp-nl3-density-test")
+    book.set_title("NL3 Density Test Book")
+    book.set_language("en")
+
+    ch1 = epub.EpubHtml(uid="ch1", file_name="ch1.xhtml", lang="en")
+    ch1.content = _NL3_CH1_CONTENT
+    ch2 = epub.EpubHtml(uid="ch2", file_name="ch2.xhtml", lang="en")
+    ch2.content = _NL3_CH2_CONTENT
+
+    for item in (ch1, ch2, epub.EpubNcx(), epub.EpubNav()):
+        book.add_item(item)
+    book.toc = [ch1, ch2]
+    book.spine = ["nav", ch1, ch2]
+
+    path = tmp / "nl3_src.epub"
+    epub.write_epub(str(path), book)
+    return path
+
+
+def test_nl3_three_notes_non_dense(nl3_epub_src: Path, tmp_path: Path) -> None:
+    """NL3: a cluster with 3 notes keeps hbp-note-cluster-floatable; dense class
+    absent; EPUB_DENSE_NOTES_BLOCK_FALLBACK must NOT appear in degradation_flags.
+    Regression guard — this behaviour must survive after the dense threshold is wired."""
+    plan = _plan([_unit(_NL3_CH1_ORDINAL, [
+        _ann(_NL3_ANN_1, _NL3_TARGETS[0]),
+        _ann(_NL3_ANN_2, _NL3_TARGETS[1]),
+        _ann(_NL3_ANN_3, _NL3_TARGETS[2]),
+    ])])
+    report, out = _render(nl3_epub_src, plan, tmp_path)
+
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+    clusters = soup.find_all(True, class_="hbp-note-cluster")
+    assert len(clusters) >= 1, "must produce at least one cluster for a 3-note plan"
+    for cluster in clusters:
+        cls = set(cluster.get("class") or [])
+        assert "hbp-note-cluster-floatable" in cls, (
+            f"NL3: 3-note cluster must keep hbp-note-cluster-floatable; got {cls!r}"
+        )
+        assert "hbp-note-cluster-dense" not in cls, (
+            f"NL3: 3-note cluster must NOT carry hbp-note-cluster-dense; got {cls!r}"
+        )
+    assert DegradationFlag.EPUB_DENSE_NOTES_BLOCK_FALLBACK not in report.degradation_flags, (
+        "NL3: EPUB_DENSE_NOTES_BLOCK_FALLBACK must NOT be set for a 3-note cluster"
+    )
+
+
+def test_nl3_four_notes_cluster_is_dense_not_floatable(
+    nl3_epub_src: Path, tmp_path: Path
+) -> None:
+    """NL3: the 4th note flips the cluster — hbp-note-cluster-dense added,
+    hbp-note-cluster-floatable removed; EPUB_DENSE_NOTES_BLOCK_FALLBACK appears
+    after EPUB_NO_TARGET_GEOMETRY in degradation_flags."""
+    plan = _plan([_unit(_NL3_CH1_ORDINAL, [
+        _ann(ann_id, target)
+        for ann_id, target in zip(_NL3_ANN_IDS, _NL3_TARGETS, strict=True)
+    ])])
+    report, out = _render(nl3_epub_src, plan, tmp_path)
+
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+    soup = BeautifulSoup(ch1_bytes, "lxml")
+    clusters = soup.find_all(True, class_="hbp-note-cluster")
+    assert len(clusters) >= 1, "must produce at least one cluster for a 4-note plan"
+    dense_clusters = [
+        c for c in clusters if "hbp-note-cluster-dense" in (c.get("class") or [])
+    ]
+    assert dense_clusters, (
+        "NL3: the 4-note cluster must carry hbp-note-cluster-dense"
+    )
+    for cluster in dense_clusters:
+        cls = set(cluster.get("class") or [])
+        assert "hbp-note-cluster-floatable" not in cls, (
+            f"NL3: dense cluster must NOT carry hbp-note-cluster-floatable; got {cls!r}"
+        )
+
+    flags = list(report.degradation_flags)
+    assert DegradationFlag.EPUB_NO_TARGET_GEOMETRY in flags, (
+        "NL3: EPUB_NO_TARGET_GEOMETRY must still be present alongside the dense flag"
+    )
+    assert DegradationFlag.EPUB_DENSE_NOTES_BLOCK_FALLBACK in flags, (
+        "NL3: EPUB_DENSE_NOTES_BLOCK_FALLBACK must appear when a 4-note cluster is emitted"
+    )
+    no_geom_idx = flags.index(DegradationFlag.EPUB_NO_TARGET_GEOMETRY)
+    dense_idx = flags.index(DegradationFlag.EPUB_DENSE_NOTES_BLOCK_FALLBACK)
+    assert no_geom_idx < dense_idx, (
+        "NL3: EPUB_NO_TARGET_GEOMETRY must precede EPUB_DENSE_NOTES_BLOCK_FALLBACK in flags"
+    )
+
+
+def test_nl3_mixed_book_flag_once_sparse_cluster_unaffected(
+    nl3_epub_src: Path, tmp_path: Path
+) -> None:
+    """NL3: a book with one dense and one sparse cluster emits the degradation
+    flag exactly once; the sparse cluster keeps hbp-note-cluster-floatable and
+    never acquires hbp-note-cluster-dense."""
+    plan = _plan([
+        _unit(_NL3_CH1_ORDINAL, [
+            _ann(ann_id, target)
+            for ann_id, target in zip(_NL3_ANN_IDS, _NL3_TARGETS, strict=True)
+        ]),
+        _unit(_NL3_CH2_ORDINAL, [
+            _ann(_NL3_ANN_SPARSE, "bezoar dissolves slowly in moonwater"),
+        ]),
+    ])
+    report, out = _render(nl3_epub_src, plan, tmp_path)
+
+    with zipfile.ZipFile(out) as zf:
+        ch1_bytes = _chapter_bytes(zf, "ch1.xhtml")
+        ch2_bytes = _chapter_bytes(zf, "ch2.xhtml")
+
+    # Dense chapter: at least one cluster carries hbp-note-cluster-dense
+    soup1 = BeautifulSoup(ch1_bytes, "lxml")
+    dense_clusters = soup1.find_all(True, class_="hbp-note-cluster-dense")
+    assert dense_clusters, "NL3: ch1 must contain at least one dense cluster in mixed book"
+
+    # Sparse chapter: all clusters keep floatable, none are dense
+    soup2 = BeautifulSoup(ch2_bytes, "lxml")
+    sparse_clusters = soup2.find_all(True, class_="hbp-note-cluster")
+    assert sparse_clusters, "NL3: ch2 must contain at least one cluster in mixed book"
+    for cluster in sparse_clusters:
+        cls = set(cluster.get("class") or [])
+        assert "hbp-note-cluster-dense" not in cls, (
+            f"NL3: ch2 sparse cluster must not be dense in mixed book; got {cls!r}"
+        )
+        assert "hbp-note-cluster-floatable" in cls, (
+            f"NL3: ch2 sparse cluster must remain floatable in mixed book; got {cls!r}"
+        )
+
+    # RenderReport.degradation_flags is de-duped by the model validator, so the
+    # count here tests that the production code adds the flag at most once.
+    dense_flag_count = sum(
+        1 for f in report.degradation_flags
+        if f == DegradationFlag.EPUB_DENSE_NOTES_BLOCK_FALLBACK
+    )
+    assert dense_flag_count == 1, (
+        f"NL3: EPUB_DENSE_NOTES_BLOCK_FALLBACK must appear exactly once; "
+        f"count={dense_flag_count}"
+    )
+
+
+def test_nl3_dense_annotations_all_in_rendered_not_skipped(
+    nl3_epub_src: Path, tmp_path: Path
+) -> None:
+    """NL3: density is presentation-only.  All 4 annotations targeting a dense
+    cluster must appear in report.rendered; none may appear in report.skipped.
+    Regression guard — skip semantics must not change after the dense threshold."""
+    plan = _plan([_unit(_NL3_CH1_ORDINAL, [
+        _ann(ann_id, target)
+        for ann_id, target in zip(_NL3_ANN_IDS, _NL3_TARGETS, strict=True)
+    ])])
+    report, _ = _render(nl3_epub_src, plan, tmp_path)
+
+    rendered_set = set(report.rendered)
+    skipped_set = {r.annotation_id for r in report.skipped}
+    for ann_id in _NL3_ANN_IDS:
+        assert ann_id in rendered_set, (
+            f"NL3: dense annotation {ann_id!r} must appear in rendered, not be skipped"
+        )
+        assert ann_id not in skipped_set, (
+            f"NL3: dense annotation {ann_id!r} must not appear in skipped"
+        )
+    assert not report.marks_only, (
+        "NL3: marks_only must be empty — density must not demote annotations to mark-only"
+    )
+
+
+def test_nl3_css_has_dense_cluster_clear_rule(
+    nl3_epub_src: Path, tmp_path: Path
+) -> None:
+    """NL3 stylesheet must add .hbp-note-cluster-dense { clear: both; } and must
+    not alter the existing @media float rule for hbp-note-cluster-floatable."""
+    plan = _plan([_unit(_NL3_CH1_ORDINAL, [_ann(_NL3_ANN_1, _NL3_TARGETS[0])])])
+    _, out = _render(nl3_epub_src, plan, tmp_path)
+    css_text = _get_css_text(out)
+
+    dense_rule = re.search(r"\.hbp-note-cluster-dense\s*\{([^}]+)\}", css_text)
+    assert dense_rule, "NL3: .hbp-note-cluster-dense rule not found in stylesheet"
+    assert re.search(r"clear\s*:\s*both", dense_rule.group(1)), (
+        "NL3: .hbp-note-cluster-dense must include 'clear: both'"
+    )
+
+    # Existing @media float rule for floatable clusters must remain unchanged.
+    assert re.search(r"@media\s*\(\s*min-width\s*:\s*40em\s*\)", css_text), (
+        "NL3: @media (min-width: 40em) block must still be present after NL3"
+    )
+    assert re.search(r"\.hbp-note-cluster-floatable\s*\{", css_text), (
+        "NL3: .hbp-note-cluster-floatable rule must remain in the stylesheet"
+    )
+
+
+def test_nl3_model_enum_value_and_report_version() -> None:
+    """NL3 model contract: the new enum member has exactly the pinned string value;
+    report_version is still '1.0' (no version bump for an additive flag)."""
+    assert DegradationFlag.EPUB_DENSE_NOTES_BLOCK_FALLBACK.value == (
+        "epub_dense_notes_block_fallback"
+    ), (
+        "NL3: DegradationFlag.EPUB_DENSE_NOTES_BLOCK_FALLBACK.value must be "
+        "'epub_dense_notes_block_fallback'"
+    )
+    assert RenderReport().report_version == "1.0", (
+        "NL3: RenderReport.report_version must remain '1.0' after the additive flag"
+    )
