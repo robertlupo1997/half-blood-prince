@@ -16,18 +16,16 @@ they would with a PDF page number.
 
 Because e-reader apps vary wildly in their CSS support (many ignore
 ``float``, some ignore ``position`` entirely), annotations are rendered
-as inline HTML/CSS rather than absolutely positioned margin notes:
+as linked HTML/CSS rather than absolutely positioned margin notes:
 
 * The target passage is wrapped in a ``<span class="hbp-target ...">``
   that gets an ink-colored underline/highlight/strikethrough depending on
   its mark intent.
-* The Prince's commentary is written immediately after it, inside a
-  ``<span class="hbp-note ...">`` styled with a cursive "handwriting"
-  font, a slight per-note rotation (via CSS ``transform: rotate(...)``)
-  and an ink color/opacity that mirrors the PDF palette. Where the reader
-  supports floated inline elements, a CSS rule floats these notes to the
-  right so they read as sidenotes; otherwise they fall back to sitting
-  inline right after the marked passage.
+* A linked noteref follows the target, while the Prince's commentary is
+  appended to a per-block ``hbp-note-cluster`` immediately after the owning
+  block. EPUB 3 notes use semantic footnote asides; EPUB 2 notes use linked
+  divs. Existing note styling still supplies the cursive "handwriting",
+  rotation, ink color, and opacity.
 
 Font note
 ---------
@@ -117,6 +115,29 @@ _NOMINAL_PAGE_WIDTH = 600.0
 _NOMINAL_PAGE_HEIGHT = 800.0
 
 _ANNOTATION_STYLESHEET_PATH = "style/hbp-annotations.css"
+
+_BLOCK_TAGS = (
+    "p",
+    "div",
+    "section",
+    "article",
+    "aside",
+    "header",
+    "footer",
+    "nav",
+    "figure",
+    "figcaption",
+    "blockquote",
+    "pre",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+)
+
+_EPUB_NAMESPACE = "http://www.idpf.org/2007/ops"
 
 _ANNOTATION_CSS = """
 .hbp-target {
@@ -489,6 +510,7 @@ class EpubProcessor:
         """
         book = epub.read_epub(input_path)
         self._ensure_toc_uids(book.toc)
+        is_epub3 = str(book.version).startswith("3")
         spine_docs: dict[int, epub.EpubHtml] = dict(self._iter_spine_documents(book))
 
         rendered_ids: list[str] = []
@@ -558,7 +580,15 @@ class EpubProcessor:
                     )
                     continue
 
-                self.wrap_cross_node_segments(soup, fresh_match.segments, ann)
+                note_number = chapter_rendered + 1
+                self.wrap_cross_node_segments(
+                    soup,
+                    fresh_match.segments,
+                    ann,
+                    annotation_id=ann.id,
+                    note_number=note_number,
+                    is_epub3=is_epub3,
+                )
                 rendered_ids.append(ann.id)
                 chapter_rendered += 1
 
@@ -573,7 +603,12 @@ class EpubProcessor:
             len(rendered_ids),
             len(skip_records),
         )
-        epub.write_epub(output_path, book)
+        # EbookLib treats every element carrying both ``epub:type`` and ``id``
+        # as a page-break marker when regenerating the navigation document.
+        # Semantic footnotes therefore become a bogus page list unless that
+        # optional regeneration is disabled.
+        write_options = {"epub3_pages": False} if rendered_ids and is_epub3 else None
+        epub.write_epub(output_path, book, write_options)
         return RenderReport(
             rendered=tuple(rendered_ids),
             skipped=tuple(skip_records),
@@ -594,6 +629,7 @@ class EpubProcessor:
         """
         book = epub.read_epub(input_path)
         self._ensure_toc_uids(book.toc)
+        is_epub3 = str(book.version).startswith("3")
         spine_docs = dict(self._iter_spine_documents(book))
 
         by_page: dict[int, list[Annotation]] = {}
@@ -624,7 +660,17 @@ class EpubProcessor:
                     skipped += 1
                     continue
                 node, start, end = located
-                self._wrap_and_annotate(soup, node, start, end, annotation)
+                note_number = chapter_rendered + 1
+                self._wrap_and_annotate(
+                    soup,
+                    node,
+                    start,
+                    end,
+                    annotation,
+                    annotation_id=f"p{page_number}-n{note_number}",
+                    note_number=note_number,
+                    is_epub3=is_epub3,
+                )
                 rendered += 1
                 chapter_rendered += 1
 
@@ -640,7 +686,9 @@ class EpubProcessor:
             rendered,
             skipped,
         )
-        epub.write_epub(output_path, book)
+        # See ``render_plan``: semantic note ids are not pagination markers.
+        write_options = {"epub3_pages": False} if rendered and is_epub3 else None
+        epub.write_epub(output_path, book, write_options)
 
     def _ensure_toc_uids(self, toc: Any) -> None:
         """Backfill missing `uid` attributes on a book's table of contents.
@@ -707,13 +755,18 @@ class EpubProcessor:
         start: int,
         end: int,
         annotation: Annotation,
+        *,
+        annotation_id: str | None = None,
+        note_number: int | None = None,
+        is_epub3: bool = True,
     ) -> None:
         """Split `node` around `[start, end)`, wrap the matched slice in a
-        styled `hbp-target` span, and insert an `hbp-note` sidenote span
-        (the Prince's commentary) right after it.
+        styled `hbp-target` span, then insert a linked semantic note through
+        the shared block-note helper.
         """
         raw = str(node)
         before, matched, after = raw[:start], raw[start:end], raw[end:]
+        block_anchor = node.find_parent(_BLOCK_TAGS)
 
         type_slug = annotation.annotation_type.value
         mark_intent = self._effective_mark_intent(annotation)
@@ -732,16 +785,6 @@ class EpubProcessor:
         mark_tag.string = matched
         mark_tag["style"] = f"color:{self._ink_hex(annotation.annotation_type)};"
 
-        note_tag = soup.new_tag(
-            "span",
-            attrs={
-                "class": f"hbp-note hbp-note-{type_slug}",
-                "style": self._note_style(annotation),
-                "title": f"{type_slug} (confidence {annotation.confidence:.2f})",
-            },
-        )
-        note_tag.string = self._format_note_text(annotation)
-
         replacements: list[NavigableString | Tag] = []
         if before:
             replacements.append(NavigableString(before))
@@ -750,13 +793,29 @@ class EpubProcessor:
             replacements.append(NavigableString(after))
 
         node.replace_with(*replacements)
-        mark_tag.insert_after(note_tag)
+        resolved_number = (
+            note_number if note_number is not None else self._next_note_number(soup)
+        )
+        resolved_id = annotation_id or f"p{annotation.page}-n{resolved_number}"
+        self._insert_block_note(
+            soup,
+            block_anchor or mark_tag,
+            mark_tag,
+            annotation,
+            annotation_id=resolved_id,
+            note_number=resolved_number,
+            is_epub3=is_epub3,
+        )
 
     def wrap_cross_node_segments(
         self,
         soup: BeautifulSoup,
         segments: Sequence[CrossNodeSegment],
         annotation: Annotation | V2Annotation,
+        *,
+        annotation_id: str | None = None,
+        note_number: int | None = None,
+        is_epub3: bool = True,
     ) -> None:
         """Apply an optional mark and one note to ordered DOM text slices."""
         mark_intent = self._effective_mark_intent(annotation)
@@ -772,28 +831,7 @@ class EpubProcessor:
         if last_segment is None:
             return
 
-        block_anchor = last_segment.node.find_parent(
-            (
-                "p",
-                "div",
-                "section",
-                "article",
-                "aside",
-                "header",
-                "footer",
-                "nav",
-                "figure",
-                "figcaption",
-                "blockquote",
-                "pre",
-                "h1",
-                "h2",
-                "h3",
-                "h4",
-                "h5",
-                "h6",
-            )
-        )
+        block_anchor = last_segment.node.find_parent(_BLOCK_TAGS)
 
         last_mark: Tag | None = None
         if mark_intent is not MarkIntent.NONE:
@@ -801,8 +839,28 @@ class EpubProcessor:
                 soup, segments, annotation, mark_intent
             )
 
+        resolved_number = (
+            note_number if note_number is not None else self._next_note_number(soup)
+        )
+        if annotation_id is not None:
+            resolved_id = annotation_id
+        elif isinstance(annotation, V2Annotation):
+            resolved_id = annotation.id
+        else:
+            resolved_id = f"p{annotation.page}-n{resolved_number}"
+
         note_anchor: Tag | NavigableString = block_anchor or last_mark or last_segment.node
-        self._insert_note(soup, note_anchor, annotation)
+        noteref_anchor: Tag | NavigableString = last_mark or last_segment.node
+        self._insert_block_note(
+            soup,
+            note_anchor,
+            noteref_anchor,
+            annotation,
+            annotation_id=resolved_id,
+            note_number=resolved_number,
+            is_epub3=is_epub3,
+            text_end_offset=(last_segment.end if last_mark is None else None),
+        )
 
     def _wrap_mark_segments(
         self,
@@ -852,24 +910,100 @@ class EpubProcessor:
 
         return last_mark
 
-    def _insert_note(
+    @staticmethod
+    def _next_note_number(soup: BeautifulSoup) -> int:
+        """Return the next visible noteref number for a standalone chapter DOM."""
+        return len(soup.select("a.hbp-noteref")) + 1
+
+    @staticmethod
+    def _outermost_enclosing_anchor(node: Tag | NavigableString) -> Tag | None:
+        """Return the outermost ``a`` containing ``node``, if one exists."""
+        anchors = node.find_parents("a")
+        return anchors[-1] if anchors else None
+
+    def _insert_block_note(
         self,
         soup: BeautifulSoup,
-        anchor: Tag | NavigableString,
+        block_anchor: Tag | NavigableString,
+        noteref_anchor: Tag | NavigableString,
         annotation: Annotation | V2Annotation,
+        *,
+        annotation_id: str,
+        note_number: int,
+        is_epub3: bool,
+        text_end_offset: int | None = None,
     ) -> None:
-        """Insert exactly one annotation note after the resolved target anchor."""
+        """Insert a target-adjacent noteref and append its note to a block cluster."""
         type_slug = annotation.annotation_type.value
+
+        noteref_attrs = {
+            "class": "hbp-noteref",
+            "id": f"hbp-ref-{annotation_id}",
+            "href": f"#hbp-note-{annotation_id}",
+        }
+        if is_epub3:
+            noteref_attrs["epub:type"] = "noteref"
+            noteref_attrs["xmlns:epub"] = _EPUB_NAMESPACE
+        noteref = soup.new_tag("a", attrs=noteref_attrs)
+        noteref.string = str(note_number)
+
+        enclosing_anchor = self._outermost_enclosing_anchor(noteref_anchor)
+        if enclosing_anchor is not None:
+            enclosing_anchor.insert_after(noteref)
+        elif text_end_offset is None:
+            noteref_anchor.insert_after(noteref)
+        else:
+            raw = str(noteref_anchor)
+            before = raw[:text_end_offset]
+            after = raw[text_end_offset:]
+            replacements: list[NavigableString | Tag] = []
+            if before:
+                replacements.append(NavigableString(before))
+            replacements.append(noteref)
+            if after:
+                replacements.append(NavigableString(after))
+            noteref_anchor.replace_with(*replacements)
+
+        # Normally the cluster belongs directly after the owning block. If a
+        # malformed/source-tolerated document wraps that block in a link, use
+        # the same outer-anchor escape boundary as the noteref so the note's
+        # backlink cannot become a nested anchor either.
+        cluster_anchor = self._outermost_enclosing_anchor(block_anchor) or block_anchor
+        cluster: Tag | None = None
+        next_sibling = cluster_anchor.find_next_sibling()
+        if isinstance(next_sibling, Tag):
+            sibling_classes = cast(list[str], next_sibling.get("class") or [])
+            if "hbp-note-cluster" in sibling_classes:
+                cluster = next_sibling
+        if cluster is None:
+            cluster = soup.new_tag("div", attrs={"class": "hbp-note-cluster"})
+            cluster_anchor.insert_after(cluster)
+
+        note_attrs = {
+            "id": f"hbp-note-{annotation_id}",
+            "class": f"hbp-note hbp-note-{type_slug}",
+            "style": self._note_style(annotation),
+            "title": f"{type_slug} (confidence {annotation.confidence:.2f})",
+        }
+        note_name = "aside" if is_epub3 else "div"
+        if is_epub3:
+            note_attrs["epub:type"] = "footnote"
+            note_attrs["xmlns:epub"] = _EPUB_NAMESPACE
         note_tag = soup.new_tag(
-            "span",
+            note_name,
+            attrs=note_attrs,
+        )
+        backlink = soup.new_tag(
+            "a",
             attrs={
-                "class": f"hbp-note hbp-note-{type_slug}",
-                "style": self._note_style(annotation),
-                "title": f"{type_slug} (confidence {annotation.confidence:.2f})",
+                "class": "hbp-note-backlink",
+                "href": f"#hbp-ref-{annotation_id}",
             },
         )
-        note_tag.string = self._format_note_text(annotation)
-        anchor.insert_after(note_tag)
+        backlink.string = f"{note_number}."
+        note_tag.append(backlink)
+        note_tag.append(NavigableString(self._format_note_text(annotation)))
+        cluster.append(note_tag)
 
     # ------------------------------------------------------------
     # Small helpers
