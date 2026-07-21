@@ -17,6 +17,10 @@ implementation with no occupancy tracking, no priority sort, no skip logic.
 
 from __future__ import annotations
 
+import sys
+
+import pytest
+
 from halfblood.layout.engine import (
     LayoutConfig,
     LayoutResult,
@@ -945,4 +949,531 @@ def test_p3s1_permutation_guard() -> None:
     permuted = run_layout(shuffled, _PAGE, [], DenseMeasurer(), config=cfg, body_columns=_CHAR_COLS)
     assert original == permuted, (
         "run_layout must be permutation-invariant: the priority sort canonicalizes input order"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 18. P3-S2b: beam solver dispatch
+# ---------------------------------------------------------------------------
+#
+# These tests are RED before P3-S2b is implemented (AttributeError on the
+# missing LayoutConfig.solver / .beam_width fields) and go GREEN after.
+# The P3-S1 characterization suite (Section 17) remains the greedy contract;
+# these tests cover beam dispatch wiring and shared invariants only.
+#
+# Spy tests patch halfblood.layout.page_solver (the module object).  This
+# requires the engine to call page_solver.solve via module attribute —
+# ``import halfblood.layout.page_solver as _ps; _ps.solve(...)`` — NOT via a
+# bare ``from ... import solve`` which would create a local name that the spy
+# cannot intercept.  The brief pins this import style on Codex.
+# ---------------------------------------------------------------------------
+
+
+# 18a. Config fields --------------------------------------------------------
+
+
+def test_p3s2b_config_solver_default() -> None:
+    """LayoutConfig.solver defaults to 'greedy' and beam_width defaults to 128."""
+    cfg = LayoutConfig()
+    assert cfg.solver == "greedy"
+    assert cfg.beam_width == 128
+
+
+def test_p3s2b_config_solver_beam_accepted() -> None:
+    """LayoutConfig(solver='beam') must construct without error."""
+    cfg = LayoutConfig(solver="beam")
+    assert cfg.solver == "beam"
+
+
+def test_p3s2b_config_beam_width_configurable() -> None:
+    """beam_width must be a plain configurable integer field."""
+    cfg = LayoutConfig(solver="beam", beam_width=16)
+    assert cfg.beam_width == 16
+
+
+# 18b. Dispatch wiring (spy) ------------------------------------------------
+
+
+def test_p3s2b_beam_calls_page_solver(monkeypatch: pytest.MonkeyPatch) -> None:
+    """page_solver.solve must be called exactly once when solver='beam'."""
+    import halfblood.layout.page_solver as _ps
+
+    calls: list[object] = []
+    _real = _ps.solve
+
+    def _spy(*args: object, **kwargs: object) -> object:
+        calls.append(args)
+        return _real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(_ps, "solve", _spy)
+    run_layout(
+        [_req("a1")],
+        _PAGE,
+        [],
+        _FM,
+        config=LayoutConfig(solver="beam"),
+        body_columns=_BODY_COLS,
+    )
+    assert len(calls) == 1, (
+        "page_solver.solve must be called exactly once per beam run_layout call"
+    )
+
+
+def test_p3s2b_greedy_does_not_call_page_solver(monkeypatch: pytest.MonkeyPatch) -> None:
+    """page_solver.solve must NOT be called when solver='greedy' (the default)."""
+    import halfblood.layout.page_solver as _ps
+
+    calls: list[object] = []
+    _real = _ps.solve
+
+    def _spy(*args: object, **kwargs: object) -> object:  # pragma: no cover
+        calls.append(args)
+        return _real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(_ps, "solve", _spy)
+    run_layout([_req("a1")], _PAGE, [], _FM, body_columns=_BODY_COLS)
+    assert calls == [], "page_solver.solve must NOT be called when solver='greedy'"
+
+
+# 18c. Coverage and hard geometry invariants --------------------------------
+
+
+def test_p3s2b_beam_coverage_invariant() -> None:
+    """Every input note must appear in placed or skipped exactly once."""
+    reqs = [_req(f"n{i}") for i in range(4)]
+    result = run_layout(
+        reqs,
+        _PAGE,
+        [],
+        _FM,
+        config=LayoutConfig(solver="beam"),
+        body_columns=_BODY_COLS,
+    )
+    placed_ids = {a.annotation_id for a in result.placed}
+    skipped_ids = {s.annotation_id for s in result.skipped}
+    all_ids = {r.annotation_id for r in reqs}
+    assert placed_ids | skipped_ids == all_ids, "all notes must appear in placed or skipped"
+    assert placed_ids & skipped_ids == set(), "no note may appear in both placed and skipped"
+
+
+def test_p3s2b_beam_placed_notes_within_page() -> None:
+    """All beam-placed notes must be contained within the page bounds."""
+    reqs = [_req(f"n{i}") for i in range(3)]
+    result = run_layout(
+        reqs,
+        _PAGE,
+        [],
+        _FM,
+        config=LayoutConfig(solver="beam"),
+        body_columns=_BODY_COLS,
+    )
+    for ann in result.placed:
+        assert _within(ann.note_box, _PAGE), (
+            f"{ann.annotation_id}: note_box {ann.note_box} leaves page {_PAGE}"
+        )
+
+
+def test_p3s2b_beam_no_placed_overlap() -> None:
+    """No two beam-placed notes may overlap (solver hard constraint)."""
+    reqs = [_req(f"n{i}") for i in range(4)]
+    result = run_layout(
+        reqs,
+        _PAGE,
+        [],
+        _FM,
+        config=LayoutConfig(solver="beam"),
+        body_columns=_BODY_COLS,
+    )
+    boxes = [a.note_box for a in result.placed]
+    for i, a in enumerate(boxes):
+        for b in boxes[i + 1 :]:
+            assert not _rects_overlap(a, b, tol=2.0), (
+                f"placed notes must not overlap: {a} vs {b}"
+            )
+
+
+# 18d. MP1c fail-closed and inline exemption --------------------------------
+
+
+def test_p3s2b_beam_mp1c_skips_margin_no_columns() -> None:
+    """With no body_columns, beam path must skip margin notes (fail-closed)."""
+    result = run_layout(
+        [_req("a1")],
+        _PAGE,
+        [],
+        _FM,
+        config=LayoutConfig(solver="beam"),
+        # no body_columns — MP1c
+    )
+    assert "a1" not in {a.annotation_id for a in result.placed}, (
+        "margin note must not be placed without body_columns under beam"
+    )
+    assert "a1" in {s.annotation_id for s in result.skipped}, (
+        "margin note must be skipped without body_columns under beam"
+    )
+    skip = next(s for s in result.skipped if s.annotation_id == "a1")
+    assert skip.reason == SkipReason.UNPLACEABLE
+    assert DegradationFlag.NOTE_SKIPPED_UNFITTABLE in result.degradation_flags
+
+
+def test_p3s2b_beam_inline_exemption_from_mp1c() -> None:
+    """Inline requests must be placed under beam even without body_columns."""
+    req = _req("a1", placement="inline", anchor=_anchor(100.0, 350.0, 400.0, 364.0))
+    result = run_layout(
+        [req],
+        _PAGE,
+        [],
+        _FM,
+        config=LayoutConfig(solver="beam"),
+        # no body_columns — inline is exempt from MP1c
+    )
+    assert any(a.annotation_id == "a1" for a in result.placed), (
+        "inline note must still be placed under beam even without body_columns"
+    )
+    placed = next(a for a in result.placed if a.annotation_id == "a1")
+    assert placed.resolved_placement == "inline"
+
+
+# 18e. Determinism and basic placement correctness -------------------------
+
+
+def test_p3s2b_beam_determinism() -> None:
+    """Identical inputs under beam must produce identical LayoutResults."""
+    reqs = [_req(f"n{i}") for i in range(3)]
+    cfg = LayoutConfig(solver="beam")
+    r1 = run_layout(reqs, _PAGE, [], _FM, config=cfg, body_columns=_BODY_COLS)
+    r2 = run_layout(reqs, _PAGE, [], _FM, config=cfg, body_columns=_BODY_COLS)
+    assert r1 == r2, "beam solver must be deterministic across identical calls"
+
+
+def test_p3s2b_beam_places_single_note_when_fits() -> None:
+    """A single note with adequate margin width must be placed, not skipped."""
+    result = run_layout(
+        [_req("a1")],
+        _PAGE,
+        [],
+        _FM,
+        config=LayoutConfig(solver="beam"),
+        body_columns=_BODY_COLS,
+    )
+    assert any(a.annotation_id == "a1" for a in result.placed), (
+        "beam must place a single note when the margin is wide enough"
+    )
+
+
+def test_p3s2b_beam_preferred_side_taken_when_free() -> None:
+    """When the preferred side has space, beam must resolve to that side."""
+    req = _req("a1", placement="margin_right")
+    result = run_layout(
+        [req],
+        _PAGE,
+        [],
+        _FM,
+        config=LayoutConfig(solver="beam"),
+        body_columns=_BODY_COLS,
+    )
+    placed = [a for a in result.placed if a.annotation_id == "a1"]
+    assert len(placed) == 1, "note must be placed when the preferred margin is free"
+    assert placed[0].resolved_placement == "margin_right", (
+        "preferred side (margin_right) must be chosen when free under beam"
+    )
+
+
+# 18f. Default-path regression -----------------------------------------------
+#
+# Explicit solver='greedy' must produce byte-identical output to the default
+# LayoutConfig().  This pins the routing logic: the 'else' branch in run_layout
+# must call _run_greedy exactly as the default path does.
+
+
+def test_p3s2b_explicit_greedy_matches_default() -> None:
+    """LayoutConfig(solver='greedy') must return a byte-identical LayoutResult to LayoutConfig().
+
+    Pins that the dispatch routing does not alter the greedy path.  Uses the P3-S1
+    characterisation fixture (dense 6-note, two-column page) to maximise coverage of
+    greedy edge cases: scale reduction, side switching, UNPLACEABLE skip.
+    """
+    r_default = run_layout(
+        _CHAR_NOTES,
+        _PAGE,
+        [],
+        DenseMeasurer(),
+        config=LayoutConfig(),
+        body_columns=_CHAR_COLS,
+    )
+    r_explicit = run_layout(
+        _CHAR_NOTES,
+        _PAGE,
+        [],
+        DenseMeasurer(),
+        config=LayoutConfig(solver="greedy"),
+        body_columns=_CHAR_COLS,
+    )
+    assert r_default == r_explicit, (
+        "explicit solver='greedy' must be byte-identical to LayoutConfig() default"
+    )
+
+
+# 18g. Beam-beats-greedy discriminating trap ----------------------------------
+#
+# Two notes on a right-only page (left strip degenerate).
+# A (WARNING, 400pt tall): greedy places at scale=1.0, attempt=0 → y=57..457.
+#   This fills the range [57, 457] and blocks ALL 9 of B's shift-attempts at
+#   every scale (B's shifts of ±4×14pt keep it in [144, 270] ⊂ [57, 457]).
+# B (CORRECTION, 14pt): no valid right-margin slot while A is at y=57..457.
+#   Left is degenerate → B is SKIPPED by greedy.
+# Beam: A at scale=0.8, attempt=1 → y=417..737 frees B@y=200..214.
+#   Both placed (0 omissions) beats A@best + B@skip (1 omission).
+#
+# BeamTrapMeasurer keys on 'TALL' substring in note content.
+# _TRAP_COLS: TextColumn(x0=0.0, x1=500.0) — left strip x=(8, -10) degenerate;
+#   right strip x=(510, 604) = 94pt (valid, ≥ margin_min_width=40).
+
+
+class BeamTrapMeasurer:
+    """Content-keyed measurer for the beam-beats-greedy-trap fixture.
+
+    * Content containing 'TALL' → height = 400.0 × scale.
+    * All other content          → height =  14.0 × scale.
+    Width is always min(60.0, max_width).
+    """
+
+    def measure(self, text: str, max_width: float, scale: float) -> tuple[float, float]:
+        h = 400.0 if "TALL" in text else 14.0
+        return (min(60.0, max_width), h * scale)
+
+
+# Right strip (510, 604) = 94pt valid; left strip (8, −10) = −18pt degenerate.
+_TRAP_COLS = (TextColumn(x0=0.0, x1=500.0),)
+
+_TRAP_A = NoteRequest(
+    annotation_id="trap-A",
+    source_locator="p:1",
+    annotation_type=AnnotationType.WARNING,
+    confidence=0.9,
+    content="TALL note — fills right margin at attempt-0",
+    requested_placement="margin_right",
+    anchor=_anchor(100.0, 250.0, 400.0, 264.0),
+    render_seed=0,
+)
+_TRAP_B = NoteRequest(
+    annotation_id="trap-B",
+    source_locator="p:1",
+    annotation_type=AnnotationType.CORRECTION,
+    confidence=0.9,
+    content="Short note — only one unblocked slot per side",
+    requested_placement="margin_right",
+    anchor=_anchor(100.0, 200.0, 400.0, 214.0),
+    render_seed=0,
+)
+_TRAP_M = BeamTrapMeasurer()
+
+
+def test_p3s2b_beam_beats_greedy_trap() -> None:
+    """Beam places both notes; greedy skips B; beam's A uses a higher-ordinal candidate.
+
+    Greedy half: A is placed at its best ordinal (scale=1.0, attempt=0, y=57..457),
+    which occupies the only band where B can fit.  B is skipped UNPLACEABLE.
+
+    Beam half: the solver explores A's higher-ordinal candidates and discovers that
+    A at scale=0.8, attempt=1 (y=417..737) frees B's attempt=0 (y=200..214).
+    0 omissions beats 1 omission → both notes placed.
+
+    A's note_box must differ between the greedy and beam results, confirming that
+    beam used a different (higher-ordinal) candidate for A.
+    """
+    r_greedy = run_layout(
+        [_TRAP_A, _TRAP_B],
+        _PAGE,
+        [],
+        _TRAP_M,
+        # No solver= arg → default greedy path (also tests default-is-greedy routing).
+        body_columns=_TRAP_COLS,
+    )
+    r_beam = run_layout(
+        [_TRAP_A, _TRAP_B],
+        _PAGE,
+        [],
+        _TRAP_M,
+        config=LayoutConfig(solver="beam"),
+        body_columns=_TRAP_COLS,
+    )
+
+    # --- Greedy half: A placed, B skipped ---
+    assert "trap-A" in _placed_ids(r_greedy), (
+        "greedy must place A (the higher-priority note)"
+    )
+    assert "trap-B" in _skipped_ids(r_greedy), (
+        "greedy must skip B: A's first-choice fills the only band where B can fit"
+    )
+
+    # --- Beam half: both placed ---
+    assert "trap-A" in _placed_ids(r_beam), "beam must place A"
+    assert "trap-B" in _placed_ids(r_beam), (
+        "beam must place B by using A's higher-ordinal candidate that frees B's slot"
+    )
+
+    # --- A must have moved (used a worse-ordinal candidate) ---
+    greedy_a_box = next(a.note_box for a in r_greedy.placed if a.annotation_id == "trap-A")
+    beam_a_box = next(a.note_box for a in r_beam.placed if a.annotation_id == "trap-A")
+    assert greedy_a_box != beam_a_box, (
+        "beam's A must occupy a different position than greedy's A "
+        "(beam used a higher-ordinal candidate to free B)"
+    )
+
+
+# 18h. Beam determinism — permuted input and PYTHONHASHSEED ------------------
+
+
+def test_p3s2b_beam_determinism_permuted_input() -> None:
+    """Shuffled input order → byte-identical LayoutResult under beam.
+
+    The priority sort at the start of run_layout canonicalises request order before
+    any placement logic runs.  Mirrors test_p3s1_permutation_guard for the beam path.
+    """
+    import random as _random  # local import — only needed here
+
+    shuffled = list(_CHAR_NOTES)
+    _random.seed(7)
+    _random.shuffle(shuffled)
+
+    cfg = LayoutConfig(solver="beam")
+    r_original = run_layout(
+        _CHAR_NOTES, _PAGE, [], DenseMeasurer(), config=cfg, body_columns=_CHAR_COLS
+    )
+    r_shuffled = run_layout(
+        shuffled, _PAGE, [], DenseMeasurer(), config=cfg, body_columns=_CHAR_COLS
+    )
+    assert r_original == r_shuffled, (
+        "beam must be permutation-invariant: priority sort canonicalises input order"
+    )
+
+
+def test_p3s2b_beam_determinism_across_pythonhashseed() -> None:
+    """run_layout with solver='beam' gives identical results across PYTHONHASHSEED values.
+
+    Runs the engine in a subprocess with PYTHONHASHSEED forced to two distinct values.
+    Identical stdout across seeds confirms that no set/dict iteration order inside the
+    beam path affects the placed-note sequence or the score tiebreaker.
+    """
+    import os
+    import subprocess
+
+    _src = "/mnt/c/Users/Trey/Downloads/half-blood-prince/src"
+    _script = f"""
+import sys
+sys.path.insert(0, {_src!r})
+from halfblood.layout.engine import LayoutConfig, NoteRequest, run_layout
+from halfblood.layout.occupancy import TextColumn
+from halfblood.models.legacy import AnnotationType
+from halfblood.models.rendering import ResolvedAnchor, SurfacePoint, SurfaceQuad, SurfaceRect
+
+def _q(x0, y0, x1, y1):
+    return SurfaceQuad(
+        ul=SurfacePoint(x=x0, y=y0), ur=SurfacePoint(x=x1, y=y0),
+        lr=SurfacePoint(x=x1, y=y1), ll=SurfacePoint(x=x0, y=y1),
+    )
+
+page = SurfaceRect(x0=0.0, y0=0.0, x1=612.0, y1=792.0)
+cols = (TextColumn(x0=60.0, x1=500.0),)
+reqs = [
+    NoteRequest(
+        annotation_id=f"n{{i}}", source_locator="p:1",
+        annotation_type=AnnotationType.CORRECTION,
+        confidence=0.9, content=f"note {{i}}",
+        requested_placement="margin_right",
+        anchor=ResolvedAnchor(char_range=(0, 1), quads=(
+            _q(100.0, 100.0 + i * 50, 400.0, 114.0 + i * 50),
+        )),
+        render_seed=i,
+    )
+    for i in range(3)
+]
+
+class FM:
+    def measure(self, t, w, s):
+        return (min(60.0, w), 14.0 * s)
+
+result = run_layout(reqs, page, [], FM(), config=LayoutConfig(solver="beam"), body_columns=cols)
+placed = ",".join(a.annotation_id for a in result.placed)
+skipped = ",".join(s.annotation_id for s in result.skipped)
+print(f"placed={{placed}} skipped={{skipped}}")
+"""
+    outputs: list[str] = []
+    for seed in ("0", "42"):
+        proc = subprocess.run(
+            [sys.executable, "-c", _script],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PYTHONHASHSEED": seed},
+        )
+        assert proc.returncode == 0, (
+            f"beam subprocess failed (PYTHONHASHSEED={seed}):\n{proc.stderr}"
+        )
+        outputs.append(proc.stdout.strip())
+    assert len(set(outputs)) == 1, (
+        f"beam output varies across PYTHONHASHSEED values: {outputs}"
+    )
+
+
+# 18i. Warning semantics on winning geometry ----------------------------------
+#
+# Warnings must reflect the WINNING beam placement only.
+# SCALE_REDUCED: at least one SCALE_REDUCED entry when the chosen scale < 1.0.
+# SIDE_SWITCHED: at least one SIDE_SWITCHED entry when the note was placed on the
+#   non-preferred side.
+# We assert *presence*, not exact count or sequence — beam may emit fewer steps
+# than the greedy path's incremental reduction (winning geometry only).
+
+
+def test_p3s2b_beam_emits_scale_reduced_for_winning_geometry() -> None:
+    """SCALE_REDUCED must be present when beam places a note at reduced scale.
+
+    DenseMeasurer returns height=900*scale for content containing 'SCALE_REDUCE'.
+    At scale=1.0: 900pt > 792pt page height → no candidate generated.
+    At scale=0.9: 810pt > 792pt → no candidate.
+    At scale≤0.8: fits → placed with SCALE_REDUCED warning on winning geometry.
+    """
+    req = _req("a1", content="SCALE_REDUCE this note")
+    result = run_layout(
+        [req],
+        _PAGE,
+        [],
+        DenseMeasurer(),
+        config=LayoutConfig(solver="beam"),
+        body_columns=_BODY_COLS,
+    )
+    assert "a1" in _placed_ids(result), (
+        "note must be placed at a reduced scale under beam; got skipped"
+    )
+    ann = next(a for a in result.placed if a.annotation_id == "a1")
+    assert any(w.code == AnchorWarningCode.SCALE_REDUCED for w in ann.warnings), (
+        "SCALE_REDUCED must appear on a beam-placed note whose winning scale < 1.0; "
+        f"got warnings={ann.warnings}"
+    )
+
+
+def test_p3s2b_beam_emits_side_switched_for_winning_geometry() -> None:
+    """SIDE_SWITCHED must be present when beam places a note on the non-preferred side.
+
+    _SWITCH_COLS: right strip (570, 604) = 34pt (degenerate, < margin_min_width=40);
+    left strip (8, 50) = 42pt (valid).  A margin_right request has no right candidates
+    → must switch to the left side → SIDE_SWITCHED on the winning ResolvedAnnotation.
+    """
+    req = _req("a1", placement="margin_right", anchor=_anchor(100.0, 350.0, 400.0, 364.0))
+    result = run_layout(
+        [req],
+        _PAGE,
+        [],
+        _FM,
+        config=LayoutConfig(solver="beam"),
+        body_columns=_SWITCH_COLS,
+    )
+    assert "a1" in _placed_ids(result), (
+        "note must be placed on the opposite side under beam; got skipped"
+    )
+    ann = next(a for a in result.placed if a.annotation_id == "a1")
+    assert any(w.code == AnchorWarningCode.SIDE_SWITCHED for w in ann.warnings), (
+        "SIDE_SWITCHED must appear on a beam-placed note forced to the non-preferred side; "
+        f"got warnings={ann.warnings}"
     )

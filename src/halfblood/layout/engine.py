@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
+import halfblood.layout.page_solver as _page_solver
 from halfblood.layout.occupancy import TextColumn
 from halfblood.models.annotations import Placement
 from halfblood.models.legacy import AnnotationType
@@ -61,6 +62,8 @@ class LayoutConfig:
     margin_min_width: float = 40.0
     margin_gap: float = 10.0
     page_edge_pad: float = 8.0
+    solver: Literal["greedy", "beam"] = "greedy"
+    beam_width: int = 128
 
 
 @dataclass(frozen=True)
@@ -192,7 +195,7 @@ def _try_inline(
     return note_box
 
 
-def _try_margin_side(
+def _iter_margin_side_candidates(
     request: NoteRequest,
     side: _MarginSide,
     target_rect: SurfaceRect,
@@ -204,8 +207,8 @@ def _try_margin_side(
     measurer: NoteMeasurer,
     config: LayoutConfig,
     note_x_bounds: tuple[float, float] | None = None,
-) -> tuple[SurfaceRect, bool] | None:
-    """Try bounded vertical positions on one margin at one scale."""
+) -> Iterator[tuple[int, SurfaceRect, bool]]:
+    """Yield every legal vertical position on one margin at one scale."""
     if note_x_bounds is None:
         note_x0, note_x1 = _margin_geometry(
             side, target_rect, page_rect, margin_width, config.margin_gap
@@ -214,7 +217,7 @@ def _try_margin_side(
         note_x0, note_x1 = note_x_bounds
     note_width = note_x1 - note_x0
     if note_width <= 0.0:
-        return None
+        return
 
     width, height = measurer.measure(request.content, note_width, scale)
     if (
@@ -225,7 +228,7 @@ def _try_margin_side(
         or width > note_width
         or height > page_rect.y1 - page_rect.y0
     ):
-        return None
+        return
 
     target_center_y = (target_rect.y0 + target_rect.y1) / 2.0
     centered_y0 = target_center_y - height / 2.0
@@ -250,9 +253,43 @@ def _try_margin_side(
             for occupied in forbidden_rects
         ):
             continue
-        return note_box, not math.isclose(y0, centered_y0, abs_tol=1e-9)
+        yield attempt, note_box, not math.isclose(y0, centered_y0, abs_tol=1e-9)
 
-    return None
+
+def _try_margin_side(
+    request: NoteRequest,
+    side: _MarginSide,
+    target_rect: SurfaceRect,
+    page_rect: SurfaceRect,
+    margin_width: float,
+    scale: float,
+    side_occupancy: Sequence[tuple[float, float]],
+    forbidden_rects: Sequence[SurfaceRect],
+    measurer: NoteMeasurer,
+    config: LayoutConfig,
+    note_x_bounds: tuple[float, float] | None = None,
+) -> tuple[SurfaceRect, bool] | None:
+    """Return the first legal margin-side candidate in greedy preference order."""
+    candidate = next(
+        _iter_margin_side_candidates(
+            request=request,
+            side=side,
+            target_rect=target_rect,
+            page_rect=page_rect,
+            margin_width=margin_width,
+            scale=scale,
+            side_occupancy=side_occupancy,
+            forbidden_rects=forbidden_rects,
+            measurer=measurer,
+            config=config,
+            note_x_bounds=note_x_bounds,
+        ),
+        None,
+    )
+    if candidate is None:
+        return None
+    _, note_box, shifted = candidate
+    return note_box, shifted
 
 
 def _scale_reduced_warning(annotation_id: str, scale: float) -> AnchorWarning:
@@ -339,9 +376,7 @@ def _run_greedy(
             "margin_left" if request.requested_placement == "margin_left" else "margin_right"
         )
         opposite: _MarginSide = "margin_left" if preferred == "margin_right" else "margin_right"
-        margin_widths = {
-            side: strip[1] - strip[0] for side, strip in margin_strips.items()
-        }
+        margin_widths = {side: strip[1] - strip[0] for side, strip in margin_strips.items()}
         candidate_sides = [
             side for side in (preferred, opposite) if margin_widths[side] >= config.margin_min_width
         ]
@@ -445,6 +480,401 @@ def _run_greedy(
     )
 
 
+def _scale_candidates(min_scale: float) -> tuple[float, ...]:
+    """Return the greedy scale sequence, including the exact configured minimum."""
+    scales: list[float] = []
+    scale = 1.0
+    while True:
+        scales.append(scale)
+        if scale <= min_scale + 1e-9:
+            break
+        next_scale = max(min_scale, round(scale - 0.1, 10))
+        if next_scale >= scale:
+            break
+        scale = next_scale
+    return tuple(scales)
+
+
+def _box_mpt(box: SurfaceRect) -> _page_solver.BoxMpt:
+    return (
+        _page_solver.q_pt(box.x0),
+        _page_solver.q_pt(box.y0),
+        _page_solver.q_pt(box.x1),
+        _page_solver.q_pt(box.y1),
+    )
+
+
+def _surface_box(box_mpt: _page_solver.BoxMpt) -> SurfaceRect:
+    return SurfaceRect(
+        x0=box_mpt[0] / 1_000,
+        y0=box_mpt[1] / 1_000,
+        x1=box_mpt[2] / 1_000,
+        y1=box_mpt[3] / 1_000,
+    )
+
+
+def _closest_rect_points(
+    first: SurfaceRect, second: SurfaceRect
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Mirror the composer's deterministic closest-edge geometry."""
+    first_center_x = (first.x0 + first.x1) / 2.0
+    first_center_y = (first.y0 + first.y1) / 2.0
+    second_center_x = (second.x0 + second.x1) / 2.0
+    second_center_y = (second.y0 + second.y1) / 2.0
+
+    if first.x1 < second.x0:
+        first_x, second_x = first.x1, second.x0
+    elif second.x1 < first.x0:
+        first_x, second_x = first.x0, second.x1
+    else:
+        shared_x = max(
+            max(first.x0, second.x0),
+            min(
+                (first_center_x + second_center_x) / 2.0,
+                min(first.x1, second.x1),
+            ),
+        )
+        first_x = second_x = shared_x
+
+    if first.y1 < second.y0:
+        first_y, second_y = first.y1, second.y0
+    elif second.y1 < first.y0:
+        first_y, second_y = first.y0, second.y1
+    else:
+        shared_y = max(
+            max(first.y0, second.y0),
+            min(
+                (first_center_y + second_center_y) / 2.0,
+                min(first.y1, second.y1),
+            ),
+        )
+        first_y = second_y = shared_y
+
+    return (first_x, first_y), (second_x, second_y)
+
+
+def _connector_endpoints_mpt(
+    note_box: SurfaceRect, request: NoteRequest
+) -> tuple[_page_solver.PointMpt | None, _page_solver.PointMpt | None]:
+    if request.anchor is None or not request.anchor.quads:
+        return None, None
+
+    candidates: list[tuple[float, int, tuple[float, float], tuple[float, float]]] = []
+    for index, quad in enumerate(request.anchor.quads):
+        points = (quad.ul, quad.ur, quad.lr, quad.ll)
+        target_box = SurfaceRect(
+            x0=min(point.x for point in points),
+            y0=min(point.y for point in points),
+            x1=max(point.x for point in points),
+            y1=max(point.y for point in points),
+        )
+        note_point, target_point = _closest_rect_points(note_box, target_box)
+        distance = math.hypot(note_point[0] - target_point[0], note_point[1] - target_point[1])
+        candidates.append((distance, index, note_point, target_point))
+
+    _, _, note_point, target_point = min(candidates, key=lambda candidate: candidate[:2])
+    return (
+        (_page_solver.q_pt(note_point[0]), _page_solver.q_pt(note_point[1])),
+        (_page_solver.q_pt(target_point[0]), _page_solver.q_pt(target_point[1])),
+    )
+
+
+def _importance(request: NoteRequest) -> int:
+    return (8 - ANNOTATION_TYPE_PRIORITY[request.annotation_type]) * 1_001 + _page_solver.q_conf(
+        request.confidence
+    )
+
+
+def _prepared_candidate(
+    *,
+    request: NoteRequest,
+    ordinal: int,
+    kind: Literal["inline", "margin"],
+    note_box: SurfaceRect,
+    scale: float,
+    side: Literal["left", "right", ""],
+    side_switched: bool,
+    target_rect: SurfaceRect,
+    page_height_mpt: int,
+) -> _page_solver.Candidate:
+    box_mpt = _box_mpt(note_box)
+    connector_a_mpt, connector_b_mpt = _connector_endpoints_mpt(note_box, request)
+    displacement_bp = 0
+    if kind == "margin":
+        ideal_y0 = (target_rect.y0 + target_rect.y1) / 2.0 - (note_box.y1 - note_box.y0) / 2.0
+        displacement_bp = _page_solver.ratio(
+            abs(box_mpt[1] - _page_solver.q_pt(ideal_y0)), page_height_mpt
+        )
+    return _page_solver.Candidate(
+        note_id=request.annotation_id,
+        ordinal=ordinal,
+        kind=kind,
+        box_mpt=box_mpt,
+        scale_bp=_page_solver.q_scale(scale),
+        side=side,
+        importance=_importance(request),
+        displacement_bp=displacement_bp,
+        side_switched=side_switched,
+        connector_a_mpt=connector_a_mpt,
+        connector_b_mpt=connector_b_mpt,
+        height_mpt=_page_solver.q_pt(note_box.y1 - note_box.y0),
+    )
+
+
+def _candidates_for_note(
+    request: NoteRequest,
+    target_rect: SurfaceRect,
+    page_rect: SurfaceRect,
+    body_occupancy: Sequence[SurfaceRect],
+    target_occupancy: tuple[SurfaceRect, ...],
+    measurer: NoteMeasurer,
+    config: LayoutConfig,
+    margin_strips: dict[_MarginSide, tuple[float, float]] | None,
+    page_height_mpt: int,
+) -> tuple[_page_solver.Candidate, ...]:
+    candidates: list[_page_solver.Candidate] = []
+    seen: set[tuple[str, int, _page_solver.BoxMpt]] = set()
+
+    if request.requested_placement in ("inline", "between_lines"):
+        inline_box = _try_inline(
+            request,
+            target_rect,
+            page_rect,
+            body_occupancy,
+            measurer,
+            config.overlap_tolerance,
+        )
+        if inline_box is not None:
+            inline = _prepared_candidate(
+                request=request,
+                ordinal=0,
+                kind="inline",
+                note_box=inline_box,
+                scale=1.0,
+                side="",
+                side_switched=False,
+                target_rect=target_rect,
+                page_height_mpt=page_height_mpt,
+            )
+            assert inline.box_mpt is not None
+            seen.add((request.requested_placement, inline.scale_bp, inline.box_mpt))
+            candidates.append(inline)
+
+    scales = _scale_candidates(config.min_scale)
+    candidate_sides: list[_MarginSide] = []
+    margin_widths: dict[_MarginSide, float] = {}
+    if margin_strips is not None:
+        preferred: _MarginSide = (
+            "margin_left" if request.requested_placement == "margin_left" else "margin_right"
+        )
+        opposite: _MarginSide = "margin_left" if preferred == "margin_right" else "margin_right"
+        margin_widths = {side: strip[1] - strip[0] for side, strip in margin_strips.items()}
+        candidate_sides = [
+            side for side in (preferred, opposite) if margin_widths[side] >= config.margin_min_width
+        ]
+
+        n_sides = len(candidate_sides)
+        n_attempts = max(0, config.attempt_budget) + 1
+        static_forbidden = tuple(body_occupancy) + target_occupancy
+        for scale_idx, scale in enumerate(scales):
+            for side_idx, side in enumerate(candidate_sides):
+                for attempt_idx, note_box, _ in _iter_margin_side_candidates(
+                    request=request,
+                    side=side,
+                    target_rect=target_rect,
+                    page_rect=page_rect,
+                    margin_width=margin_widths[side],
+                    scale=scale,
+                    side_occupancy=(),
+                    forbidden_rects=static_forbidden,
+                    measurer=measurer,
+                    config=config,
+                    note_x_bounds=margin_strips[side],
+                ):
+                    ordinal = 1 + (
+                        scale_idx * n_sides * n_attempts + side_idx * n_attempts + attempt_idx
+                    )
+                    side_name: Literal["left", "right"] = (
+                        "left" if side == "margin_left" else "right"
+                    )
+                    candidate = _prepared_candidate(
+                        request=request,
+                        ordinal=ordinal,
+                        kind="margin",
+                        note_box=note_box,
+                        scale=scale,
+                        side=side_name,
+                        side_switched=side != preferred,
+                        target_rect=target_rect,
+                        page_height_mpt=page_height_mpt,
+                    )
+                    assert candidate.box_mpt is not None
+                    key = (side, candidate.scale_bp, candidate.box_mpt)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    candidates.append(candidate)
+
+    skip_ordinal = 1 + len(scales) * len(candidate_sides) * (max(0, config.attempt_budget) + 1)
+    candidates.append(
+        _page_solver.Candidate(
+            note_id=request.annotation_id,
+            ordinal=skip_ordinal,
+            kind="skip",
+            box_mpt=None,
+            scale_bp=10_000,
+            side="",
+            importance=_importance(request),
+            displacement_bp=0,
+            side_switched=False,
+            connector_a_mpt=None,
+            connector_b_mpt=None,
+            height_mpt=0,
+        )
+    )
+    return tuple(candidates)
+
+
+def _beam_candidates_conflict(
+    first: _page_solver.Candidate,
+    second: _page_solver.Candidate,
+    tolerance_mpt: int,
+) -> bool:
+    assert first.box_mpt is not None and second.box_mpt is not None
+    horizontal = min(first.box_mpt[2], second.box_mpt[2]) - max(first.box_mpt[0], second.box_mpt[0])
+    vertical = min(first.box_mpt[3], second.box_mpt[3]) - max(first.box_mpt[1], second.box_mpt[1])
+    if horizontal > tolerance_mpt and vertical > tolerance_mpt:
+        return True
+    return (
+        first.kind == "margin"
+        and second.kind == "margin"
+        and first.side == second.side
+        and vertical > tolerance_mpt
+    )
+
+
+def _run_beam(
+    request_targets: Sequence[tuple[NoteRequest, SurfaceRect]],
+    page_rect: SurfaceRect,
+    body_occupancy: Sequence[SurfaceRect],
+    target_occupancy: tuple[SurfaceRect, ...],
+    measurer: NoteMeasurer,
+    config: LayoutConfig,
+    margin_strips: dict[_MarginSide, tuple[float, float]] | None,
+) -> LayoutResult:
+    page_height_mpt = _page_solver.q_pt(page_rect.y1 - page_rect.y0)
+    candidates_per_note = tuple(
+        _candidates_for_note(
+            request=request,
+            target_rect=target_rect,
+            page_rect=page_rect,
+            body_occupancy=body_occupancy,
+            target_occupancy=target_occupancy,
+            measurer=measurer,
+            config=config,
+            margin_strips=margin_strips,
+            page_height_mpt=page_height_mpt,
+        )
+        for request, target_rect in request_targets
+    )
+    solver_config = _page_solver.SolverConfig(
+        beam_width=config.beam_width,
+        min_scale_bp=_page_solver.q_scale(config.min_scale),
+        page_diag_mpt=_page_solver.q_pt(
+            math.hypot(page_rect.x1 - page_rect.x0, page_rect.y1 - page_rect.y0)
+        ),
+        page_height_mpt=page_height_mpt,
+    )
+    tolerance_mpt = _page_solver.q_pt(config.overlap_tolerance)
+    solved = _page_solver.solve(
+        candidates_per_note,
+        solver_config,
+        lambda first, second: _beam_candidates_conflict(first, second, tolerance_mpt),
+    )
+
+    placed: list[ResolvedAnnotation] = []
+    skipped: list[SkipRecord] = []
+    degradation_flags: list[DegradationFlag] = []
+    for (request, target_rect), candidate in zip(request_targets, solved.chosen, strict=True):
+        if candidate.kind == "skip":
+            if margin_strips is None:
+                detail = (
+                    "No body columns were inferred; failing closed rather than "
+                    "placing relative to the target."
+                )
+            else:
+                margin_widths = {side: strip[1] - strip[0] for side, strip in margin_strips.items()}
+                if all(width < config.margin_min_width for width in margin_widths.values()):
+                    detail = "Both page margins are narrower than the configured minimum width."
+                else:
+                    detail = (
+                        f"No collision-free position fit at or above scale {config.min_scale:.2f}."
+                    )
+            skipped.append(_skip_unplaceable(request.annotation_id, detail))
+            if DegradationFlag.NOTE_SKIPPED_UNFITTABLE not in degradation_flags:
+                degradation_flags.append(DegradationFlag.NOTE_SKIPPED_UNFITTABLE)
+            continue
+
+        assert candidate.box_mpt is not None
+        note_box = _surface_box(candidate.box_mpt)
+        scale = candidate.scale_bp / 10_000
+        if candidate.kind == "inline":
+            resolved_placement: Placement = request.requested_placement
+            warnings: list[AnchorWarning] = []
+        else:
+            resolved_placement = "margin_left" if candidate.side == "left" else "margin_right"
+            warnings = []
+            if candidate.scale_bp < 10_000:
+                warnings.append(_scale_reduced_warning(request.annotation_id, scale))
+
+            preferred: _MarginSide = (
+                "margin_left" if request.requested_placement == "margin_left" else "margin_right"
+            )
+            if candidate.side_switched:
+                warnings.append(
+                    AnchorWarning(
+                        annotation_id=request.annotation_id,
+                        code=AnchorWarningCode.SIDE_SWITCHED,
+                        detail=(
+                            f"Switched from {preferred} to {resolved_placement} "
+                            "to find usable space."
+                        ),
+                    )
+                )
+
+            if candidate.displacement_bp > 0:
+                warnings.append(
+                    AnchorWarning(
+                        annotation_id=request.annotation_id,
+                        code=AnchorWarningCode.SHIFTED,
+                        detail=(
+                            f"Shifted note top from y={target_rect.y0:.2f} "
+                            f"to y={note_box.y0:.2f} to avoid occupied space."
+                        ),
+                    )
+                )
+
+        placed.append(
+            ResolvedAnnotation(
+                annotation_id=request.annotation_id,
+                source_locator=request.source_locator,
+                requested_placement=request.requested_placement,
+                resolved_placement=resolved_placement,
+                anchor=request.anchor,
+                note_box=note_box,
+                note_scale=scale,
+                render_seed=request.render_seed,
+                warnings=tuple(warnings),
+            )
+        )
+
+    return LayoutResult(
+        placed=tuple(placed),
+        skipped=tuple(skipped),
+        degradation_flags=tuple(degradation_flags),
+    )
+
+
 def run_layout(
     requests: Sequence[NoteRequest],
     page_rect: SurfaceRect,
@@ -480,6 +910,16 @@ def run_layout(
     else:
         margin_strips = None
 
+    if config.solver == "beam":
+        return _run_beam(
+            request_targets=request_targets,
+            page_rect=page_rect,
+            body_occupancy=body_occupancy,
+            target_occupancy=target_occupancy,
+            measurer=measurer,
+            config=config,
+            margin_strips=margin_strips,
+        )
     return _run_greedy(
         request_targets=request_targets,
         page_rect=page_rect,
