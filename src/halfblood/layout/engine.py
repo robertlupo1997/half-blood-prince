@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import Literal, Protocol
 
 import halfblood.layout.page_solver as _page_solver
@@ -741,8 +742,14 @@ def _beam_candidates_conflict(
     tolerance_mpt: int,
 ) -> bool:
     assert first.box_mpt is not None and second.box_mpt is not None
-    horizontal = min(first.box_mpt[2], second.box_mpt[2]) - max(first.box_mpt[0], second.box_mpt[0])
-    vertical = min(first.box_mpt[3], second.box_mpt[3]) - max(first.box_mpt[1], second.box_mpt[1])
+    first_box = first.box_mpt
+    second_box = second.box_mpt
+    overlap_x1 = first_box[2] if first_box[2] < second_box[2] else second_box[2]
+    overlap_x0 = first_box[0] if first_box[0] > second_box[0] else second_box[0]
+    overlap_y1 = first_box[3] if first_box[3] < second_box[3] else second_box[3]
+    overlap_y0 = first_box[1] if first_box[1] > second_box[1] else second_box[1]
+    horizontal = overlap_x1 - overlap_x0
+    vertical = overlap_y1 - overlap_y0
     if horizontal > tolerance_mpt and vertical > tolerance_mpt:
         return True
     return (
@@ -789,7 +796,7 @@ def _run_beam(
     solved = _page_solver.solve(
         candidates_per_note,
         solver_config,
-        lambda first, second: _beam_candidates_conflict(first, second, tolerance_mpt),
+        partial(_beam_candidates_conflict, tolerance_mpt=tolerance_mpt),
     )
 
     placed: list[ResolvedAnnotation] = []
