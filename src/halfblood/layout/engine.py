@@ -63,7 +63,7 @@ class LayoutConfig:
     margin_min_width: float = 40.0
     margin_gap: float = 10.0
     page_edge_pad: float = 8.0
-    solver: Literal["greedy", "beam"] = "greedy"
+    solver: Literal["greedy", "beam"] = "beam"
     beam_width: int = 128
 
 
