@@ -220,6 +220,13 @@ class RenderReport(_StrictModel):
 
     @property
     def attempted_count(self) -> int:
+        """Total notes attempted: fully rendered plus skipped.
+
+        A mark-only note (its id in ``marks_only``, always a subset of ``skipped``)
+        counts as skipped here even though its target mark DID render — so
+        ``attempted_count`` alone understates visible output. Pair it with
+        ``len(self.marks_only)`` when reporting what actually reached the page.
+        """
         return self.rendered_count + self.skipped_count
 
 
