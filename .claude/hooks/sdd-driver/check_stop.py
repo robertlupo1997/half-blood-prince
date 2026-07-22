@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Require an sdd-driver report, with a bounded stop-refusal loop."""
+"""Require an sdd-driver report, with a bounded stop-refusal loop.
+
+The controller deletes ``*.stop-refusals`` state files when retiring a driver.
+"""
 
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -14,6 +18,7 @@ REFUSAL_MESSAGE = (
 REPEATED_MESSAGE = (
     "allowing stop after repeated refusal — parent must treat this driver as blocked"
 )
+TASK_ID_RE = re.compile(r"[^A-Za-z0-9._-]")
 
 
 def _prior_refusals(state_path: Path) -> int:
@@ -21,6 +26,11 @@ def _prior_refusals(state_path: Path) -> int:
         return max(0, int(state_path.read_text(encoding="utf-8").strip()))
     except (FileNotFoundError, OSError, ValueError):
         return 0
+
+
+def _task_id() -> str:
+    raw_task_id = os.environ.get("SDD_DRIVER_TASK", "untasked") or "untasked"
+    return TASK_ID_RE.sub("_", raw_task_id)
 
 
 def main() -> int:
@@ -34,7 +44,7 @@ def main() -> int:
     except OSError:
         pass
 
-    state_path = report_path.with_name("driver-report.stop-refusals")
+    state_path = report_path.with_name(f"driver-report.{_task_id()}.stop-refusals")
     if _prior_refusals(state_path) >= 1:
         print(REPEATED_MESSAGE, file=sys.stderr)
         return 0
