@@ -858,13 +858,15 @@ def test_p3s1_dense_characterization_snapshot() -> None:
 
     Expectation built by running HEAD commit 65c3752 on 2026-07-21.
     This test is a drift-detector: it PASSES before and after the P3-S1 extraction.
+    P3-S3 flipped the default solver to beam, so the greedy contract is now pinned
+    via an explicit ``solver="greedy"``.
     """
     result = run_layout(
         _CHAR_NOTES,
         _PAGE,
         [],
         DenseMeasurer(),
-        config=LayoutConfig(),
+        config=LayoutConfig(solver="greedy"),
         body_columns=_CHAR_COLS,
     )
 
@@ -925,7 +927,11 @@ def test_p3s1_dense_characterization_snapshot() -> None:
 
 
 def test_p3s1_determinism_repeat() -> None:
-    """Same fixture twice → identical LayoutResult (greedy is deterministic)."""
+    """Same fixture twice → identical LayoutResult (default solver is deterministic).
+
+    Authored against greedy; since the P3-S3 flip the default routes to beam, so this
+    now pins beam determinism (beam has its own dedicated determinism tests in 18h too).
+    """
     cfg = LayoutConfig()
     r1 = run_layout(_CHAR_NOTES, _PAGE, [], DenseMeasurer(), config=cfg, body_columns=_CHAR_COLS)
     r2 = run_layout(_CHAR_NOTES, _PAGE, [], DenseMeasurer(), config=cfg, body_columns=_CHAR_COLS)
@@ -958,8 +964,10 @@ def test_p3s1_permutation_guard() -> None:
 #
 # These tests are RED before P3-S2b is implemented (AttributeError on the
 # missing LayoutConfig.solver / .beam_width fields) and go GREEN after.
-# The P3-S1 characterization suite (Section 17) remains the greedy contract;
-# these tests cover beam dispatch wiring and shared invariants only.
+# The P3-S1 characterization suite (Section 17) pins the greedy contract where
+# it passes solver="greedy" explicitly; its default-config tests (determinism
+# repeat, permutation guard) run on beam since the P3-S3 flip. These tests
+# cover beam dispatch wiring and shared invariants only.
 #
 # Spy tests patch halfblood.layout.page_solver (the module object).  This
 # requires the engine to call page_solver.solve via module attribute —
@@ -972,10 +980,15 @@ def test_p3s1_permutation_guard() -> None:
 # 18a. Config fields --------------------------------------------------------
 
 
-def test_p3s2b_config_solver_default() -> None:
-    """LayoutConfig.solver defaults to 'greedy' and beam_width defaults to 128."""
+def test_p3s3_config_solver_default_beam() -> None:
+    """LayoutConfig.solver defaults to 'beam' (P3-S3 flip); beam_width defaults to 128.
+
+    Rollout gate 2026-07-22: quality PASS (byte-identical corpus), determinism PASS
+    (hash-seed subprocess identical), perf PASS at the owner-revised 50ms budget
+    (8-note p95 ≈ 45-47ms after the S2c hot-path optimization).
+    """
     cfg = LayoutConfig()
-    assert cfg.solver == "greedy"
+    assert cfg.solver == "beam"
     assert cfg.beam_width == 128
 
 
@@ -1020,7 +1033,7 @@ def test_p3s2b_beam_calls_page_solver(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_p3s2b_greedy_does_not_call_page_solver(monkeypatch: pytest.MonkeyPatch) -> None:
-    """page_solver.solve must NOT be called when solver='greedy' (the default)."""
+    """page_solver.solve must NOT be called when solver='greedy' (the escape hatch)."""
     import halfblood.layout.page_solver as _ps
 
     calls: list[object] = []
@@ -1031,7 +1044,14 @@ def test_p3s2b_greedy_does_not_call_page_solver(monkeypatch: pytest.MonkeyPatch)
         return _real(*args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(_ps, "solve", _spy)
-    run_layout([_req("a1")], _PAGE, [], _FM, body_columns=_BODY_COLS)
+    run_layout(
+        [_req("a1")],
+        _PAGE,
+        [],
+        _FM,
+        config=LayoutConfig(solver="greedy"),
+        body_columns=_BODY_COLS,
+    )
     assert calls == [], "page_solver.solve must NOT be called when solver='greedy'"
 
 
@@ -1181,17 +1201,19 @@ def test_p3s2b_beam_preferred_side_taken_when_free() -> None:
 
 # 18f. Default-path regression -----------------------------------------------
 #
-# Explicit solver='greedy' must produce byte-identical output to the default
-# LayoutConfig().  This pins the routing logic: the 'else' branch in run_layout
-# must call _run_greedy exactly as the default path does.
+# Explicit solver='beam' must produce byte-identical output to the default
+# LayoutConfig() (the default routes to beam since P3-S3).  This pins the
+# routing logic: the default path must call _run_beam exactly as the explicit
+# beam path does.
 
 
-def test_p3s2b_explicit_greedy_matches_default() -> None:
-    """LayoutConfig(solver='greedy') must return a byte-identical LayoutResult to LayoutConfig().
+def test_p3s3_explicit_beam_matches_default() -> None:
+    """LayoutConfig(solver='beam') must return a byte-identical LayoutResult to LayoutConfig().
 
-    Pins that the dispatch routing does not alter the greedy path.  Uses the P3-S1
-    characterisation fixture (dense 6-note, two-column page) to maximise coverage of
-    greedy edge cases: scale reduction, side switching, UNPLACEABLE skip.
+    P3-S3 flipped the default to beam; this pins that the default routing IS the beam
+    path.  Uses the P3-S1 characterisation fixture (dense 6-note, two-column page),
+    on which beam and greedy demonstrably differ — so this test discriminates the
+    default's routing rather than passing vacuously.
     """
     r_default = run_layout(
         _CHAR_NOTES,
@@ -1206,11 +1228,11 @@ def test_p3s2b_explicit_greedy_matches_default() -> None:
         _PAGE,
         [],
         DenseMeasurer(),
-        config=LayoutConfig(solver="greedy"),
+        config=LayoutConfig(solver="beam"),
         body_columns=_CHAR_COLS,
     )
     assert r_default == r_explicit, (
-        "explicit solver='greedy' must be byte-identical to LayoutConfig() default"
+        "explicit solver='beam' must be byte-identical to LayoutConfig() default"
     )
 
 
@@ -1287,7 +1309,8 @@ def test_p3s2b_beam_beats_greedy_trap() -> None:
         _PAGE,
         [],
         _TRAP_M,
-        # No solver= arg → default greedy path (also tests default-is-greedy routing).
+        # Explicit greedy escape hatch — the default routes to beam since P3-S3.
+        config=LayoutConfig(solver="greedy"),
         body_columns=_TRAP_COLS,
     )
     r_beam = run_layout(

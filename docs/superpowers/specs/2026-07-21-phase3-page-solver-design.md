@@ -54,7 +54,18 @@ Phase 3. Groundwork merged: P3-S1 greedy seam (`_run_greedy` in `layout/engine.p
 (S2b). First merge defaults GREEDY. Flip (S3, separate merge) only after the controller rollout
 gate: fixture PDFs, synthetic dense corpus, subprocess determinism (PYTHONHASHSEED), ~300-page
 benchmark (target p95 < 25ms per 8-note page; ≤ ~2× greedy end-to-end). Greedy stays as escape
-hatch ≥1 release. Contract tests must hold for BOTH solvers (placed-or-skipped-exactly-once,
+hatch ≥1 release.
+
+**Budget amendment (2026-07-22, owner-approved):** the 25ms p95 target predates measurement;
+after the S2c hot-path optimization exhausted the pure-Python levers, the owner revised the
+8-note p95 budget to **50ms**. Gate record at the flip: quality PASS (corpus byte-identical,
+hash `f8915d00…` via the durable bench `.superpowers/sdd/rollout_gate_s2c.py`), determinism
+PASS (PYTHONHASHSEED=0/42 subprocess-identical), perf PASS at the revised budget (8-note
+median ≈ 40ms, p95 ≈ 45–47ms; pre-S2c baseline 237.5/338.7ms). Known width-128 pruning
+artifact stays on record: beam can place fewer notes than greedy on adversarial pages
+(corpus page 65: 7/8 at width 128, 8/8 at width ≥ 512); widening the beam is a future
+owner lever, cost roughly linear in width. **S3 flipped the default to `"beam"`; greedy
+remains the escape hatch.** Contract tests must hold for BOTH solvers (placed-or-skipped-exactly-once,
 canonical ordering, containment/collision, MP1c, inline exemption, min_scale, measure≡render,
 warnings for winning geometry, determinism, 7-note zero-overlap, mark-only). Greedy-specific
 tests get `solver="greedy"` pins or rewrites (named in the advisory).
