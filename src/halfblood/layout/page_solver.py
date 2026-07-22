@@ -7,9 +7,11 @@ scores already-quantized candidates and searches for a compatible assignment.
 from __future__ import annotations
 
 import math
+from bisect import bisect_right
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from operator import itemgetter
+from typing import Literal, TypeAlias, cast
 
 PointMpt: TypeAlias = tuple[int, int]
 BoxMpt: TypeAlias = tuple[int, int, int, int]
@@ -181,11 +183,20 @@ def _connectors_cross(first: Candidate, second: Candidate) -> bool:
         or second.connector_b_mpt is None
     ):
         return False
-    return segments_cross(
-        first.connector_a_mpt,
-        first.connector_b_mpt,
-        second.connector_a_mpt,
-        second.connector_b_mpt,
+    a1_x, a1_y = first.connector_a_mpt
+    a2_x, a2_y = first.connector_b_mpt
+    b1_x, b1_y = second.connector_a_mpt
+    b2_x, b2_y = second.connector_b_mpt
+    a_dx = a2_x - a1_x
+    a_dy = a2_y - a1_y
+    b_dx = b2_x - b1_x
+    b_dy = b2_y - b1_y
+    ab1 = a_dx * (b1_y - a1_y) - a_dy * (b1_x - a1_x)
+    ab2 = a_dx * (b2_y - a1_y) - a_dy * (b2_x - a1_x)
+    ba1 = b_dx * (a1_y - b1_y) - b_dy * (a1_x - b1_x)
+    ba2 = b_dx * (a2_y - b1_y) - b_dy * (a2_x - b1_x)
+    return ((ab1 > 0 and ab2 < 0) or (ab1 < 0 and ab2 > 0)) and (
+        (ba1 > 0 and ba2 < 0) or (ba1 < 0 and ba2 > 0)
     )
 
 
@@ -292,6 +303,49 @@ def _candidate_conflicts(
     )
 
 
+_BaseCandidate: TypeAlias = tuple[
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+]
+_PreparedCandidate: TypeAlias = tuple[
+    int,
+    int,
+    int,
+    tuple[tuple[int, int], ...],
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+]
+_BeamState: TypeAlias = tuple[
+    Score,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    object | None,
+    int,
+]
+
+
 def solve(
     candidates_per_note: Sequence[Sequence[Candidate]],
     cfg: SolverConfig,
@@ -299,27 +353,254 @@ def solve(
 ) -> SolverResult:
     """Choose one candidate per note with a bounded deterministic beam search."""
 
+    base_notes: list[tuple[_BaseCandidate, ...]] = []
+    flat_candidates: list[Candidate] = []
+    candidate_has_connector: list[bool] = []
+    next_index = 0
     for candidates in candidates_per_note:
         if not any(candidate.kind == "skip" for candidate in candidates):
             raise ValueError("every note must provide a skip candidate")
 
-    states: tuple[_State, ...] = (_State(),)
-    for candidates in candidates_per_note:
-        expanded: list[_State] = []
+        base_candidates: list[_BaseCandidate] = []
+        for candidate in candidates:
+            candidate_index = next_index
+            candidate_bit = 1 << candidate_index
+            next_index += 1
+            flat_candidates.append(candidate)
+
+            is_skip = candidate.kind == "skip"
+            has_connector = not is_skip and _has_connector(candidate)
+            candidate_has_connector.append(has_connector)
+
+            weighted_local_soft_cost = 0
+            if not is_skip:
+                weighted_local_soft_cost = candidate.importance * _candidate_local_soft_cost(
+                    candidate, cfg
+                )
+            omitted_count_delta = int(is_skip)
+            omitted_importance_delta = candidate.importance if is_skip else 0
+            connector_count_delta = int(has_connector)
+            left_load_delta = 0
+            right_load_delta = 0
+            margin_count_delta = 0
+            margin_importance_delta = 0
+            if not is_skip and candidate.kind == "margin":
+                if candidate.side == "left":
+                    left_load_delta = candidate.height_mpt
+                elif candidate.side == "right":
+                    right_load_delta = candidate.height_mpt
+                margin_count_delta = 1
+                margin_importance_delta = candidate.importance
+
+            base_candidates.append(
+                (
+                    candidate_index,
+                    candidate_bit,
+                    weighted_local_soft_cost,
+                    omitted_count_delta,
+                    omitted_importance_delta,
+                    connector_count_delta,
+                    left_load_delta,
+                    right_load_delta,
+                    margin_count_delta,
+                    margin_importance_delta,
+                    candidate.ordinal,
+                )
+            )
+        base_notes.append(tuple(base_candidates))
+
+    initial_state: _BeamState = ((0, 0, 0, ()), 0, 0, 0, 0, 0, 0, 0, 0, None, -1)
+    states: tuple[_BeamState, ...] = (initial_state,)
+    for note_base_candidates in base_notes:
+        active_mask = 0
         for state in states:
-            for candidate in candidates:
-                if _candidate_conflicts(candidate, state.chosen, conflict):
+            active_mask |= state[1]
+
+        prior_limit = note_base_candidates[0][0]
+        active_prior: list[tuple[Candidate, int, bool]] = []
+        for prior_index in range(prior_limit):
+            prior_bit = 1 << prior_index
+            prior = flat_candidates[prior_index]
+            if active_mask & prior_bit and prior.kind != "skip":
+                active_prior.append(
+                    (prior, prior_bit, candidate_has_connector[prior_index])
+                )
+
+        prepared_candidates: list[_PreparedCandidate] = []
+        for (
+            candidate_index,
+            candidate_bit,
+            weighted_local_soft_cost,
+            omitted_count_delta,
+            omitted_importance_delta,
+            connector_count_delta,
+            left_load_delta,
+            right_load_delta,
+            margin_count_delta,
+            margin_importance_delta,
+            ordinal,
+        ) in note_base_candidates:
+            conflict_mask = 0
+            crossing_groups: list[tuple[int, int]] = []
+            if not omitted_count_delta:
+                candidate = flat_candidates[candidate_index]
+                for prior, prior_bit, prior_has_connector in active_prior:
+                    if conflict(candidate, prior):
+                        conflict_mask |= prior_bit
+                    if (
+                        connector_count_delta
+                        and prior_has_connector
+                        and _connectors_cross(candidate, prior)
+                    ):
+                        contribution = candidate.importance + prior.importance
+                        for group_index, (crossing_mask, grouped_contribution) in enumerate(
+                            crossing_groups
+                        ):
+                            if grouped_contribution == contribution:
+                                crossing_groups[group_index] = (
+                                    crossing_mask | prior_bit,
+                                    contribution,
+                                )
+                                break
+                        else:
+                            crossing_groups.append((prior_bit, contribution))
+            prepared_candidates.append(
+                (
+                    candidate_index,
+                    candidate_bit,
+                    conflict_mask,
+                    tuple(crossing_groups),
+                    weighted_local_soft_cost,
+                    omitted_count_delta,
+                    omitted_importance_delta,
+                    connector_count_delta,
+                    left_load_delta,
+                    right_load_delta,
+                    margin_count_delta,
+                    margin_importance_delta,
+                    ordinal,
+                )
+            )
+
+        retained: list[_BeamState] = []
+        retained_is_sorted = False
+        for state in states:
+            (
+                state_score,
+                chosen_mask,
+                local_soft_cost,
+                connector_count,
+                crossing_importance,
+                left_load_mpt,
+                right_load_mpt,
+                margin_count,
+                margin_importance,
+                _,
+                _,
+            ) = state
+            for (
+                candidate_index,
+                candidate_bit,
+                conflict_mask,
+                prepared_crossing_pairs,
+                weighted_local_soft_cost,
+                omitted_count_delta,
+                omitted_importance_delta,
+                connector_count_delta,
+                left_load_delta,
+                right_load_delta,
+                margin_count_delta,
+                margin_importance_delta,
+                ordinal,
+            ) in prepared_candidates:
+                if chosen_mask & conflict_mask:
                     continue
-                expanded.append(_extend_state(state, candidate, cfg))
+
+                next_local_soft_cost = local_soft_cost + weighted_local_soft_cost
+                next_connector_count = connector_count + connector_count_delta
+                next_crossing_importance = crossing_importance
+                for crossing_mask, contribution in prepared_crossing_pairs:
+                    selected_crossings = chosen_mask & crossing_mask
+                    if selected_crossings:
+                        next_crossing_importance += (
+                            selected_crossings.bit_count() * contribution
+                        )
+                next_left_load_mpt = left_load_mpt + left_load_delta
+                next_right_load_mpt = right_load_mpt + right_load_delta
+                next_margin_count = margin_count + margin_count_delta
+                next_margin_importance = margin_importance + margin_importance_delta
+
+                assignment_key = state_score[3] + (ordinal,)
+                soft_cost = state_score[2]
+                if not omitted_count_delta:
+                    crossing_cost = 0
+                    if next_connector_count > 1:
+                        crossing_denominator = next_connector_count - 1
+                        crossing_cost = 500 * (
+                            (
+                                10_000 * next_crossing_importance
+                                + crossing_denominator // 2
+                            )
+                            // crossing_denominator
+                        )
+
+                    lane_cost = 0
+                    total_lane_load = next_left_load_mpt + next_right_load_mpt
+                    if next_margin_count > 1 and total_lane_load > 0:
+                        unevenness_bp = (
+                            10_000 * abs(next_left_load_mpt - next_right_load_mpt)
+                            + total_lane_load // 2
+                        ) // total_lane_load
+                        lane_cost = 25 * unevenness_bp * next_margin_importance
+                    soft_cost = next_local_soft_cost + crossing_cost + lane_cost
+
+                next_score: Score = (
+                    state_score[0] + omitted_count_delta,
+                    state_score[1] + omitted_importance_delta,
+                    soft_cost,
+                    assignment_key,
+                )
+                if retained_is_sorted and next_score >= retained[-1][0]:
+                    continue
+
+                next_state: _BeamState = (
+                    next_score,
+                    chosen_mask | candidate_bit,
+                    next_local_soft_cost,
+                    next_connector_count,
+                    next_crossing_importance,
+                    next_left_load_mpt,
+                    next_right_load_mpt,
+                    next_margin_count,
+                    next_margin_importance,
+                    state,
+                    candidate_index,
+                )
+                if not retained_is_sorted:
+                    retained.append(next_state)
+                    if len(retained) == cfg.beam_width:
+                        retained.sort(key=itemgetter(0))
+                        retained_is_sorted = True
+                    continue
+
+                insertion_index = bisect_right(retained, next_score, key=itemgetter(0))
+                retained.insert(insertion_index, next_state)
+                retained.pop()
 
         # A prevalidated skip candidate makes this non-empty for every retained state.
-        expanded.sort(key=lambda state: (_state_score(state), state.assignment_key))
-        states = tuple(expanded[: cfg.beam_width])
+        if not retained_is_sorted:
+            retained.sort(key=itemgetter(0))
+        states = tuple(retained)
 
     if not states:
         # Only reachable for an invalid non-positive beam width, guarded by SolverConfig.
         raise ValueError("solver produced no feasible assignment")
-    return SolverResult(chosen=states[0].chosen)
+    chosen_reversed: list[Candidate] = []
+    winning_state: _BeamState | None = states[0]
+    while winning_state is not None and winning_state[10] >= 0:
+        chosen_reversed.append(flat_candidates[winning_state[10]])
+        winning_state = cast(_BeamState | None, winning_state[9])
+    return SolverResult(chosen=tuple(reversed(chosen_reversed)))
 
 
 __all__ = [
