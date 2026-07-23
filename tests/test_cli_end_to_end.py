@@ -19,10 +19,29 @@ Empirical design notes (validated before writing, 2026-07-23):
 * fitz writes non-deterministic /ID bytes into the PDF trailer; byte-level
   equality fails reliably.  Structural equality (page count + per-page drawing
   counts) is the correct determinism assertion.
+
+Stub design (post-merge hardening, 2026-07-23):
+
+* Stubs key responses by PAGE IDENTITY (page number extracted from the
+  ``PAGE NUMBER: N`` line in ``request.user_prompt``), not call order.  Under
+  concurrent wave execution (default concurrency=3) three threads may call
+  ``complete()`` simultaneously; order-based routing races and can deliver the
+  wrong passage to the wrong page, causing ``Rendered 5 / Skipped 0``
+  assertions to fail nondeterministically.  Page-identity routing is immune to
+  this: each page always receives its own scripted response regardless of
+  scheduling.
+* ``_PartialFailureProvider`` fails a specific PAGE by identity (``fail_page``
+  parameter, default 1), not "the first call".  Two threads processing pages
+  simultaneously cannot both claim "first call"; with identity routing there is
+  no shared mutable dispatch state to race on.
+* ``DeterministicStubProvider.call_count`` is the only shared mutable counter
+  and is protected by ``_lock`` for safe post-run assertion from the main
+  thread.
 """
 
 from __future__ import annotations
 
+import threading
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -74,18 +93,36 @@ _EPUB_PASSAGES: dict[int, str] = {
 # ---------------------------------------------------------------------------
 
 
-class DeterministicStubProvider:
-    """LLMProvider that returns scripted RecordAnnotations responses in order.
+def _extract_page_num(request: Any) -> int | None:
+    """Extract the page number from ``request.user_prompt``.
 
-    The response list is consumed round-robin: call 0 returns responses[0],
-    call 1 returns responses[1], and so on.  Extra calls cycle back to the
-    start.  Every returned GenerationResult is fully populated so that all
-    downstream validation passes.
+    ``AnnotationGenerator._build_user_prompt`` always emits a
+    ``PAGE NUMBER: N`` line at the top of the user prompt.  Parse it so
+    stubs can route responses by page identity, not call order.
+    """
+    user_prompt = getattr(request, "user_prompt", "")
+    for line in user_prompt.splitlines():
+        if line.startswith("PAGE NUMBER:"):
+            return int(line.split(":", 1)[1].strip())
+    return None
+
+
+class DeterministicStubProvider:
+    """LLMProvider that scripts per-page responses keyed by page number.
+
+    ``responses`` maps ``page_number`` → ``RecordAnnotations``.  Page number
+    is extracted from the ``PAGE NUMBER: N`` line in ``request.user_prompt``
+    so the mapping is order-independent and race-free under concurrent wave
+    execution (concurrency > 1).
+
+    Thread-safe: ``_lock`` guards ``call_count`` so the post-run assertion
+    can read it safely from the main thread.
     """
 
-    def __init__(self, responses: list[RecordAnnotations]) -> None:
-        self._responses = list(responses)
-        self._call_index = 0
+    def __init__(self, responses: dict[int, RecordAnnotations]) -> None:
+        self._responses = dict(responses)
+        self._lock = threading.Lock()
+        self.call_count: int = 0
 
     @property
     def capabilities(self) -> ProviderCapabilities:
@@ -96,11 +133,17 @@ class DeterministicStubProvider:
         )
 
     def complete(self, request: Any) -> GenerationResult:
-        response = self._responses[self._call_index % len(self._responses)]
-        self._call_index += 1
+        page_num = _extract_page_num(request)
+        if page_num is None or page_num not in self._responses:
+            raise AssertionError(
+                f"DeterministicStubProvider: no scripted response for "
+                f"page_num={page_num!r} (have: {sorted(self._responses)})"
+            )
+        with self._lock:
+            self.call_count += 1
         return GenerationResult(
-            parsed=response,
-            request_id=f"stub-req-{self._call_index}",
+            parsed=self._responses[page_num],
+            request_id=f"stub-req-pg{page_num}",
             finish_reason="stop",
             usage=GenerationUsage(input_tokens=120, output_tokens=60),
             latency_seconds=0.001,
@@ -109,18 +152,22 @@ class DeterministicStubProvider:
 
 
 class _PartialFailureProvider:
-    """Provider that raises StructuredOutputError for the first call only.
+    """Provider that raises StructuredOutputError for one specific page only.
 
-    Models a page whose LLM response was malformed — page 1 is lost, pages 2-N
-    succeed.  Verifies that the CLI continues and still writes the output.
-    Using StructuredOutputError (retryable=False) is more faithful to the
-    brief ("a page's completion is malformed") and decouples the test from
-    any future retry-on-transient layer.
+    ``fail_page`` names the page (by page number) whose response is malformed.
+    All other pages succeed.  Keying on page identity (not call order) makes
+    the stub race-free under concurrent wave execution: two threads processing
+    pages simultaneously each see the correct behaviour for their own page
+    regardless of scheduling.
+
+    Using StructuredOutputError (retryable=False) is faithful to the brief
+    ("a page's completion is malformed") and decouples the test from any
+    future retry-on-transient layer.
     """
 
-    def __init__(self, success_response: RecordAnnotations) -> None:
+    def __init__(self, success_response: RecordAnnotations, *, fail_page: int = 1) -> None:
         self._success = success_response
-        self._calls = 0
+        self._fail_page = fail_page
 
     @property
     def capabilities(self) -> ProviderCapabilities:
@@ -131,14 +178,14 @@ class _PartialFailureProvider:
         )
 
     def complete(self, request: Any) -> GenerationResult:
-        self._calls += 1
-        if self._calls == 1:
+        page_num = _extract_page_num(request)
+        if page_num == self._fail_page:
             raise StructuredOutputError(
-                "stub: simulated malformed output response on first page call",
+                f"stub: simulated malformed output for page {page_num}",
             )
         return GenerationResult(
             parsed=self._success,
-            request_id=f"stub-req-{self._calls}",
+            request_id=f"stub-req-pg{page_num}",
             finish_reason="stop",
             usage=GenerationUsage(input_tokens=120, output_tokens=60),
             latency_seconds=0.001,
@@ -181,14 +228,14 @@ def _epub_record(page_number: int, passage: str) -> RecordAnnotations:
     )
 
 
-def _pdf_stub_responses() -> list[RecordAnnotations]:
-    """Five scripted responses, one per potions_textbook.pdf page (1–5)."""
-    return [_pdf_record(pg, text) for pg, text in sorted(_PDF_PASSAGES.items())]
+def _pdf_stub_responses() -> dict[int, RecordAnnotations]:
+    """Five scripted responses keyed by page number (1–5)."""
+    return {pg: _pdf_record(pg, text) for pg, text in _PDF_PASSAGES.items()}
 
 
-def _epub_stub_responses() -> list[RecordAnnotations]:
-    """Four scripted responses, one per sample_book.epub page (1–4)."""
-    return [_epub_record(pg, text) for pg, text in sorted(_EPUB_PASSAGES.items())]
+def _epub_stub_responses() -> dict[int, RecordAnnotations]:
+    """Four scripted responses keyed by page number (1–4)."""
+    return {pg: _epub_record(pg, text) for pg, text in _EPUB_PASSAGES.items()}
 
 
 def _build_fake_resolve(tmp_path: Path) -> Any:
@@ -340,8 +387,8 @@ class TestAnnotatePdfE2E:
         stub = DeterministicStubProvider(_pdf_stub_responses())
         _invoke_annotate(tmp_path, stub, input_file=_PDF_FIXTURE, output_suffix="pdf")
         # 5 pages → exactly 5 provider calls.
-        assert stub._call_index == 5, (
-            f"Expected 5 stub calls (one per page), got {stub._call_index}"
+        assert stub.call_count == 5, (
+            f"Expected 5 stub calls (one per page), got {stub.call_count}"
         )
 
 
@@ -433,8 +480,8 @@ class TestAnnotateEpubE2E:
         stub = DeterministicStubProvider(_epub_stub_responses())
         _invoke_annotate(tmp_path, stub, input_file=_EPUB_FIXTURE, output_suffix="epub")
         # 4 EPUB pages → exactly 4 provider calls.
-        assert stub._call_index == 4, (
-            f"Expected 4 stub calls (one per EPUB page), got {stub._call_index}"
+        assert stub.call_count == 4, (
+            f"Expected 4 stub calls (one per EPUB page), got {stub.call_count}"
         )
 
 
@@ -461,7 +508,7 @@ class TestDeterminism:
         fake_resolve = _build_fake_resolve(tmp_path)
 
         def _fake_build(config: Any, *, api_key: Any = None) -> LLMProvider:
-            return DeterministicStubProvider(list(responses))
+            return DeterministicStubProvider(dict(responses))
 
         runner = CliRunner()
         common_args = ["annotate", str(_PDF_FIXTURE)]
@@ -496,7 +543,7 @@ class TestDeterminism:
         fake_resolve = _build_fake_resolve(tmp_path)
 
         def _fake_build(config: Any, *, api_key: Any = None) -> LLMProvider:
-            return DeterministicStubProvider(list(responses))
+            return DeterministicStubProvider(dict(responses))
 
         runner = CliRunner()
         common_args = ["annotate", str(_PDF_FIXTURE)]

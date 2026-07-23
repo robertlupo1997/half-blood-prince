@@ -84,3 +84,40 @@ No src/, eval/, scripts/, config, or CLAUDE.md changes.
 | `ruff check tests/test_cli_end_to_end.py` | n/a | clean |
 | `mypy tests/test_cli_end_to_end.py` | n/a | no issues |
 | Src changes | — | 0 |
+
+---
+
+## Post-Merge Hardening (2026-07-23)
+
+**Branch:** `lane-b-stub-hardening` off `592bd9c`
+
+**Problem identified by lane-A gate reviewer:** With the default concurrency=3 (thread-pool wave execution merged in lane A), three threads call `complete()` simultaneously. The original stubs routed responses by call order (via `_call_index`), which has two failure modes:
+
+1. **Race condition:** `self._call_index += 1` is not atomic in Python without a lock. Two threads can read the same index, both increment, and one index is skipped. The wrong page gets the wrong response.
+
+2. **Scheduling nondeterminism:** Even with a lock, thread scheduling decides which page gets which index. Page 2's thread might claim index 0 (page 1's passage), so "Sopophorous bean" is delivered to page 1, fails to resolve, and `Rendered 5 / Skipped 0` becomes flaky.
+
+**Fix applied in `tests/test_cli_end_to_end.py`:**
+
+### `DeterministicStubProvider` — page-keyed dict, locked counter
+
+- Signature changed from `responses: list[RecordAnnotations]` to `responses: dict[int, RecordAnnotations]`.
+- `complete()` extracts page number from `request.user_prompt` via the `PAGE NUMBER: N` line that `AnnotationGenerator._build_user_prompt` always emits (mirrors `ScriptedProvider` in `test_async_generation.py`).
+- Response lookup is `self._responses[page_num]` — O(1), stateless, race-free.
+- `call_count` (was `_call_index`) is the only mutable counter; guarded by `threading.Lock`.
+- Module-level helper `_extract_page_num(request)` shared by both stub classes.
+
+### `_PartialFailureProvider` — page-identity failure, no mutable dispatch state
+
+- Fails `fail_page` (default=1) by comparing `page_num == self._fail_page`.
+- No counter, no lock needed — the failure condition is stateless.
+- `_calls += 1` deleted entirely.
+
+### Callers updated
+
+- `_pdf_stub_responses()` and `_epub_stub_responses()` now return `dict[int, RecordAnnotations]`.
+- `TestDeterminism` uses `dict(responses)` instead of `list(responses)`.
+- Call-count assertions use `stub.call_count` (public, locked) instead of `stub._call_index`.
+
+**Gate:** 1391 → 1391 (no new tests needed; hardening is internal to existing stubs).  
+`ruff check src/ tests/ eval/` clean. `mypy src/halfblood/` clean (42 files, 0 issues).
