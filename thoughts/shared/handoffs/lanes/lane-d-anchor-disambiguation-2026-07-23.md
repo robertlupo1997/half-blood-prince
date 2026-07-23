@@ -135,3 +135,32 @@ The implementation is a clean ~15-line insertion in `_resolve_annotation_to_anch
 adjacent `AmbiguousResult → MISSING_TARGET` vs `AmbiguousResult → AMBIGUOUS_TARGET` choice is
 deliberate (see Design rationale above). The 13 tests that use `_PAGE_TEXT[2]` were updated
 to use unique text — this is a bug fix for those tests, not a scope expansion.
+
+---
+
+## Post-merge fix-up (branch: lane-d-skip-fix, SHA: 29acabd)
+
+**Problem found at gate**: After the lane-d branch merged to main (`d1ddf22`), the gate
+discovered a second hardcoded `"Sopophorous bean"` with no context in
+`tests/test_note_measure_render.py:75`. The original lane-d fix only updated `_PAGE_TEXT[2]`
+in `test_pdf_render_report.py`. The note-measure test's `pytest.skip` at line 115 was firing:
+
+```
+if "ln" not in captured:
+    pytest.skip("long note was skipped as unplaceable; overflow contract not applicable")
+```
+
+This caused the suite to go from 1413 passed / 0 skipped to 1418 passed / 1 skipped — the
+overflow contract (assert `box.height >= needed_height`) was silently untested.
+
+**Fix**: Added `prefix="Cut the ", suffix=" with a silver knife"` to the `TargetSelector` in
+`test_long_note_box_fits_wrapped_render`. This unambiguously selects the second occurrence
+of "Sopophorous bean" on page 2 (Method step 2: "Cut the Sopophorous bean with a silver knife"),
+which is semantically correct — the note content critiques cutting with a knife.
+
+The test now RUNS (not skipped) and PASSES — the overflow contract is intact.
+
+**Gate numbers (post fix-up)**:
+- `pytest tests/ -q`: **1419 passed, 0 skipped**
+- `ruff check src tests eval scripts`: **All checks passed**
+- `mypy src/halfblood`: **Success: no issues found in 42 source files**
