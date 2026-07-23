@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from halfblood.config import DEFAULT_ANTHROPIC_MODEL as DEFAULT_MODEL
@@ -308,6 +309,13 @@ class AnnotationGenerator:
         except ProviderError as exc:
             logger.error("Provider error while annotating page %d: %s", page_number, exc)
             return [], True, True, exc
+        except Exception as exc:
+            error = ProviderError(
+                f"Unexpected {type(exc).__name__} from provider while annotating "
+                f"page {page_number}: {exc}"
+            )
+            logger.exception("Unexpected provider error while annotating page %d", page_number)
+            return [], True, True, error
 
         annotations = self._to_annotations(result, page_number)
         return annotations, True, False, None
@@ -331,6 +339,7 @@ class AnnotationGenerator:
         max_annotations_per_page: int = 5,
         *,
         concurrency: int | None = None,
+        on_page_done: Callable[[int, int], None] | None = None,
     ) -> AnnotationPlan:
         """Generate a full annotation plan for a multi-page document.
 
@@ -350,6 +359,9 @@ class AnnotationGenerator:
                 dropped.
             concurrency: Number of consecutive pages to process concurrently.
                 Defaults to the value configured on this generator.
+            on_page_done: Optional callback invoked after each page is added
+                to the plan. Receives the number of completed pages and the
+                total number of input pages, and runs on the calling thread.
 
         Returns:
             An :class:`AnnotationPlan` containing an :class:`AnnotatedPage`
@@ -498,6 +510,8 @@ class AnnotationGenerator:
                         annotations=page_annotations,
                     )
                 )
+                if on_page_done is not None:
+                    on_page_done(len(plan.pages), len(pages))
 
             running_notes.extend(wave_new_notes)
             del running_notes[:-8]

@@ -14,6 +14,7 @@ type from its extension (``.pdf`` or ``.epub``) and dispatch to
 
 from __future__ import annotations
 
+import inspect
 import logging
 import os
 import subprocess
@@ -44,7 +45,7 @@ from halfblood.generation.providers.base import GenerationRequest, LLMProvider
 from halfblood.generation.registry import build_provider
 from halfblood.generation.schema import generate_annotation_schema
 from halfblood.ink.composer import HandwritingUnavailable
-from halfblood.models import AnnotatedPage
+from halfblood.models import AnnotatedPage, AnnotationPlan
 from halfblood.web_preview import generate_preview
 
 Processor = DocumentProcessor | EpubProcessor
@@ -293,6 +294,33 @@ def _refuse_existing_output(path: Path, force: bool) -> None:
         )
 
 
+def _generate_with_progress(
+    generator: AnnotationGenerator,
+    pages: list[PageContent],
+    max_annotations_per_page: int,
+    on_page_done: Callable[[int, int], None],
+) -> AnnotationPlan:
+    """Generate a plan with callbacks when the generator supports them.
+
+    The signature check preserves compatibility with third-party generator
+    doubles written against the older two-argument method.
+    """
+    generate = generator.generate_for_document
+    parameters = inspect.signature(generate).parameters.values()
+    supports_callback = any(
+        parameter.name == "on_page_done"
+        or parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
+    if supports_callback:
+        return generate(
+            pages,
+            max_annotations_per_page=max_annotations_per_page,
+            on_page_done=on_page_done,
+        )
+    return generate(pages, max_annotations_per_page=max_annotations_per_page)
+
+
 def _print_annotated_page(annotated_page: AnnotatedPage) -> None:
     """Pretty-print one page's annotations."""
     if not annotated_page.annotations:
@@ -350,6 +378,16 @@ def main() -> None:
     show_default=True,
     help="Note-body engine. Rough PDF marks are always procedural vectors.",
 )
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help=(
+        "Generate annotations but skip rendering entirely; write the annotation "
+        "plan as JSON to the -o path. Useful for debugging persona/prompt issues "
+        "without waiting for rendering. The JSON output is loadable by web-preview."
+    ),
+)
 @click.option("--force", is_flag=True, help="Overwrite an existing output file.")
 @_provider_options
 def annotate(
@@ -360,6 +398,7 @@ def annotate(
     max_per_page: int,
     font: str | None,
     handwriting_engine: Literal["typeset", "procedural"],
+    dry_run: bool,
     force: bool,
     provider: str | None,
     model: str | None,
@@ -390,7 +429,7 @@ def annotate(
     else:
         font_path = _resolve_font_option(font) if font is not None else None
     processor = _processor_for(input_file, font_path, handwriting_engine)
-    if output_file.suffix.lower() != input_file.suffix.lower():
+    if not dry_run and output_file.suffix.lower() != input_file.suffix.lower():
         console.print(
             f"[yellow]Warning:[/yellow] output extension {output_file.suffix!r} doesn't "
             f"match input extension {input_file.suffix!r}; writing "
@@ -440,12 +479,26 @@ def annotate(
         # Generate
         gen_task = progress.add_task("Generating annotations...", total=len(selected))
         try:
-            plan = generator.generate_for_document(
-                selected, max_annotations_per_page=max_per_page
+            plan = _generate_with_progress(
+                generator,
+                selected,
+                max_per_page,
+                lambda done, _total: progress.update(
+                    gen_task, completed=done
+                ),
             )
         except (AllPagesFailedError, ProviderError) as exc:
             raise click.ClickException(str(exc)) from exc
         progress.update(gen_task, completed=len(selected))
+
+        if dry_run:
+            output_file.write_text(plan.model_dump_json(), encoding="utf-8")
+            console.print(
+                f"[bold green]Done.[/bold green] {plan.total_annotations} annotations "
+                f"across {len(plan.pages)} pages. "
+                f"Dry run — no artifact rendered -> [cyan]{output_file}[/cyan]"
+            )
+            return
 
         # Render
         render_task = progress.add_task("Rendering annotated file...", total=1)
@@ -546,8 +599,13 @@ def preview(
 
         gen_task = progress.add_task("Generating annotations...", total=len(selected))
         try:
-            plan = generator.generate_for_document(
-                selected, max_annotations_per_page=max_per_page
+            plan = _generate_with_progress(
+                generator,
+                selected,
+                max_per_page,
+                lambda done, _total: progress.update(
+                    gen_task, completed=done
+                ),
             )
         except (AllPagesFailedError, ProviderError) as exc:
             raise click.ClickException(str(exc)) from exc
