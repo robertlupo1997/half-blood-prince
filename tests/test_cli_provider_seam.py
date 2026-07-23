@@ -139,7 +139,11 @@ class _CapturingGenerator:
         self.failed_pages: list[int] = list(type(self)._inject_failed_pages)
 
     def generate_for_document(
-        self, pages: list[PageContent], max_annotations_per_page: int = 5
+        self,
+        pages: list[PageContent],
+        max_annotations_per_page: int = 5,
+        *,
+        on_page_done=None,
     ) -> AnnotationPlan:
         type(self).calls += 1
         if type(self)._raise_all_failed:
