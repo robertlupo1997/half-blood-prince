@@ -26,7 +26,6 @@ from unittest.mock import patch
 import fitz
 import pytest
 
-import halfblood.documents.matching as _matching
 from halfblood.document_processor import DocumentProcessor
 from halfblood.documents import NoMatchResult, PdfPageIndex
 from halfblood.models.annotations import Annotation, MarkIntent, TargetSelector
@@ -38,7 +37,6 @@ from halfblood.models.documents import (
 )
 from halfblood.models.legacy import AnnotationType
 from halfblood.models.rendering import RenderReport, SkipReason
-
 
 # ---------------------------------------------------------------------------
 # Page / annotation / plan helpers

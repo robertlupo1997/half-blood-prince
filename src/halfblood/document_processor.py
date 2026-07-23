@@ -53,6 +53,12 @@ from halfblood.documents import (
     normalize,
     resolve_pdf_anchor,
 )
+from halfblood.documents.matching import (
+    AmbiguousResult,
+    MatchResult,
+    NormalizedText,
+    score_candidates,
+)
 from halfblood.documents.pdf_occupancy import PdfTextLayerOccupancyProvider
 from halfblood.ink.composer import (
     _MARK_ROLES,
@@ -560,6 +566,30 @@ class DocumentProcessor:
                 line_count=1,
                 page_rotation=page.rotation,
             )
+
+        # ---- scorer path (issue #13 fix) ----------------------------------------
+        # When PdfPageIndex is available, use score_candidates to disambiguate
+        # repeated target text using prefix/suffix/offset context from TargetSelector.
+        if index is not None:
+            norm_page = NormalizedText(index.text)
+            outcome = score_candidates(annotation.target, norm_page)
+            if isinstance(outcome, MatchResult):
+                raw = outcome.candidate.raw_span
+                anchor = resolve_pdf_anchor(index, raw.start, raw.end)
+                if anchor is not None:
+                    return anchor
+                # span covers only whitespace/separators; fall through to legacy
+            elif isinstance(outcome, AmbiguousResult):
+                # Fail-closed: do NOT guess the first hit when we know it's ambiguous.
+                logger.debug(
+                    "Ambiguous target %r: %d near-tie candidates — skipping annotation %s",
+                    annotation.target.exact,
+                    len(outcome.candidates),
+                    annotation.id,
+                )
+                return None
+            # NoMatchResult: fall through to the existing _search_variants + page.search_for chain
+        # ---- end scorer path -------------------------------------------------------
 
         for variant in self._search_variants(normalized):
             hits = page.search_for(variant)
