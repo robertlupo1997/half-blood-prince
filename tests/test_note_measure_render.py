@@ -72,7 +72,11 @@ def test_long_note_box_fits_wrapped_render(tmp_path: Path) -> None:
     """
     ann = Annotation(
         id="ln",
-        target=TargetSelector(exact="Sopophorous bean"),
+        target=TargetSelector(
+            exact="Sopophorous bean",
+            prefix="Cut the ",
+            suffix=" with a silver knife",
+        ),
         annotation_type=AnnotationType.CORRECTION,
         content=_LONG,
         confidence=0.9,
