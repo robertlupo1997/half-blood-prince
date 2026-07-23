@@ -85,12 +85,6 @@ console = Console()
 # Backward-compatible module export; the CLI no longer supplies this as a flag default.
 DEFAULT_MODEL = _ANNOTATION_DEFAULT_MODEL
 
-DEFAULT_PERSONA = (
-    "A brilliant, sardonic expert who has mastered this subject and can't "
-    "help scrawling corrections and improvements in the margins. Terse. "
-    "Impatient with mediocrity. Occasionally shows flashes of dark humor."
-)
-
 _CommandFunction = TypeVar("_CommandFunction", bound=Callable[..., Any])
 
 
@@ -175,6 +169,30 @@ def _resolve_provider_and_build(
         raise click.ClickException(str(exc)) from exc
 
     return config, provider_obj
+
+
+def _resolve_persona(
+    persona_flag: str | None,
+    persona_file: Path | None,
+    config_persona: str | None,
+) -> str | None:
+    """Resolve effective persona: CLI flag > CLI file > config > None."""
+    if persona_flag is not None and persona_file is not None:
+        raise click.UsageError(
+            "--persona and --persona-file are mutually exclusive; provide at most one."
+        )
+    if persona_flag is not None:
+        return persona_flag
+    if persona_file is not None:
+        if not persona_file.exists():
+            raise click.ClickException(f"Persona file not found: {persona_file}")
+        try:
+            return persona_file.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise click.ClickException(
+                f"Could not read persona file {persona_file}: {exc}"
+            ) from exc
+    return config_persona
 
 
 def _parse_page_range(spec: str | None, total_pages: int) -> list[int]:
@@ -371,8 +389,25 @@ def main() -> None:
 @click.option("-o", "--output", "output_file", required=True,
               type=click.Path(dir_okay=False, path_type=Path),
               help="Path to write the annotated file (.pdf or .epub, matching the input).")
-@click.option("--persona", default=DEFAULT_PERSONA, show_default=False,
-              help="Annotator personality description.")
+@click.option(
+    "--persona",
+    default=None,
+    show_default=False,
+    help=(
+        "Annotator personality description. Defaults to the Half-Blood Prince "
+        "(Severus Snape) persona when not specified."
+    ),
+)
+@click.option(
+    "--persona-file",
+    "persona_file",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Path to a UTF-8 text file containing the annotator persona. "
+        "Mutually exclusive with --persona."
+    ),
+)
 @click.option("--pages", default=None, help="Page/chapter range, e.g. '1-5,8'. Default: all.")
 @click.option("--max-per-page", default=5, show_default=True,
               help="Max annotations per page/chapter.")
@@ -404,7 +439,8 @@ def main() -> None:
 def annotate(
     input_file: Path,
     output_file: Path,
-    persona: str,
+    persona: str | None,
+    persona_file: Path | None,
     pages: str | None,
     max_per_page: int,
     font: str | None,
@@ -459,8 +495,9 @@ def annotate(
         allow_insecure_http,
         config_path,
     )
+    effective_persona = _resolve_persona(persona, persona_file, config.persona)
     generator = AnnotationGenerator(
-        persona=persona,
+        persona=effective_persona,
         model=config.model,
         provider=provider_obj,
         concurrency=config.concurrency,
@@ -546,13 +583,29 @@ def annotate(
 @main.command()
 @click.argument("input_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--pages", default="1-3", show_default=True, help="Page/chapter range to preview.")
-@click.option("--persona", default=DEFAULT_PERSONA, show_default=False)
+@click.option(
+    "--persona",
+    default=None,
+    show_default=False,
+    help="Annotator personality description.",
+)
+@click.option(
+    "--persona-file",
+    "persona_file",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Path to a UTF-8 text file containing the annotator persona. "
+        "Mutually exclusive with --persona."
+    ),
+)
 @click.option("--max-per-page", default=5, show_default=True)
 @_provider_options
 def preview(
     input_file: Path,
     pages: str,
-    persona: str,
+    persona: str | None,
+    persona_file: Path | None,
     max_per_page: int,
     provider: str | None,
     model: str | None,
@@ -584,8 +637,9 @@ def preview(
         allow_insecure_http,
         config_path,
     )
+    effective_persona = _resolve_persona(persona, persona_file, config.persona)
     generator = AnnotationGenerator(
-        persona=persona,
+        persona=effective_persona,
         model=config.model,
         provider=provider_obj,
         concurrency=config.concurrency,
