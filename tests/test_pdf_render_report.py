@@ -43,7 +43,7 @@ SAMPLE_PDF = FIXTURES_DIR / "potions_textbook.pdf"
 # Passages known to appear verbatim on each page of the fixture.
 _PAGE_TEXT = {
     1: "Potion-making is, and has always been, a discipline of exactitude.",
-    2: "Sopophorous bean",
+    2: "The Draught of Living Death is among the most powerful sleeping potions",
     3: "Amortentia is widely considered the most powerful love potion in existence.",
     4: "Felix Felicis",
     5: "Golpalott's Third Law",
