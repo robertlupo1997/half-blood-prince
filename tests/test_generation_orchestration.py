@@ -44,13 +44,11 @@ class _Recorder:
     scripted ``(annotations, attempted, failed)``. Blank pages are skipped
     exactly as the real helper does, so blank handling stays faithful.
 
-    As of P1-T5, the real helper returns a 4-tuple (the trailing element is
-    the ``ProviderError | None`` that failed the page, used to populate the
-    per-page ``GenerationReport``). None of the orchestration behavior this
-    file exercises (context windowing, running-notes folding, the
-    confidence cap, blank-page handling) depends on that error object, so
-    this double always synthesizes ``None`` for it -- only the tuple arity
-    needs to match, not its content.
+    The real helper returns a 5-tuple whose trailing elements are the
+    ``ProviderError | None`` and ``GenerationUsage | None``. None of the
+    orchestration behavior this file exercises (context windowing,
+    running-notes folding, the confidence cap, blank-page handling) depends
+    on those values, so this double always synthesizes ``None`` for both.
     """
 
     def __init__(self, results: dict[int, tuple[list[Annotation], bool, bool]]) -> None:
@@ -59,14 +57,14 @@ class _Recorder:
 
     def __call__(
         self, page_text: str, page_number: int, book_context: str
-    ) -> tuple[list[Annotation], bool, bool, None]:
+    ) -> tuple[list[Annotation], bool, bool, None, None]:
         self.calls.append(
             types.SimpleNamespace(text=page_text, number=page_number, context=book_context)
         )
         if not page_text or not page_text.strip():
-            return [], False, False, None
+            return [], False, False, None, None
         annotations, attempted, failed = self.results.get(page_number, ([], True, False))
-        return annotations, attempted, failed, None
+        return annotations, attempted, failed, None, None
 
 
 def _generator() -> AnnotationGenerator:
