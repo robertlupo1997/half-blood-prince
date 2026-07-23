@@ -383,10 +383,14 @@ def test_project_toml_api_key_env_name_is_fine(tmp_path):
     assert result.api_key_env == "CUSTOM_KEY_VAR"
 
 
-# --- 6. concurrency hard-enforced to 1 --------------------------------------
+# --- 6. concurrency unlocked: clamp 1..8, default 3 -------------------------
+# Phase-1 hard-lock removed.  Concurrency is now a user-settable parameter
+# clamped to the range [1, 8].  Values inside that range pass through without a
+# warning; values outside it are clamped and a WARNING is emitted.
 
 
-def test_concurrency_always_one_regardless_of_request(tmp_path, caplog):
+def test_concurrency_valid_value_passes_through(tmp_path, caplog):
+    """concurrency=3 (inside 1..8) resolves as-is with no warning."""
     project_toml = "[generation]\nconcurrency = 3\n"
     with caplog.at_level(logging.WARNING):
         result = _resolve(
@@ -395,14 +399,58 @@ def test_concurrency_always_one_regardless_of_request(tmp_path, caplog):
             project_toml=project_toml,
         )
 
-    assert result.concurrency == 1
-    assert result.sources["concurrency"] == "phase1_enforced"
+    assert result.concurrency == 3
+    assert result.sources["concurrency"] == "project_config"
+    assert not any("concurrency" in record.message.lower() for record in caplog.records)
+
+
+def test_concurrency_default_is_three_when_not_configured(tmp_path, caplog):
+    """When no concurrency is set, default is 3 and no warning is emitted."""
+    with caplog.at_level(logging.WARNING):
+        result = _resolve(tmp_path, provider="ollama")
+
+    assert result.concurrency == 3
+    assert result.sources["concurrency"] == "default"
+    assert not any("concurrency" in record.message.lower() for record in caplog.records)
+
+
+def test_concurrency_above_max_clamped_to_eight(tmp_path, caplog):
+    """concurrency=9 (> 8) is clamped to 8 with a WARNING."""
+    project_toml = "[generation]\nconcurrency = 9\n"
+    with caplog.at_level(logging.WARNING):
+        result = _resolve(
+            tmp_path,
+            provider="ollama",
+            project_toml=project_toml,
+        )
+
+    assert result.concurrency == 8
     assert any("concurrency" in record.message.lower() for record in caplog.records)
 
 
-def test_concurrency_no_warning_when_nothing_requests_more_than_one(tmp_path, caplog):
+def test_concurrency_below_min_clamped_to_one(tmp_path, caplog):
+    """concurrency=0 (< 1) is clamped to 1 with a WARNING."""
+    project_toml = "[generation]\nconcurrency = 0\n"
     with caplog.at_level(logging.WARNING):
-        result = _resolve(tmp_path, provider="ollama")
+        result = _resolve(
+            tmp_path,
+            provider="ollama",
+            project_toml=project_toml,
+        )
+
+    assert result.concurrency == 1
+    assert any("concurrency" in record.message.lower() for record in caplog.records)
+
+
+def test_concurrency_explicit_one_no_warning(tmp_path, caplog):
+    """Explicitly requesting concurrency=1 (sequential) is valid and silent."""
+    project_toml = "[generation]\nconcurrency = 1\n"
+    with caplog.at_level(logging.WARNING):
+        result = _resolve(
+            tmp_path,
+            provider="ollama",
+            project_toml=project_toml,
+        )
 
     assert result.concurrency == 1
     assert not any("concurrency" in record.message.lower() for record in caplog.records)

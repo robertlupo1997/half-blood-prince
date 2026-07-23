@@ -109,14 +109,14 @@ def test_all_pages_failing_raises() -> None:
     gen = _generator_with([ProviderTransientError("boom"), ProviderTransientError("boom")])
     pages = [_page(1, "Real page text one."), _page(2, "Real page text two.")]
     with pytest.raises(AllPagesFailedError):
-        gen.generate_for_document(pages)
+        gen.generate_for_document(pages, concurrency=1)
 
 
 def test_all_pages_failing_report_has_per_page_statuses() -> None:
     gen = _generator_with([ProviderTransientError("boom"), ProviderTransientError("boom")])
     pages = [_page(1, "Real page text one."), _page(2, "Real page text two.")]
     with pytest.raises(AllPagesFailedError) as excinfo:
-        gen.generate_for_document(pages)
+        gen.generate_for_document(pages, concurrency=1)
 
     report = excinfo.value.report
     assert report is not None
@@ -133,7 +133,10 @@ def test_partial_failure_records_and_continues() -> None:
     gen = _generator_with([ProviderTransientError("boom"), [GOOD_ANNOTATION]])
     pages = [_page(1, "Real page text one."), _page(2, "Real page text two.")]
 
-    plan = gen.generate_for_document(pages)
+    # Pin to k=1: _FakeProvider uses a sequential index counter (_i) that is
+    # not thread-safe; these tests exercise failure-handling semantics, not
+    # concurrency.  See test_async_generation.py for k>1 failure injection tests.
+    plan = gen.generate_for_document(pages, concurrency=1)
 
     assert gen.failed_pages == [1]
     assert plan.pages[0].annotations == []
@@ -146,7 +149,7 @@ def test_partial_incomplete_response_records_failure_and_continues() -> None:
     gen = _generator_with([IncompleteResponseError("truncated"), [GOOD_ANNOTATION]])
     pages = [_page(1, "Real page text one."), _page(2, "Real page text two.")]
 
-    plan = gen.generate_for_document(pages)
+    plan = gen.generate_for_document(pages, concurrency=1)
 
     assert gen.failed_pages == [1]
     assert len(plan.pages[1].annotations) == 1
@@ -156,7 +159,7 @@ def test_all_empty_pages_do_not_raise() -> None:
     # No provider call is made for blank pages, so nothing "failed".
     gen = _generator_with([])  # complete() would IndexError if ever called
     pages = [_page(1, "   \n\t "), _page(2, "")]
-    plan = gen.generate_for_document(pages)
+    plan = gen.generate_for_document(pages, concurrency=1)
     assert gen.failed_pages == []
     assert all(p.annotations == [] for p in plan.pages)
 
