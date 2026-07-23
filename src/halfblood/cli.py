@@ -321,6 +321,17 @@ def _generate_with_progress(
     return generate(pages, max_annotations_per_page=max_annotations_per_page)
 
 
+def _print_usage_line(generator: object, console: Console) -> None:
+    """Print a token-count summary line if usage data is available."""
+    usage = getattr(generator, "usage_totals", None)
+    if usage is None or usage.pages_with_usage == 0:
+        return
+    line = f"Tokens: {usage.input_tokens} in / {usage.output_tokens} out"
+    if usage.pages_missing_usage > 0:
+        line += f" — usage unavailable for {usage.pages_missing_usage} page(s)"
+    console.print(line)
+
+
 def _print_annotated_page(annotated_page: AnnotatedPage) -> None:
     """Pretty-print one page's annotations."""
     if not annotated_page.annotations:
@@ -490,6 +501,7 @@ def annotate(
         except (AllPagesFailedError, ProviderError) as exc:
             raise click.ClickException(str(exc)) from exc
         progress.update(gen_task, completed=len(selected))
+        _print_usage_line(generator, console)
 
         if dry_run:
             output_file.write_text(plan.model_dump_json(), encoding="utf-8")
@@ -617,6 +629,7 @@ def preview(
             f"and were left un-annotated: {generator.failed_pages}"
         )
 
+    _print_usage_line(generator, console)
     console.print()
     total = 0
     for ap in plan.pages:

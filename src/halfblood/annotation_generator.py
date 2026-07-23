@@ -20,18 +20,34 @@ import logging
 import os
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass as _dataclass
 
 from halfblood.config import DEFAULT_ANTHROPIC_MODEL as DEFAULT_MODEL
 from halfblood.document_processor import PageContent
 from halfblood.generation.errors import ProviderError
 from halfblood.generation.providers.anthropic import AnthropicProvider
-from halfblood.generation.providers.base import GenerationRequest, GenerationResult, LLMProvider
+from halfblood.generation.providers.base import (
+    GenerationRequest,
+    GenerationResult,
+    GenerationUsage,
+    LLMProvider,
+)
 from halfblood.generation.report import AllPagesFailedError as _ReportAllPagesFailedError
 from halfblood.generation.report import GenerationReport, PageGenerationStatus
 from halfblood.generation.schema import generate_annotation_schema
 from halfblood.models import AnnotatedPage, Annotation, AnnotationPlan, AnnotationType
 
 logger = logging.getLogger(__name__)
+
+
+@_dataclass
+class UsageTotals:
+    """Aggregated token usage for a complete generate_for_document run."""
+
+    input_tokens: int
+    output_tokens: int
+    pages_with_usage: int
+    pages_missing_usage: int
 
 
 class AllPagesFailedError(_ReportAllPagesFailedError):
@@ -173,6 +189,12 @@ class AnnotationGenerator:
         self.persona = persona or DEFAULT_PERSONA
         self.concurrency = concurrency
         self.failed_pages: list[int] = []
+        self.usage_totals = UsageTotals(
+            input_tokens=0,
+            output_tokens=0,
+            pages_with_usage=0,
+            pages_missing_usage=0,
+        )
         if provider is not None:
             self._provider: LLMProvider = provider
         else:
@@ -276,14 +298,20 @@ class AnnotationGenerator:
             empty list if the page has no meaningful text or if generation
             fails after validation.
         """
-        annotations, _attempted, _failed, _error = self._generate_for_page_tracked(
+        annotations, _attempted, _failed, _error, _usage = self._generate_for_page_tracked(
             page_text, page_number, book_context
         )
         return annotations
 
     def _generate_for_page_tracked(
         self, page_text: str, page_number: int, book_context: str
-    ) -> tuple[list[Annotation], bool, bool, ProviderError | None]:
+    ) -> tuple[
+        list[Annotation],
+        bool,
+        bool,
+        ProviderError | None,
+        GenerationUsage | None,
+    ]:
         """Generate annotations and track whether the provider call failed.
 
         ``attempted`` is False for a blank page (no API call is made);
@@ -291,7 +319,7 @@ class AnnotationGenerator:
         """
         if not page_text or not page_text.strip():
             logger.debug("Page %d has no text; skipping annotation.", page_number)
-            return [], False, False, None
+            return [], False, False, None, None
 
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(page_text, page_number, book_context)
@@ -308,17 +336,17 @@ class AnnotationGenerator:
             result = self._provider.complete(request)
         except ProviderError as exc:
             logger.error("Provider error while annotating page %d: %s", page_number, exc)
-            return [], True, True, exc
+            return [], True, True, exc, None
         except Exception as exc:
             error = ProviderError(
                 f"Unexpected {type(exc).__name__} from provider while annotating "
                 f"page {page_number}: {exc}"
             )
             logger.exception("Unexpected provider error while annotating page %d", page_number)
-            return [], True, True, error
+            return [], True, True, error, None
 
         annotations = self._to_annotations(result, page_number)
-        return annotations, True, False, None
+        return annotations, True, False, None, result.usage
 
     def _to_annotations(self, result: GenerationResult, page_number: int) -> list[Annotation]:
         return [
@@ -379,6 +407,10 @@ class AnnotationGenerator:
         running_notes: list[str] = []
         attempted = 0
         failed_pages: list[int] = []
+        total_input_tokens = 0
+        total_output_tokens = 0
+        pages_with_usage = 0
+        pages_missing_usage = 0
         statuses: list[PageGenerationStatus] = []
         context_window_chars = 500
 
@@ -417,7 +449,13 @@ class AnnotationGenerator:
                 tuple[
                     int,
                     PageContent,
-                    tuple[list[Annotation], bool, bool, ProviderError | None],
+                    tuple[
+                        list[Annotation],
+                        bool,
+                        bool,
+                        ProviderError | None,
+                        GenerationUsage | None,
+                    ],
                 ]
             ] = []
             if k == 1:
@@ -444,7 +482,13 @@ class AnnotationGenerator:
                         tuple[
                             int,
                             PageContent,
-                            tuple[list[Annotation], bool, bool, ProviderError | None],
+                            tuple[
+                                list[Annotation],
+                                bool,
+                                bool,
+                                ProviderError | None,
+                                GenerationUsage | None,
+                            ],
                         ]
                         | None
                     ] = [None] * len(wave_tasks)
@@ -458,7 +502,7 @@ class AnnotationGenerator:
             for (
                 _page_index,
                 page,
-                (page_annotations, attempted_call, failed, error),
+                (page_annotations, attempted_call, failed, error, page_usage),
             ) in wave_results:
                 if attempted_call:
                     attempted += 1
@@ -491,6 +535,15 @@ class AnnotationGenerator:
                         )
                     )
 
+                # Accumulate usage only for pages with successful provider calls.
+                if attempted_call and not failed:
+                    if page_usage is not None:
+                        total_input_tokens += page_usage.input_tokens
+                        total_output_tokens += page_usage.output_tokens
+                        pages_with_usage += 1
+                    else:
+                        pages_missing_usage += 1
+
                 if len(page_annotations) > max_annotations_per_page:
                     page_annotations = sorted(
                         page_annotations, key=lambda a: a.confidence, reverse=True
@@ -517,6 +570,12 @@ class AnnotationGenerator:
             del running_notes[:-8]
 
         self.failed_pages = failed_pages
+        self.usage_totals = UsageTotals(
+            input_tokens=total_input_tokens,
+            output_tokens=total_output_tokens,
+            pages_with_usage=pages_with_usage,
+            pages_missing_usage=pages_missing_usage,
+        )
         if attempted and len(failed_pages) == attempted:
             report = GenerationReport(statuses=tuple(statuses))
             raise AllPagesFailedError(
