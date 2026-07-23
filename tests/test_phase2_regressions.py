@@ -121,7 +121,7 @@ _FAKE_CLI_SOURCES: dict[str, str] = {
     "structured_output": "preset",
     "timeout_seconds": "default",
     "max_retries": "default",
-    "concurrency": "phase1",
+    "concurrency": "default",
     "allow_insecure_http": "default",
 }
 
@@ -133,7 +133,7 @@ _FAKE_CLI_CONFIG = ResolvedConfig(
     structured_output="tool",
     timeout_seconds=60.0,
     max_retries=0,
-    concurrency=1,
+    concurrency=3,
     allow_insecure_http=False,
     sources=_FAKE_CLI_SOURCES,
 )
@@ -159,6 +159,7 @@ class _FakeGenerator:
         persona: str | None = None,
         model: str | None = None,
         provider: object | None = None,
+        concurrency: int = 3,
     ) -> None:
         self.failed_pages: list[int] = []
 

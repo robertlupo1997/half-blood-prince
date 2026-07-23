@@ -31,7 +31,10 @@ _SOURCE_PROJECT = "project_config"
 _SOURCE_USER = "user_config"
 _SOURCE_PRESET = "provider_preset"
 _SOURCE_DEFAULT = "default"
-_SOURCE_PHASE1 = "phase1_enforced"
+
+_CONCURRENCY_DEFAULT = 3
+_CONCURRENCY_MIN = 1
+_CONCURRENCY_MAX = 8
 
 _ENVIRONMENT_FIELDS = {
     "provider": "HALFBLOOD_PROVIDER",
@@ -418,22 +421,34 @@ def resolve_generation_config(
 
     concurrency_setting = explicit("concurrency")
     if concurrency_setting is not None:
-        requested_concurrency = concurrency_setting[0]
         try:
-            requests_one = (
-                not isinstance(requested_concurrency, bool)
-                and float(requested_concurrency) == 1.0
-            )
-        except (TypeError, ValueError):
-            requests_one = False
-        if not requests_one:
+            requested = int(float(concurrency_setting[0]))
+        except (TypeError, ValueError) as exc:
+            raise ProviderConfigurationError(
+                f"concurrency must be an integer, got {concurrency_setting[0]!r}"
+            ) from exc
+        if requested < _CONCURRENCY_MIN:
             logger.warning(
-                "Requested concurrency %r from %s is being held at 1 for Phase 1",
-                requested_concurrency,
-                concurrency_setting[1],
+                "Requested concurrency %d is below minimum (%d); clamping to %d.",
+                requested,
+                _CONCURRENCY_MIN,
+                _CONCURRENCY_MIN,
             )
-    concurrency = 1
-    sources["concurrency"] = _SOURCE_PHASE1
+            concurrency = _CONCURRENCY_MIN
+        elif requested > _CONCURRENCY_MAX:
+            logger.warning(
+                "Requested concurrency %d exceeds maximum (%d); clamping to %d.",
+                requested,
+                _CONCURRENCY_MAX,
+                _CONCURRENCY_MAX,
+            )
+            concurrency = _CONCURRENCY_MAX
+        else:
+            concurrency = requested
+        sources["concurrency"] = concurrency_setting[1]
+    else:
+        concurrency = _CONCURRENCY_DEFAULT
+        sources["concurrency"] = _SOURCE_DEFAULT
 
     return ResolvedConfig(
         provider=provider,

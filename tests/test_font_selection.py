@@ -56,6 +56,7 @@ class _FakeGenerator:
         persona: str | None = None,
         model: str | None = None,
         provider: object | None = None,
+        concurrency: int = 3,
     ) -> None:
         # No **kwargs — any unexpected keyword from cli.py raises TypeError, surfacing a
         # signature mismatch rather than hiding it.  `provider=` arrived with the P1-T9a

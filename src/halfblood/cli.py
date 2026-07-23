@@ -413,6 +413,7 @@ def annotate(
         persona=persona,
         model=config.model,
         provider=provider_obj,
+        concurrency=config.concurrency,
     )
     console.print(
         f"Provider: {config.provider} | Model: {config.model} | Mode: {config.structured_output}"
@@ -522,6 +523,7 @@ def preview(
         persona=persona,
         model=config.model,
         provider=provider_obj,
+        concurrency=config.concurrency,
     )
     console.print(
         f"Provider: {config.provider} | Model: {config.model} | Mode: {config.structured_output}"

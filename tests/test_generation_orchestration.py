@@ -81,6 +81,10 @@ def _run(
 ) -> tuple[AnnotationPlan, _Recorder]:
     rec = _Recorder(results)
     gen._generate_for_page_tracked = rec  # type: ignore[method-assign,assignment]
+    # Pin to sequential (k=1) so call order and note carry-forward are deterministic.
+    # These tests exercise orchestration logic, not concurrency — see test_async_generation.py
+    # for concurrency tests.  Allow explicit override for tests that deliberately test k>1.
+    kwargs.setdefault("concurrency", 1)
     plan = gen.generate_for_document(pages, **kwargs)  # type: ignore[arg-type]
     return plan, rec
 
@@ -203,5 +207,5 @@ def test_all_failed_raises() -> None:
     rec = _Recorder({1: ([], True, True), 2: ([], True, True)})
     gen._generate_for_page_tracked = rec  # type: ignore[method-assign,assignment]
     with pytest.raises(AllPagesFailedError):
-        gen.generate_for_document(pages)
+        gen.generate_for_document(pages, concurrency=1)
     assert gen.failed_pages == [1, 2]
