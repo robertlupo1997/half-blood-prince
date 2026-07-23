@@ -33,7 +33,7 @@ from click.testing import CliRunner
 
 from halfblood.cli import main as cli_main
 from halfblood.config import ResolvedConfig, resolve_generation_config
-from halfblood.generation.errors import ProviderTransientError
+from halfblood.generation.errors import StructuredOutputError
 from halfblood.generation.providers.base import (
     GenerationResult,
     GenerationUsage,
@@ -109,10 +109,13 @@ class DeterministicStubProvider:
 
 
 class _PartialFailureProvider:
-    """Provider that raises ProviderTransientError for the first call only.
+    """Provider that raises StructuredOutputError for the first call only.
 
-    Models a single transient provider failure — page 1 is lost, pages 2-N
+    Models a page whose LLM response was malformed — page 1 is lost, pages 2-N
     succeed.  Verifies that the CLI continues and still writes the output.
+    Using StructuredOutputError (retryable=False) is more faithful to the
+    brief ("a page's completion is malformed") and decouples the test from
+    any future retry-on-transient layer.
     """
 
     def __init__(self, success_response: RecordAnnotations) -> None:
@@ -130,9 +133,8 @@ class _PartialFailureProvider:
     def complete(self, request: Any) -> GenerationResult:
         self._calls += 1
         if self._calls == 1:
-            raise ProviderTransientError(
-                "stub: simulated transient failure on first page call",
-                status_code=503,
+            raise StructuredOutputError(
+                "stub: simulated malformed output response on first page call",
             )
         return GenerationResult(
             parsed=self._success,
@@ -540,7 +542,7 @@ class TestDeterminism:
 class TestFailureSurface:
     """Verify CLI behaviour under partial provider failure.
 
-    A ProviderTransientError on the first page call (page 1) leaves pages 2–5
+    A StructuredOutputError on the first page call (page 1) leaves pages 2–5
     un-annotated for page 1 but allows pages 2–5 to succeed.  The CLI must:
     - exit 0 (partial failure is not fatal)
     - write the output artifact
@@ -574,8 +576,8 @@ class TestFailureSurface:
         result, _ = _invoke_annotate(
             tmp_path, stub, input_file=_PDF_FIXTURE, output_suffix="pdf"
         )
-        assert "Warning" in result.output and "page" in result.output.lower(), (
-            f"Expected a page-failure warning in CLI output:\n{result.output}"
+        assert "1 page(s) failed" in result.output, (
+            f"Expected '1 page(s) failed' warning in CLI output:\n{result.output}"
         )
 
     def test_partial_failure_reports_surviving_annotation_count(
@@ -604,7 +606,7 @@ class TestFailureSurface:
                 )
 
             def complete(self, request: Any) -> GenerationResult:
-                raise ProviderTransientError("stub: always fail", status_code=503)
+                raise StructuredOutputError("stub: always fail — malformed output")
 
         stub = _AlwaysFailProvider()
         out_path = tmp_path / "out.pdf"
