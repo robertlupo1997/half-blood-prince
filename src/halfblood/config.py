@@ -46,6 +46,8 @@ _ENVIRONMENT_FIELDS = {
     "max_retries": "HALFBLOOD_MAX_RETRIES",
     "concurrency": "HALFBLOOD_CONCURRENCY",
     "allow_insecure_http": "HALFBLOOD_ALLOW_INSECURE_HTTP",
+    "persona": "HALFBLOOD_PERSONA",
+    "persona_file": "HALFBLOOD_PERSONA_FILE",
 }
 
 _GENERATION_FIELDS = {
@@ -112,6 +114,7 @@ class ResolvedConfig:
     concurrency: int
     allow_insecure_http: bool
     sources: dict[str, str]
+    persona: str | None = None
 
     def safe_repr(self) -> str:
         """Return diagnostics containing settings and sources, but no key values."""
@@ -173,6 +176,16 @@ def _load_toml(path: Path) -> dict[str, Any]:
         reject_literal_secrets(table, f"providers.{table_name}")
 
     return data
+
+
+def _read_persona_file(path: Path, context: str) -> str:
+    """Read a persona file or raise ProviderConfigurationError."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ProviderConfigurationError(
+            f"Could not read persona file {path} ({context})"
+        ) from exc
 
 
 def _table(config: Mapping[str, Any], name: str, path: Path) -> Mapping[str, Any]:
@@ -450,6 +463,64 @@ def resolve_generation_config(
         concurrency = _CONCURRENCY_DEFAULT
         sources["concurrency"] = _SOURCE_DEFAULT
 
+    resolved_persona: str | None = None
+    persona_levels = (
+        (
+            cli.get("persona"),
+            cli.get("persona_file"),
+            _SOURCE_CLI,
+            None,
+            "CLI",
+        ),
+        (
+            environment.get(_ENVIRONMENT_FIELDS["persona"]),
+            environment.get(_ENVIRONMENT_FIELDS["persona_file"]),
+            _SOURCE_ENVIRONMENT,
+            None,
+            "environment",
+        ),
+        (
+            project_generation.get("persona"),
+            project_generation.get("persona_file"),
+            _SOURCE_PROJECT,
+            project_path.parent,
+            f"project configuration {project_path}",
+        ),
+        (
+            user_generation.get("persona"),
+            user_generation.get("persona_file"),
+            _SOURCE_USER,
+            user_path.parent,
+            f"user configuration {user_path}",
+        ),
+    )
+    for persona_value, persona_file_value, source, relative_to, context in persona_levels:
+        if persona_value is not None and persona_file_value is not None:
+            raise ProviderConfigurationError(
+                f"persona and persona_file cannot both be set in {context}"
+            )
+
+        if persona_value is not None:
+            if not isinstance(persona_value, str):
+                raise ProviderConfigurationError("persona must be a string")
+            if persona_value:
+                resolved_persona = persona_value
+                sources["persona"] = source
+                break
+
+        if persona_file_value is not None:
+            if not isinstance(persona_file_value, (str, Path)):
+                raise ProviderConfigurationError("persona_file must be a path")
+            if str(persona_file_value):
+                persona_path = Path(persona_file_value)
+                if relative_to is not None and not persona_path.is_absolute():
+                    persona_path = relative_to / persona_path
+                file_persona = _read_persona_file(persona_path, context)
+                if file_persona:
+                    resolved_persona = file_persona
+                    sources["persona"] = source
+                    break
+
     return ResolvedConfig(
         provider=provider,
         model=model,
@@ -461,6 +532,7 @@ def resolve_generation_config(
         concurrency=concurrency,
         allow_insecure_http=allow_insecure_http,
         sources=sources,
+        persona=resolved_persona,
     )
 
 
