@@ -19,9 +19,7 @@ from __future__ import annotations
 import threading
 import types
 
-import pytest
-
-from halfblood.annotation_generator import AllPagesFailedError, AnnotationGenerator
+from halfblood.annotation_generator import AnnotationGenerator
 from halfblood.document_processor import PageContent
 from halfblood.generation.errors import ProviderTransientError
 from halfblood.generation.providers.base import (
@@ -30,7 +28,6 @@ from halfblood.generation.providers.base import (
     ProviderCapabilities,
 )
 from halfblood.generation.schema import AnnotationDraft, RecordAnnotations
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -217,7 +214,7 @@ def test_k1_two_runs_produce_identical_plans() -> None:
     gen2 = AnnotationGenerator(provider=provider2)
     plan2 = gen2.generate_for_document(pages, concurrency=1)
 
-    for p1, p2 in zip(plan1.pages, plan2.pages):
+    for p1, p2 in zip(plan1.pages, plan2.pages, strict=True):
         assert p1.page_number == p2.page_number
         assert [a.content for a in p1.annotations] == [a.content for a in p2.annotations]
 
@@ -334,7 +331,7 @@ def test_k3_determinism_two_runs_identical() -> None:
     gen2 = AnnotationGenerator(provider=provider2)
     plan2 = gen2.generate_for_document(pages, concurrency=3)
 
-    for p1, p2 in zip(plan1.pages, plan2.pages):
+    for p1, p2 in zip(plan1.pages, plan2.pages, strict=True):
         assert p1.page_number == p2.page_number
         assert [a.content for a in p1.annotations] == [a.content for a in p2.annotations]
 

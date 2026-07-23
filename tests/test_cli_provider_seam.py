@@ -51,7 +51,7 @@ _FAKE_SOURCES: dict[str, str] = {
     "structured_output": "preset",
     "timeout_seconds": "default",
     "max_retries": "default",
-    "concurrency": "phase1",
+    "concurrency": "default",
     "allow_insecure_http": "default",
 }
 
@@ -63,7 +63,7 @@ _FAKE_CONFIG = ResolvedConfig(
     structured_output="tool",
     timeout_seconds=60.0,
     max_retries=0,
-    concurrency=1,
+    concurrency=3,
     allow_insecure_http=False,
     sources=_FAKE_SOURCES,
 )
@@ -128,6 +128,7 @@ class _CapturingGenerator:
         persona: str | None = None,
         model: str | None = None,
         api_key: str | None = None,
+        concurrency: int = 3,
     ) -> None:
         # Exact keyword surface of AnnotationGenerator.__init__ — no **kwargs so an
         # unexpected keyword from cli.py raises TypeError instead of hiding the mismatch.
@@ -782,18 +783,14 @@ def test_eval_harness_imports_without_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC 6 — Concurrency: CLI plumbs the flag through; resolver CLAMPS to 1.
+# AC 6 — Concurrency: CLI plumbs the flag through; resolver clamps to 1..8.
 #
-# All five tests drive the REAL resolve_generation_config (resolver NOT patched)
-# so the merged clamp in config.py is actually exercised.
+# Phase-1 hard-lock removed.  Concurrency is now unlocked: valid values (1..8)
+# pass through unmodified; out-of-range values are clamped with a WARNING.
+# Default is 3.
 #
-# The capturing_build_provider helper records the ResolvedConfig that the CLI
-# produced, letting us assert concurrency==1 and sources["concurrency"]==
-# "phase1_enforced" without patching the resolver.
-#
-# INTENDED FAILURES (before Codex builds):
-#   tests 1-4: --concurrency or --provider is not yet a flag → exit_code 2
-#   test 5: --config is not yet a flag → exit_code 2
+# All tests drive the REAL resolve_generation_config (resolver NOT patched)
+# so the unlock+clamp in config.py is actually exercised.
 # ---------------------------------------------------------------------------
 
 
@@ -830,15 +827,10 @@ def _make_concurrency_fakes(
 def test_explicit_concurrency_three_is_clamped_not_rejected(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog
 ) -> None:
-    """--concurrency 3 must be ACCEPTED (exit 0); the resolver clamps it to 1 (AC 6).
+    """--concurrency 3 must be ACCEPTED (exit 0) and pass through unchanged (AC 6).
 
-    The CLI must NOT raise a UsageError or ClickException for out-of-range concurrency —
-    that is the resolver's job.  Asserts: exit 0, resolved concurrency == 1,
-    sources["concurrency"] == "phase1_enforced", and a warning was logged.
-
-    INTENDED FAILURE (before Codex builds): --concurrency is not yet a flag, so Click
-    exits with "No such option: --concurrency" (exit_code 2).
-    The assertion ``result.exit_code == 0`` will fail.
+    3 is inside the valid range 1..8, so no clamping or warning occurs.
+    Asserts: exit 0, resolved concurrency == 3, sources["concurrency"] == "cli".
     """
     import logging
 
@@ -870,24 +862,21 @@ def test_explicit_concurrency_three_is_clamped_not_rejected(
     )
     assert captured, "build_provider was never called — resolver may have raised"
     resolved = captured[0]
-    assert resolved.concurrency == 1, (
-        f"Resolved concurrency must be 1 (clamped from 3); got {resolved.concurrency}"
+    assert resolved.concurrency == 3, (
+        f"Resolved concurrency must be 3 (valid range, no clamp); got {resolved.concurrency}"
     )
-    assert resolved.sources.get("concurrency") == "phase1_enforced", (
-        f"sources['concurrency'] must be 'phase1_enforced'; got {resolved.sources.get('concurrency')!r}"
+    assert resolved.sources.get("concurrency") == "cli", (
+        f"sources['concurrency'] must be 'cli'; got {resolved.sources.get('concurrency')!r}"
     )
-    assert any("concurrency" in r.message.lower() for r in caplog.records), (
-        f"Expected a log warning about concurrency being clamped; got: {caplog.records}"
+    assert not any("concurrency" in r.message.lower() for r in caplog.records), (
+        f"No warning expected for concurrency=3 (valid range); got: {caplog.records}"
     )
 
 
 def test_explicit_concurrency_one_is_accepted(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """--concurrency 1 must be accepted (exit 0); resolver keeps it at 1 (AC 6).
-
-    INTENDED FAILURE (before Codex builds): --concurrency is not yet a flag → exit_code 2.
-    """
+    """--concurrency 1 must be accepted (exit 0); resolver keeps it at 1 (AC 6)."""
     captured, src, empty_cfg = _make_concurrency_fakes(monkeypatch, tmp_path)
 
     result = runner.invoke(
@@ -910,21 +899,18 @@ def test_explicit_concurrency_one_is_accepted(
     )
 
     assert result.exit_code == 0, (
-        f"--concurrency 1 must be accepted (matches Phase 1).\n"
+        f"--concurrency 1 must be accepted.\n"
         f"exit_code={result.exit_code}: {result.output}"
     )
     assert captured
     assert captured[0].concurrency == 1
-    assert captured[0].sources.get("concurrency") == "phase1_enforced"
+    assert captured[0].sources.get("concurrency") == "cli"
 
 
 def test_no_concurrency_flag_accepted(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Omitting --concurrency must succeed; resolver defaults to 1 (AC 6).
-
-    INTENDED FAILURE (before Codex builds): --provider is not yet a flag → exit_code 2.
-    """
+    """Omitting --concurrency must succeed; resolver defaults to 3 (AC 6)."""
     captured, src, empty_cfg = _make_concurrency_fakes(monkeypatch, tmp_path)
 
     result = runner.invoke(
@@ -949,19 +935,16 @@ def test_no_concurrency_flag_accepted(
         f"exit_code={result.exit_code}: {result.output}"
     )
     assert captured
-    assert captured[0].concurrency == 1
+    assert captured[0].concurrency == 3
 
 
 def test_concurrency_via_config_file_is_clamped(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog
 ) -> None:
-    """concurrency=3 in a --config TOML is clamped to 1 via the real resolver (AC 6).
+    """concurrency=3 in a --config TOML passes through unchanged (AC 6).
 
-    This is the config-file path test — it proves the clamp is not only a CLI-flag
-    behavior but is enforced at the resolver level for any source.  Mirrors the merged
-    test_concurrency_always_one_regardless_of_request in test_provider_config.py.
-
-    INTENDED FAILURE (before Codex builds): --config is not yet a flag → exit_code 2.
+    3 is inside the valid range 1..8, so no clamping or warning occurs.
+    Asserts: exit 0, resolved concurrency == 3, sources["concurrency"] == "project_config".
     """
     import logging
 
@@ -988,19 +971,19 @@ def test_concurrency_via_config_file_is_clamped(
         )
 
     assert result.exit_code == 0, (
-        f"concurrency=3 in TOML must succeed (resolver clamps it).\n"
+        f"concurrency=3 in TOML must succeed (valid range).\n"
         f"exit_code={result.exit_code}: {result.output}"
     )
     assert captured, "build_provider was never called"
     resolved = captured[0]
-    assert resolved.concurrency == 1, (
-        f"Resolved concurrency must be 1 (clamped from config-file value 3); got {resolved.concurrency}"
+    assert resolved.concurrency == 3, (
+        f"Resolved concurrency must be 3 (valid range, no clamp); got {resolved.concurrency}"
     )
-    assert resolved.sources.get("concurrency") == "phase1_enforced", (
-        f"sources['concurrency'] must be 'phase1_enforced'; got {resolved.sources.get('concurrency')!r}"
+    assert resolved.sources.get("concurrency") == "project_config", (
+        f"sources['concurrency'] must be 'project_config'; got {resolved.sources.get('concurrency')!r}"
     )
-    assert any("concurrency" in r.message.lower() for r in caplog.records), (
-        f"Expected a log warning about concurrency being clamped; got: {caplog.records}"
+    assert not any("concurrency" in r.message.lower() for r in caplog.records), (
+        f"No warning expected for concurrency=3 (valid range); got: {caplog.records}"
     )
 
 

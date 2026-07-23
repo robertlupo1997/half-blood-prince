@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from halfblood.config import DEFAULT_ANTHROPIC_MODEL as DEFAULT_MODEL
 from halfblood.document_processor import PageContent
@@ -149,6 +150,7 @@ class AnnotationGenerator:
         model: str = DEFAULT_MODEL,
         persona: str | None = None,
         provider: LLMProvider | None = None,
+        concurrency: int = 3,
     ) -> None:
         """Initialize the annotation generator.
 
@@ -159,6 +161,8 @@ class AnnotationGenerator:
             persona: A description of the annotator's personality and
                 style. If not provided, defaults to :data:`DEFAULT_PERSONA`
                 (a Snape-like "Half-Blood Prince" voice).
+            provider: Provider used to complete generation requests.
+            concurrency: Default number of pages to process concurrently.
 
         Raises:
             ValueError: If no API key is provided and none is found in the
@@ -166,6 +170,7 @@ class AnnotationGenerator:
         """
         self.model = model
         self.persona = persona or DEFAULT_PERSONA
+        self.concurrency = concurrency
         self.failed_pages: list[int] = []
         if provider is not None:
             self._provider: LLMProvider = provider
@@ -321,16 +326,21 @@ class AnnotationGenerator:
         ]
 
     def generate_for_document(
-        self, pages: list[PageContent], max_annotations_per_page: int = 5
+        self,
+        pages: list[PageContent],
+        max_annotations_per_page: int = 5,
+        *,
+        concurrency: int | None = None,
     ) -> AnnotationPlan:
         """Generate a full annotation plan for a multi-page document.
 
-        Processes pages in order, feeding each call a window of context
-        (the tail of the previous page and the head of the next page) so
-        that the annotator's voice, invented techniques, and running
-        grudges stay consistent across the document. After each page, the
-        page's own annotations are folded into a short rolling summary
-        that is passed forward as additional context for later pages.
+        Processes pages in consecutive waves of ``concurrency`` pages.
+        Within a wave, all pages are dispatched concurrently; each page's
+        prompt sees ``running_notes`` as accumulated through the end of the
+        previous wave, not from pages earlier in the same wave. After a wave
+        completes, its INVENTION/WARNING notes are folded into
+        ``running_notes`` in page order. With ``concurrency=1``, this reduces
+        exactly to the original sequential behavior.
 
         Args:
             pages: The document's pages, in order.
@@ -338,12 +348,16 @@ class AnnotationGenerator:
                 to keep per page. If the model returns more than this, the
                 highest-confidence annotations are kept and the rest are
                 dropped.
+            concurrency: Number of consecutive pages to process concurrently.
+                Defaults to the value configured on this generator.
 
         Returns:
             An :class:`AnnotationPlan` containing an :class:`AnnotatedPage`
             for every input page (pages with zero annotations are still
             included, with an empty annotations list).
         """
+        k = concurrency if concurrency is not None else self.concurrency
+
         plan = AnnotationPlan(
             title=f"Annotated Document ({len(pages)} pages)",
             prince_persona=self.persona,
@@ -356,23 +370,21 @@ class AnnotationGenerator:
         statuses: list[PageGenerationStatus] = []
         context_window_chars = 500
 
-        for i, page in enumerate(pages):
-            prev_tail = ""
-            next_head = ""
-
+        def _build_context(i: int) -> str:
+            """Build context for a page using its global document index."""
+            context_parts = []
             if i > 0:
                 prev_text = pages[i - 1].text or ""
                 prev_tail = prev_text[-context_window_chars:]
+                if prev_tail:
+                    context_parts.append(f"End of previous page:\n...{prev_tail}")
 
             if i + 1 < len(pages):
                 next_text = pages[i + 1].text or ""
                 next_head = next_text[:context_window_chars]
+                if next_head:
+                    context_parts.append(f"Start of next page:\n{next_head}...")
 
-            context_parts = []
-            if prev_tail:
-                context_parts.append(f"End of previous page:\n...{prev_tail}")
-            if next_head:
-                context_parts.append(f"Start of next page:\n{next_head}...")
             if running_notes:
                 recent_notes = running_notes[-8:]
                 context_parts.append(
@@ -380,59 +392,115 @@ class AnnotationGenerator:
                     + "\n".join(f"- {note}" for note in recent_notes)
                 )
 
-            book_context = "\n\n".join(context_parts)
+            return "\n\n".join(context_parts)
 
-            annotations, attempted_call, failed, error = self._generate_for_page_tracked(
-                page.text, page.page_number, book_context
-            )
-            if attempted_call:
-                attempted += 1
-                if failed:
-                    failed_pages.append(page.page_number)
-                    statuses.append(
-                        PageGenerationStatus(
-                            unit_id=str(page.page_number),
-                            ordinal=page.page_number,
-                            status="failed",
-                            attempts=getattr(error, "attempts", 1) if error else 1,
-                            error=error,
-                        )
+        for wave_start in range(0, len(pages), k):
+            wave_pages = pages[wave_start : wave_start + k]
+            wave_tasks = [
+                (page_index, page, _build_context(page_index))
+                for page_index, page in enumerate(wave_pages, start=wave_start)
+            ]
+
+            wave_results: list[
+                tuple[
+                    int,
+                    PageContent,
+                    tuple[list[Annotation], bool, bool, ProviderError | None],
+                ]
+            ] = []
+            if k == 1:
+                for page_index, page, book_context in wave_tasks:
+                    result = self._generate_for_page_tracked(
+                        page.text, page.page_number, book_context
                     )
+                    wave_results.append((page_index, page, result))
+            else:
+                with ThreadPoolExecutor(max_workers=k) as executor:
+                    future_to_idx = {}
+                    for wave_index, (page_index, page, book_context) in enumerate(
+                        wave_tasks
+                    ):
+                        future = executor.submit(
+                            self._generate_for_page_tracked,
+                            page.text,
+                            page.page_number,
+                            book_context,
+                        )
+                        future_to_idx[future] = (wave_index, page_index, page)
+
+                    slots: list[
+                        tuple[
+                            int,
+                            PageContent,
+                            tuple[list[Annotation], bool, bool, ProviderError | None],
+                        ]
+                        | None
+                    ] = [None] * len(wave_tasks)
+                    for future in as_completed(future_to_idx):
+                        wave_index, page_index, page = future_to_idx[future]
+                        slots[wave_index] = (page_index, page, future.result())
+
+                wave_results = [slot for slot in slots if slot is not None]
+
+            wave_new_notes: list[str] = []
+            for (
+                _page_index,
+                page,
+                (page_annotations, attempted_call, failed, error),
+            ) in wave_results:
+                if attempted_call:
+                    attempted += 1
+                    if failed:
+                        failed_pages.append(page.page_number)
+                        statuses.append(
+                            PageGenerationStatus(
+                                unit_id=str(page.page_number),
+                                ordinal=page.page_number,
+                                status="failed",
+                                attempts=getattr(error, "attempts", 1) if error else 1,
+                                error=error,
+                            )
+                        )
+                    else:
+                        statuses.append(
+                            PageGenerationStatus(
+                                unit_id=str(page.page_number),
+                                ordinal=page.page_number,
+                                status="success",
+                                attempts=1,
+                            )
+                        )
                 else:
                     statuses.append(
                         PageGenerationStatus(
                             unit_id=str(page.page_number),
                             ordinal=page.page_number,
-                            status="success",
-                            attempts=1,
+                            status="skipped",
                         )
                     )
-            else:
-                statuses.append(
-                    PageGenerationStatus(
-                        unit_id=str(page.page_number),
-                        ordinal=page.page_number,
-                        status="skipped",
+
+                if len(page_annotations) > max_annotations_per_page:
+                    page_annotations = sorted(
+                        page_annotations, key=lambda a: a.confidence, reverse=True
+                    )[:max_annotations_per_page]
+
+                for ann in page_annotations:
+                    if ann.annotation_type in (
+                        AnnotationType.INVENTION,
+                        AnnotationType.WARNING,
+                    ):
+                        wave_new_notes.append(f"(p.{page.page_number}) {ann.content}")
+
+                plan.pages.append(
+                    AnnotatedPage(
+                        page_number=page.page_number,
+                        original_text=page.text,
+                        annotations=page_annotations,
                     )
                 )
 
-            if len(annotations) > max_annotations_per_page:
-                annotations = sorted(
-                    annotations, key=lambda a: a.confidence, reverse=True
-                )[:max_annotations_per_page]
-
-            for ann in annotations:
-                if ann.annotation_type in (AnnotationType.INVENTION, AnnotationType.WARNING):
-                    running_notes.append(f"(p.{page.page_number}) {ann.content}")
+            running_notes.extend(wave_new_notes)
             del running_notes[:-8]
-
-            plan.pages.append(
-                AnnotatedPage(
-                    page_number=page.page_number,
-                    original_text=page.text,
-                    annotations=annotations,
-                )
-            )
 
         self.failed_pages = failed_pages
         if attempted and len(failed_pages) == attempted:
