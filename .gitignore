@@ -52,3 +52,7 @@ docs/BUILD_TRANSCRIPT.md
 
 # SDD scratch
 .superpowers/
+
+# Local test books (downloaded, not part of the project)
+jekyll.epub
+*.annotated.epub
