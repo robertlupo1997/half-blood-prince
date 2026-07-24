@@ -151,6 +151,21 @@ class OpenAICompatibleProvider:
                     )
                     _record_attempts(incomplete_error, attempts)
                     raise incomplete_error from None
+                except StructuredOutputError as exc:
+                    # A 200 whose body carries no usable completion (no choice, no
+                    # assistant message, invalid JSON, unparseable tool call). Observed
+                    # in the wild costing a whole chapter per run. It is model/gateway
+                    # misbehaviour rather than a decision, so it is retryable on the same
+                    # bounded budget as a transport failure. Safety refusals raise
+                    # ProviderSafetyRefusal, a sibling class, and are deliberately NOT
+                    # caught here — a refusal is a decision, not a glitch.
+                    if attempts <= self._max_retries and self._should_retry_attempt(
+                        attempts, elapsed_start
+                    ):
+                        self._sleep_fn(self._backoff_seconds(attempts, retry_after=None))
+                        continue
+                    _record_attempts(exc, attempts)
+                    raise
                 return replace(
                     outcome,
                     attempts=attempts,

@@ -41,7 +41,10 @@ from halfblood.generation.errors import (
     StructuredOutputError,
 )
 from halfblood.generation.providers.base import GenerationRequest, ProviderCapabilities
-from halfblood.generation.providers.openai_compat import OpenAICompatibleProvider
+from halfblood.generation.providers.openai_compat import (
+    DEFAULT_MAX_RETRIES,
+    OpenAICompatibleProvider,
+)
 from halfblood.generation.schema import generate_annotation_schema
 
 API_KEY = "sk-test-fake-key-not-real"
@@ -835,11 +838,31 @@ def test_capability_400_under_auto_triggers_one_downgrade() -> None:
 
 
 def test_no_downgrade_on_structured_output_error() -> None:
-    """StructuredOutputError (malformed response) does NOT trigger a second call."""
+    """A malformed response must never trigger a capability DOWNGRADE.
+
+    Downgrading tool -> json-schema -> prompt on unparseable output would silently
+    degrade structured-output quality to work around what is usually a transient
+    glitch. This test previously asserted ``len(calls) == 1`` as a proxy for "no
+    downgrade". That proxy stopped being valid once malformed 200s became retryable
+    (same mode, bounded budget), so the contract is now asserted directly: every
+    attempt must use the SAME mode. This is strictly stronger than the old count
+    check -- a count of 1 could never distinguish "did not downgrade" from
+    "did not retry".
+    """
     calls: list[int] = []
+    modes_used: list[str] = []
+
+    def _mode_of(request: httpx.Request) -> str:
+        body = json.loads(request.content)
+        if "tools" in body:
+            return "tool"
+        if "response_format" in body:
+            return "json-schema"
+        return "prompt"
 
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(1)
+        modes_used.append(_mode_of(request))
         bad_body = {
             "id": "chatcmpl-bad",
             "choices": [
@@ -874,7 +897,15 @@ def test_no_downgrade_on_structured_output_error() -> None:
             sleep_fn=lambda _: None,
             rand_fn=lambda: 0.5,
         ).complete(_request())
-    assert len(calls) == 1  # no second call
+
+    assert modes_used, "handler was never invoked"
+    assert set(modes_used) == {"tool"}, (
+        f"structured-output mode changed across attempts ({modes_used}) — a malformed "
+        "response must not cause a capability downgrade"
+    )
+    assert len(calls) == 1 + DEFAULT_MAX_RETRIES, (
+        f"retries must stay bounded by max_retries, got {len(calls)} calls"
+    )
 
 
 def test_pinned_mode_capability_400_raises_no_downgrade() -> None:
@@ -894,3 +925,65 @@ def test_pinned_mode_capability_400_raises_no_downgrade() -> None:
             structured_output="tool",  # pinned, not auto
         ).complete(_request())
     assert len(calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Malformed 200 responses are retried by the provider (the sole retry owner).
+#
+# Observed in production: annotating a real book against a free OpenRouter model
+# lost a whole chapter to "Provider response did not contain a choice" -- an HTTP
+# 200 whose body had no usable completion. _parse_success runs inside the retry
+# loop, but StructuredOutputError escaped it uncaught, so a single bad response
+# was fatal. Repeated across two runs on different chapters (~8% loss).
+# ---------------------------------------------------------------------------
+
+
+def test_malformed_success_body_retries_and_succeeds() -> None:
+    """A 200 with no usable choice must be retried, not fatal."""
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return _json_response(200, {"id": "no-choices-here"})
+        return _json_response(200, _tool_call_body([VALID_ANNOTATION]))
+
+    result = _provider(handler, max_retries=2).complete(_request())
+
+    assert len(calls) == 2, "the malformed 200 should have been retried"
+    assert len(result.parsed.annotations) == 1
+    assert result.attempts == 2
+
+
+def test_malformed_success_body_exhausts_retries_and_raises() -> None:
+    """Retries stay bounded — a permanently malformed provider still fails."""
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return _json_response(200, {"id": "still-no-choices"})
+
+    with pytest.raises(StructuredOutputError):
+        _provider(handler, max_retries=2).complete(_request())
+
+    assert len(calls) == 3, f"expected 1 initial + 2 retries, got {len(calls)}"
+
+
+def test_safety_refusal_is_not_retried() -> None:
+    """A refusal is a decision, not a glitch — retrying it would be wrong.
+
+    Guards the retry widening above from swallowing deterministic refusals.
+    """
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return _json_response(
+            200,
+            {"choices": [{"message": {"role": "assistant", "refusal": "no"}}]},
+        )
+
+    with pytest.raises(ProviderSafetyRefusal):
+        _provider(handler, max_retries=2).complete(_request())
+
+    assert len(calls) == 1, "a safety refusal must not be retried"

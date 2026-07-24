@@ -549,3 +549,65 @@ def test_error_message_never_contains_the_api_key() -> None:
     with pytest.raises(ProviderAuthenticationError) as excinfo:
         provider.complete(_request())
     assert API_KEY not in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# Malformed 200 responses are retried by the provider (the sole retry owner).
+#
+# Mirrors the OpenAI-compatible provider. A 200 whose body carries no usable
+# tool_use block is model/gateway misbehaviour, not a decision, and cost a whole
+# chapter per run when it escaped the retry loop uncaught.
+# ---------------------------------------------------------------------------
+
+
+def test_malformed_success_body_retries_and_succeeds() -> None:
+    """A 200 with no tool_use block must be retried, not fatal."""
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return _json_response(
+                200,
+                {
+                    "id": "msg_bad",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "no tool use here"}],
+                    "model": "claude-sonnet-5",
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            )
+        return _json_response(200, _tool_use_body([VALID_ANNOTATION]))
+
+    result = _provider(handler, max_retries=2).complete(_request())
+
+    assert len(calls) == 2, "the malformed 200 should have been retried"
+    assert len(result.parsed.annotations) == 1
+    assert result.attempts == 2
+
+
+def test_malformed_success_body_exhausts_retries_and_raises() -> None:
+    """Retries stay bounded — a permanently malformed provider still fails."""
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return _json_response(
+            200,
+            {
+                "id": "msg_bad",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "still no tool use"}],
+                "model": "claude-sonnet-5",
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        )
+
+    with pytest.raises(StructuredOutputError):
+        _provider(handler, max_retries=2).complete(_request())
+
+    assert len(calls) == 3, f"expected 1 initial + 2 retries, got {len(calls)}"
