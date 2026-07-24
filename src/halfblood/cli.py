@@ -434,6 +434,15 @@ def main() -> None:
         "without waiting for rendering. The JSON output is loadable by web-preview."
     ),
 )
+@click.option(
+    "--annotate-boilerplate",
+    is_flag=True,
+    default=False,
+    help=(
+        "Annotate even sections that look like boilerplate (copyright notices, "
+        "Project Gutenberg headers/licenses). Default: skip boilerplate sections."
+    ),
+)
 @click.option("--force", is_flag=True, help="Overwrite an existing output file.")
 @_provider_options
 def annotate(
@@ -446,6 +455,7 @@ def annotate(
     font: str | None,
     handwriting_engine: Literal["typeset", "procedural"],
     dry_run: bool,
+    annotate_boilerplate: bool,
     force: bool,
     provider: str | None,
     model: str | None,
@@ -524,6 +534,26 @@ def annotate(
         page_numbers = _parse_page_range(pages, len(all_pages))
         selected = _filter_pages(all_pages, page_numbers)
 
+        # Filter boilerplate sections (unless overridden)
+        if not annotate_boilerplate:
+            from halfblood.boilerplate import classify
+
+            bp_pages = [p for p in selected if classify(p.text).is_boilerplate]
+            if bp_pages:
+                bp_nums = [p.page_number for p in bp_pages]
+                if len(bp_pages) == len(selected):
+                    # Every section looks like boilerplate — fall back to annotating all
+                    console.print(
+                        "[yellow]Warning:[/yellow] All selected sections appear to be boilerplate; "
+                        "annotating them anyway. Pass --annotate-boilerplate to suppress this warning."
+                    )
+                else:
+                    selected = [p for p in selected if p not in bp_pages]
+                    console.print(
+                        f"Skipped {len(bp_pages)} boilerplate section(s): "
+                        + ", ".join(str(n) for n in bp_nums)
+                    )
+
         # Generate
         gen_task = progress.add_task("Generating annotations...", total=len(selected))
         try:
@@ -600,6 +630,15 @@ def annotate(
     ),
 )
 @click.option("--max-per-page", default=5, show_default=True)
+@click.option(
+    "--annotate-boilerplate",
+    is_flag=True,
+    default=False,
+    help=(
+        "Annotate even sections that look like boilerplate (copyright notices, "
+        "Project Gutenberg headers/licenses). Default: skip boilerplate sections."
+    ),
+)
 @_provider_options
 def preview(
     input_file: Path,
@@ -607,6 +646,7 @@ def preview(
     persona: str | None,
     persona_file: Path | None,
     max_per_page: int,
+    annotate_boilerplate: bool,
     provider: str | None,
     model: str | None,
     base_url: str | None,
@@ -659,6 +699,27 @@ def preview(
 
         page_numbers = _parse_page_range(pages, len(all_pages))
         selected = _filter_pages(all_pages, page_numbers)
+
+        # Filter boilerplate sections (unless overridden)
+        if not annotate_boilerplate:
+            from halfblood.boilerplate import classify
+
+            bp_pages = [p for p in selected if classify(p.text).is_boilerplate]
+            if bp_pages:
+                bp_nums = [p.page_number for p in bp_pages]
+                if len(bp_pages) == len(selected):
+                    # Every section looks like boilerplate — fall back to annotating all
+                    console.print(
+                        "[yellow]Warning:[/yellow] All selected sections appear to be boilerplate; "
+                        "annotating them anyway. Pass --annotate-boilerplate to suppress this warning."
+                    )
+                else:
+                    selected = [p for p in selected if p not in bp_pages]
+                    console.print(
+                        f"Skipped {len(bp_pages)} boilerplate section(s): "
+                        + ", ".join(str(n) for n in bp_nums)
+                    )
+
         if not selected:
             console.print("[yellow]No pages matched.[/yellow]")
             raise SystemExit(1)
