@@ -580,6 +580,50 @@ def _connector_endpoints_mpt(
     )
 
 
+def _body_y_range_mpt(
+    body_occupancy: Sequence[SurfaceRect],
+) -> tuple[int, int] | None:
+    """Return the quantized vertical extent of the body block, or None if unknown."""
+    if not body_occupancy:
+        return None
+    return (
+        _page_solver.q_pt(min(rect.y0 for rect in body_occupancy)),
+        _page_solver.q_pt(max(rect.y1 for rect in body_occupancy)),
+    )
+
+
+def _connector_body_span_bp(
+    connector_a_mpt: _page_solver.PointMpt | None,
+    connector_b_mpt: _page_solver.PointMpt | None,
+    body_y_range_mpt: tuple[int, int] | None,
+    page_height_mpt: int,
+) -> int:
+    """Return how far, vertically, a connector travels through the body block.
+
+    Expressed in basis points of page height. A note beside its target yields a
+    near-horizontal connector and scores ~0; a note flung to the opposite end of
+    the page rakes its connector down through the text and scores high.
+
+    Vertical overlap is a deliberate conservative proxy for true segment/body
+    intersection: it is O(1) from the endpoint Y values, needs no clipping
+    geometry, and stays in the integer domain the solver requires.
+    """
+    if (
+        connector_a_mpt is None
+        or connector_b_mpt is None
+        or body_y_range_mpt is None
+        or page_height_mpt <= 0
+    ):
+        return 0
+    body_y0, body_y1 = body_y_range_mpt
+    connector_y0 = min(connector_a_mpt[1], connector_b_mpt[1])
+    connector_y1 = max(connector_a_mpt[1], connector_b_mpt[1])
+    overlap = min(connector_y1, body_y1) - max(connector_y0, body_y0)
+    if overlap <= 0:
+        return 0
+    return _page_solver.ratio(overlap, page_height_mpt)
+
+
 def _importance(request: NoteRequest) -> int:
     return (8 - ANNOTATION_TYPE_PRIORITY[request.annotation_type]) * 1_001 + _page_solver.q_conf(
         request.confidence
@@ -597,6 +641,7 @@ def _prepared_candidate(
     side_switched: bool,
     target_rect: SurfaceRect,
     page_height_mpt: int,
+    body_y_range_mpt: tuple[int, int] | None = None,
 ) -> _page_solver.Candidate:
     box_mpt = _box_mpt(note_box)
     connector_a_mpt, connector_b_mpt = _connector_endpoints_mpt(note_box, request)
@@ -619,6 +664,9 @@ def _prepared_candidate(
         connector_a_mpt=connector_a_mpt,
         connector_b_mpt=connector_b_mpt,
         height_mpt=_page_solver.q_pt(note_box.y1 - note_box.y0),
+        connector_body_span_bp=_connector_body_span_bp(
+            connector_a_mpt, connector_b_mpt, body_y_range_mpt, page_height_mpt
+        ),
     )
 
 
@@ -635,6 +683,7 @@ def _candidates_for_note(
 ) -> tuple[_page_solver.Candidate, ...]:
     candidates: list[_page_solver.Candidate] = []
     seen: set[tuple[str, int, _page_solver.BoxMpt]] = set()
+    body_y_range_mpt = _body_y_range_mpt(body_occupancy)
 
     if request.requested_placement in ("inline", "between_lines"):
         inline_box = _try_inline(
@@ -656,6 +705,7 @@ def _candidates_for_note(
                 side_switched=False,
                 target_rect=target_rect,
                 page_height_mpt=page_height_mpt,
+                body_y_range_mpt=body_y_range_mpt,
             )
             assert inline.box_mpt is not None
             seen.add((request.requested_placement, inline.scale_bp, inline.box_mpt))
@@ -708,6 +758,7 @@ def _candidates_for_note(
                         side_switched=side != preferred,
                         target_rect=target_rect,
                         page_height_mpt=page_height_mpt,
+                        body_y_range_mpt=body_y_range_mpt,
                     )
                     assert candidate.box_mpt is not None
                     key = (side, candidate.scale_bp, candidate.box_mpt)

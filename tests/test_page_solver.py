@@ -76,6 +76,7 @@ def _cand(
     connector_a_mpt: tuple[int, int] | None = None,
     connector_b_mpt: tuple[int, int] | None = None,
     height_mpt: int = 14000,
+    connector_body_span_bp: int = 0,
 ) -> Candidate:
     return Candidate(
         note_id=note_id,
@@ -90,6 +91,7 @@ def _cand(
         connector_a_mpt=connector_a_mpt,
         connector_b_mpt=connector_b_mpt,
         height_mpt=height_mpt,
+        connector_body_span_bp=connector_body_span_bp,
     )
 
 
@@ -783,3 +785,76 @@ class TestBeamWidth:
             "beam_width=1 and beam_width=128 must differ on the greedy-trap fixture; "
             "if they agree, the trap fixture is not actually trapping greedy"
         )
+
+
+# ---------------------------------------------------------------------------
+# 8. Connector body-span cost — regression for the "arrow across the page" bug
+#
+# Observed 2026-07-24 on a real-model render of tests/fixtures/potions_textbook.pdf
+# page 2: a note placed in the BOTTOM-RIGHT margin was anchored to a target near
+# the TOP of the page, drawing a connector diagonally through several lines of
+# body text.
+#
+# Root cause: the solver scored connectors on Euclidean LENGTH only (weight 50),
+# which is dominated 20:1 by the scale cost (weight 1000). Keeping a note at full
+# size and flinging it far from its target was therefore cheaper than shrinking it
+# slightly to sit beside its target. Nothing modelled the connector's traversal of
+# the body block at all.
+# ---------------------------------------------------------------------------
+
+
+class TestConnectorBodySpanCost:
+    def test_near_target_min_scale_beats_far_full_scale(self) -> None:
+        """A shrunken note beside its target must score better than a full-size
+        note whose connector rakes down ~79% of the page through body text.
+        """
+        # Connector runs (510k, 700k) -> (200k, 50k). Against a body block spanning
+        # y 72k..720k that is an overlap of 628k mpt => ratio(628000, 792000) = 7929 bp.
+        far_full_scale = _cand(
+            "n1",
+            0,
+            importance=1,
+            scale_bp=10000,  # full size: contributes ZERO scale cost
+            connector_a_mpt=(510_000, 700_000),
+            connector_b_mpt=(200_000, 50_000),
+            connector_body_span_bp=7929,
+            displacement_bp=8000,
+        )
+        # Same note beside its target: short horizontal hop, no body traversal.
+        near_min_scale = _cand(
+            "n1",
+            1,
+            importance=1,
+            scale_bp=7000,  # floor: contributes the MAXIMUM scale cost
+            connector_a_mpt=(510_000, 57_000),
+            connector_b_mpt=(200_000, 57_000),
+            connector_body_span_bp=0,
+            displacement_bp=0,
+        )
+
+        _, _, soft_far, _ = score_assignment((far_full_scale,), _CFG)
+        _, _, soft_near, _ = score_assignment((near_min_scale,), _CFG)
+
+        assert soft_near < soft_far, (
+            f"a min-scale note beside its target (soft={soft_near}) must beat a "
+            f"full-scale note whose connector traverses the page (soft={soft_far}); "
+            "otherwise the solver keeps choosing the across-the-page arrow"
+        )
+
+    def test_body_span_is_monotonic(self) -> None:
+        """More body traversal must never be cheaper than less, all else equal."""
+        scores = []
+        for span in (0, 2500, 5000, 7500, 10000):
+            cand = _cand(
+                "n1",
+                0,
+                importance=1,
+                connector_a_mpt=(510_000, 400_000),
+                connector_b_mpt=(200_000, 400_000),
+                connector_body_span_bp=span,
+            )
+            _, _, soft, _ = score_assignment((cand,), _CFG)
+            scores.append(soft)
+
+        assert scores == sorted(scores), f"cost must rise with body span, got {scores}"
+        assert scores[0] < scores[-1], "a full-page traversal must cost more than none"

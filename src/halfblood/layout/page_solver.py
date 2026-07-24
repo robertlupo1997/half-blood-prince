@@ -34,6 +34,11 @@ class Candidate:
     connector_a_mpt: PointMpt | None
     connector_b_mpt: PointMpt | None
     height_mpt: int
+    # Vertical extent (bp of page height) over which this candidate's connector
+    # overlaps the body text block. A short horizontal hop from the margin scores
+    # ~0; a diagonal traversal of the page scores high. Defaults to 0 so callers
+    # that do not model body geometry are unaffected.
+    connector_body_span_bp: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -161,11 +166,17 @@ def _candidate_local_soft_cost(candidate: Candidate, cfg: SolverConfig) -> int:
 
     scale_cost = _scale_cost_bp(candidate.scale_bp, cfg.min_scale_bp)
     connector_length_cost = _connector_length_cost_bp(candidate, cfg.page_diag_mpt)
+    body_span_cost = _clamp_bp(candidate.connector_body_span_bp)
     displacement_cost = _clamp_bp(candidate.displacement_bp)
     side_switch_cost = 10_000 if candidate.side_switched else 0
+    # Body span outweighs scale (1_000): shrinking a note to sit beside its target
+    # must be cheaper than keeping it full-size and raking a connector down the page.
+    # Euclidean length alone cannot express this — it does not know that a long
+    # connector is acceptable horizontally but not vertically through text.
     return (
         1_000 * scale_cost
         + 50 * connector_length_cost
+        + 1_300 * body_span_cost
         + 100 * displacement_cost
         + 150 * side_switch_cost
     )
