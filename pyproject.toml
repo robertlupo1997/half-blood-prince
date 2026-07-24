@@ -2,7 +2,27 @@
 name = "half-blood-prince"
 version = "0.1.0"
 description = "Turn any book into one annotated by the Half-Blood Prince"
+readme = "README.md"
 requires-python = ">=3.11"
+# AGPL-3.0 is required, not chosen: PyMuPDF (AGPL/commercial) and EbookLib
+# (AGPL-only) are both load-bearing runtime dependencies. See LICENSE and
+# docs/decisions/tech-stack-validation.md.
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Robert Lupo", email = "treylupo1197@gmail.com" }]
+keywords = ["pdf", "epub", "annotation", "marginalia", "llm", "handwriting"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Markup",
+    "Topic :: Utilities",
+]
 # Upper bounds are intentional (AUD-38): majors are excluded until reviewed.
 # ebooklib
 # is pre-1.0 (minor bumps are breaking, and the EPUB renderer depends on its

@@ -239,6 +239,35 @@ The harness prints a per-test-case table of scores and justifications, then a su
 
 Append a `TestCase` to `TEST_CASES` in `eval/eval_harness.py` with a persona, a passage, expected annotation types, and an ideal annotation-count range — the harness picks it up automatically.
 
+## License
+
+Half-Blood Prince is licensed under the **GNU Affero General Public License v3.0 or later**
+(see [`LICENSE`](LICENSE)).
+
+AGPL is required rather than chosen. Two load-bearing runtime dependencies are themselves
+AGPL-licensed, so any distribution of this project is a combined work bound by AGPL terms:
+
+| Dependency | License | Why it can't be swapped |
+| --- | --- | --- |
+| **PyMuPDF** (`fitz`) | AGPL-3.0 **or** Artifex Commercial | Uniquely provides text search, native PDF annotation objects, and affine-morphed `Shape` text in one document model |
+| **EbookLib** | AGPL-3.0-or-later (no commercial option) | Owns the EPUB read/spine/manifest/write pipeline |
+
+Two consequences worth knowing before you deploy:
+
+- **Network use triggers AGPL §13.** If you offer this program's functionality to users over a
+  network, you must make the Corresponding Source available to those users.
+- **A commercial PyMuPDF license is not an escape hatch**, because EbookLib is AGPL-only.
+
+The reasoning behind every dependency is recorded in
+[`docs/decisions/tech-stack-validation.md`](docs/decisions/tech-stack-validation.md).
+
+### Bundled fonts
+
+The handwriting fonts in `src/halfblood/fonts/` are licensed separately from the source code:
+Caveat Brush, Just Me Again Down Here, and Mrs Saint Delafield under the
+[SIL Open Font License 1.1](src/halfblood/fonts/OFL.txt); Homemade Apple under the
+[Apache License 2.0](src/halfblood/fonts/Apache-2.0.txt).
+
 ## Inspiration
 
 This project is a riff on [Riddle](https://github.com/MaximeRivest/riddle) and the "Half-Blood Prince" gag from *Harry Potter and the Half-Blood Prince* — a used Potions textbook whose margins are full of a previous, better student's corrections, shortcuts, and dangerous inventions. Half-Blood Prince asks: what if any book could have its own Prince?
