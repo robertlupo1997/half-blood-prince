@@ -39,6 +39,11 @@ dependencies = [
     "lxml>=5.0.0,<7",
 ]
 
+[project.urls]
+Homepage = "https://github.com/robertlupo1997/half-blood-prince"
+Repository = "https://github.com/robertlupo1997/half-blood-prince"
+Issues = "https://github.com/robertlupo1997/half-blood-prince/issues"
+
 [project.optional-dependencies]
 eval = ["anthropic>=0.30.0,<2", "rich>=13.0.0,<16"]
 dev = [
