@@ -637,9 +637,17 @@ def test_annotate_with_anthropic_and_no_model_uses_preset_default(
     Note on hermeticity: the real resolver also reads user_config_path
     (~/.config/halfblood/config.toml by default).  We pass an empty project config
     via --config and use env={"ANTHROPIC_API_KEY": _SENTINEL_KEY} so only the preset
-    default can supply the model.  If the test machine has a user config that sets model,
-    the test still passes (model is set from user config, not preset).  The hermetic unit
-    test above (test_anthropic_preset_provides_default_model) is the authoritative guard.
+    default can supply the model.
+
+    This docstring used to claim that a machine-level user config setting ``model``
+    would leave the test passing.  That was wrong, and was disproven by planting
+    ``model = "hostile/model"`` at ``$XDG_CONFIG_HOME/halfblood/config.toml``: this
+    test and ``test_no_concurrency_flag_accepted`` both went red, because the user
+    config supplies the model *instead of* the preset and the assertion below compares
+    against the preset value.  The suite is now isolated by the autouse
+    ``_isolate_user_config`` fixture in ``tests/conftest.py``, which repoints the
+    default user-config lookup at an empty directory.  The hermetic unit test above
+    (test_anthropic_preset_provides_default_model) remains the authoritative guard.
     """
     monkeypatch.setattr(cli_module, "build_provider", lambda *a, **k: _SentinelProvider())
     monkeypatch.setattr(cli_module, "AnnotationGenerator", _CapturingGenerator)
