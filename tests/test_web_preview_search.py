@@ -169,3 +169,37 @@ class TestExistingFilteringSurvives:
         html = _html()
         assert "bezoar" in html
         assert "Wasted effort" in html
+
+
+class TestMatchSetIsScopedToTheCurrentPage:
+    """Annotation ids are page-local, so a global match set is a real bug.
+
+    `ann.id` is a per-page index ("a0", "a1", ...), so page 0 and page 1 both have an
+    "a0". A match set built across the whole book would un-hide page 1's "a0" purely
+    because page 0's "a0" matched the query — showing a note that does not contain the
+    search term at all.
+
+    Confirmed by executing the shipped `applyFilters` under a DOM stub with two pages
+    whose "a0" annotations differ: querying a term present only in page 0's "a0" leaves
+    page 1's "a0" correctly hidden, and surfaces page 1's "a1" instead. These assertions
+    are the durable, in-suite form of that check — they fail if someone "simplifies" the
+    per-page lookup back to a whole-book set.
+    """
+
+    def test_the_match_set_is_built_from_the_current_page(self) -> None:
+        html = _html()
+        script = html[html.index("<script>", html.index("__HB_DATA__")) :]
+        body = script[script.index("function applyFilters()") :]
+        assert re.search(r"DATA\.pages[^\n]*\[\s*state\.idx\s*\]", body), (
+            "applyFilters must index DATA.pages by state.idx; a whole-book match set "
+            "collides on page-local annotation ids"
+        )
+
+    def test_filtering_keys_on_the_annotation_id(self) -> None:
+        html = _html()
+        script = html[html.index("<script>", html.index("__HB_DATA__")) :]
+        body = script[script.index("function applyFilters()") :]
+        assert "annId" in body, (
+            "notes, marks and connectors share data-ann-id; keying on it is what makes "
+            "them hide together"
+        )
