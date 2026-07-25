@@ -1,7 +1,7 @@
 ---
 date: 2026-07-25
 researcher: Claude (Opus 5)
-git_commit: b8cf39b
+git_commit: 3eb6315
 branch: main
 repository: half-blood-prince
 topic: "Session 32 — P1 EPUB recovery (88%→96%), P2 doc corrections, P4 persona library + wheel packaging + Copy-JSON; prompt hardening measured and rejected"
@@ -24,7 +24,7 @@ watched print.** It worked again. It also caught a live problem again — see Le
 
 ## What shipped
 
-Five commits, all pushed to `origin/main`.
+Ten commits, all pushed to `origin/main`.
 
 ### `96a715e` — P1: match-tolerance ladder (the headline)
 
@@ -139,6 +139,45 @@ ran `node --check`, then executed the handler under a DOM stub with `navigator.c
 — proving the fallback runs, the text is pretty-printed, it round-trips through `JSON.parse`, and
 the "Copied" label appears. Worth reusing for any future preview JS.
 
+### `2a7d113` / `885ea07` — P4: config keys for `max_per_page` and `font`
+
+Completes config-file support: every setting now has a TOML key, a `HALFBLOOD_*` env
+override, and provenance in `sources`. Key is `font` not `font_path` (the flag takes
+NAME|PATH, so a path-only key would be less capable); a relative `font` naming an existing
+file resolves against the config dir (persona_file precedent). `max_per_page` **raises**
+rather than clamps, unlike `concurrency` — clamping suits a transport setting, not one
+where `0` silently yields a book with no annotations.
+
+**Both `getattr(config, ...)` workarounds in the first implementation traced to my brief.**
+"Do not edit any test" made the clean fix impossible, so production code got written
+defensively around two stale test doubles: a hand-maintained `SimpleNamespace` faking
+`ResolvedConfig`, and a `_FAKE_SOURCES` dict missing the new keys. Fixed by making the
+first double the real dataclass and adding the missing keys to the second, then restoring
+`config.font` / `sources[field]` strict access. **When the clean fix needs a test fixture
+changed, the brief that forbids it is the defect.**
+
+### `cb281db` — P4: free-text search in the web preview
+
+Extends `applyFilters()` and reuses `.filtered-out`, so type-filter and search AND rather
+than clobber. Non-obvious find: annotation ids are **page-local** (`a0`, `a1`) and collide
+across pages, so the match set is per-page while the count is book-wide — the label says
+"N matches in book" so it doesn't read as "N on this page".
+
+## The JS verification recipe (reuse this)
+
+`web_preview.py` embeds JS inside a Python string, so **a syntax error is invisible to all
+1628 Python tests**, and structural greps ("is `navigator.clipboard` in the HTML?") pass for
+implementations that don't work. Both preview features were verified by execution instead:
+
+1. Generate a real preview, extract the last `<script>` block, `node --check` it.
+2. Write a DOM stub and *run* the handler. For Copy-JSON that meant `navigator.clipboard`
+   absent (the `file://` case). For search it meant asserting six behaviours, including
+   that the two filters AND, that clearing the box restores rather than blanks, and that a
+   `(` query does not crash.
+
+Harnesses are in the scratchpad (`copy_harness.js`, `search_harness.js`); they are ~30
+lines each and worth recreating.
+
 ## Learnings
 
 ### 1. The offline A/B harness is the most valuable tool here — reuse it
@@ -194,9 +233,9 @@ papered over.
 
 | Claim | Command | Result |
 |---|---|---|
-| HEAD, clean tree | `git status --short` / `git rev-parse --short HEAD` | empty / `b8cf39b` |
+| HEAD, clean tree | `git status --short` / `git rev-parse --short HEAD` | empty / `3eb6315` |
 | everything pushed | `git rev-parse HEAD origin/main` | identical |
-| suite | `python -m pytest tests/ -q` | **1582 passed** (1461 → 1582) |
+| suite | `python -m pytest tests/ -q` | **1628 passed** (1461 → 1628) |
 | ruff | `ruff check src tests eval scripts` | `All checks passed!` |
 | mypy | `mypy src/halfblood` | `Success: no issues found in 43 source files` |
 | real book, final HEAD | `analyze_skips.py` | **`rendered=48 skipped=2`** |
