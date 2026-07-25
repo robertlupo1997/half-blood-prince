@@ -48,6 +48,8 @@ _ENVIRONMENT_FIELDS = {
     "allow_insecure_http": "HALFBLOOD_ALLOW_INSECURE_HTTP",
     "persona": "HALFBLOOD_PERSONA",
     "persona_file": "HALFBLOOD_PERSONA_FILE",
+    "max_per_page": "HALFBLOOD_MAX_PER_PAGE",
+    "font": "HALFBLOOD_FONT",
 }
 
 _GENERATION_FIELDS = {
@@ -57,6 +59,8 @@ _GENERATION_FIELDS = {
     "max_retries",
     "concurrency",
     "allow_insecure_http",
+    "max_per_page",
+    "font",
 }
 
 _PROVIDER_FIELDS = {"base_url", "api_key_env", "timeout_seconds"}
@@ -115,6 +119,8 @@ class ResolvedConfig:
     allow_insecure_http: bool
     sources: dict[str, str]
     persona: str | None = None
+    max_per_page: int = 5
+    font: str | None = None
 
     def safe_repr(self) -> str:
         """Return diagnostics containing settings and sources, but no key values."""
@@ -128,9 +134,11 @@ class ResolvedConfig:
             "max_retries",
             "concurrency",
             "allow_insecure_http",
+            "max_per_page",
+            "font",
         )
         details = ", ".join(
-            f"{field}={getattr(self, field)!r} (source={self.sources[field]})"
+            f"{field}={getattr(self, field)!r} (source={self.sources.get(field, 'unknown')})"
             for field in fields
         )
         return f"ResolvedConfig({details})"
@@ -521,6 +529,73 @@ def resolve_generation_config(
                     sources["persona"] = source
                     break
 
+    # --- max_per_page ---
+    max_per_page_setting = explicit("max_per_page")
+    if max_per_page_setting is not None:
+        raw_mpp = max_per_page_setting[0]
+        # An empty env var means unset (shell idiom HALFBLOOD_MAX_PER_PAGE=)
+        if isinstance(raw_mpp, str) and not raw_mpp.strip():
+            max_per_page = 5
+            sources["max_per_page"] = _SOURCE_DEFAULT
+        else:
+            if isinstance(raw_mpp, bool):
+                raise ProviderConfigurationError(
+                    "max_per_page must be a positive integer"
+                )
+            try:
+                mpp_parsed = int(float(str(raw_mpp).strip()))
+            except (TypeError, ValueError) as exc:
+                raise ProviderConfigurationError(
+                    f"max_per_page must be a positive integer, got {raw_mpp!r}"
+                ) from exc
+            # Reject string representations that aren't plain integers
+            # (e.g. "3.5" from an env var would silently truncate — reject it)
+            if isinstance(raw_mpp, str) and str(mpp_parsed) != raw_mpp.strip():
+                raise ProviderConfigurationError(
+                    f"max_per_page must be a positive integer, got {raw_mpp!r}"
+                )
+            if mpp_parsed < 1:
+                raise ProviderConfigurationError(
+                    f"max_per_page must be >= 1, got {mpp_parsed}"
+                )
+            max_per_page = mpp_parsed
+            sources["max_per_page"] = max_per_page_setting[1]
+    else:
+        max_per_page = 5
+        sources["max_per_page"] = _SOURCE_DEFAULT
+
+    # --- font ---
+    # Resolved value passes through to the CLI's _resolve_font_option for name/path
+    # validation.  Config.py's only job is (a) type-check and (b) resolve an existing
+    # relative path against the config file's directory (persona_file precedent).
+    font_setting = explicit("font")
+    resolved_font: str | None = None
+    if font_setting is not None:
+        raw_font, font_source = font_setting
+        # An empty env var means unset (shell idiom HALFBLOOD_FONT=)
+        if isinstance(raw_font, str) and not raw_font:
+            sources["font"] = _SOURCE_DEFAULT
+        else:
+            if not isinstance(raw_font, str):
+                raise ProviderConfigurationError("font must be a string")
+            if font_source == _SOURCE_PROJECT:
+                font_relative_base: Path | None = project_path.parent
+            elif font_source == _SOURCE_USER:
+                font_relative_base = user_path.parent
+            else:
+                font_relative_base = None
+            font_val = raw_font
+            if font_relative_base is not None:
+                font_candidate = Path(raw_font)
+                if not font_candidate.is_absolute():
+                    font_resolved_candidate = font_relative_base / font_candidate
+                    if font_resolved_candidate.is_file():
+                        font_val = str(font_resolved_candidate.resolve())
+            resolved_font = font_val
+            sources["font"] = font_source
+    else:
+        sources["font"] = _SOURCE_DEFAULT
+
     return ResolvedConfig(
         provider=provider,
         model=model,
@@ -533,6 +608,8 @@ def resolve_generation_config(
         allow_insecure_http=allow_insecure_http,
         sources=sources,
         persona=resolved_persona,
+        max_per_page=max_per_page,
+        font=resolved_font,
     )
 
 

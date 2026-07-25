@@ -9,7 +9,6 @@ No network calls anywhere in this file.
 
 from __future__ import annotations
 
-import types
 from pathlib import Path
 
 import pytest
@@ -17,7 +16,11 @@ from click.testing import CliRunner
 
 import halfblood.cli as cli_module
 from halfblood.annotation_generator import DEFAULT_PERSONA, AnnotationGenerator
-from halfblood.config import ProviderConfigurationError, resolve_generation_config
+from halfblood.config import (
+    ProviderConfigurationError,
+    ResolvedConfig,
+    resolve_generation_config,
+)
 from halfblood.document_processor import PageContent
 from halfblood.generation.providers.base import ProviderCapabilities
 from halfblood.models import AnnotatedPage, AnnotationPlan
@@ -105,13 +108,19 @@ class _PersonaCapturingGenerator:
         )
 
 
-def _fake_config(persona: str | None = None) -> types.SimpleNamespace:
-    """Build a SimpleNamespace mimicking ResolvedConfig for CLI-seam tests.
+def _fake_config(persona: str | None = None) -> ResolvedConfig:
+    """Build a ResolvedConfig for CLI-seam tests.
 
     api_key_env=None avoids the key-presence check in cli.py.
     persona= carries whatever the config layer resolved.
+
+    This was a hand-maintained ``SimpleNamespace`` mimicking ``ResolvedConfig``, and it
+    went stale the moment ``max_per_page``/``font`` were added: nine CLI tests died with
+    ``'types.SimpleNamespace' object has no attribute 'font'``. Using the real dataclass
+    means a new field with a default is picked up automatically, and a new *required*
+    field fails loudly right here instead of scattering AttributeErrors across the suite.
     """
-    return types.SimpleNamespace(
+    return ResolvedConfig(
         provider="anthropic",
         model="claude-sonnet-5",
         base_url="https://api.anthropic.com",

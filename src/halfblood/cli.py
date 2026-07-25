@@ -141,6 +141,9 @@ def _resolve_provider_and_build(
     concurrency: int | None,
     allow_insecure_http: bool,
     config_path: Path | None,
+    *,
+    max_per_page: int | None = None,
+    font: str | None = None,
 ) -> tuple[ResolvedConfig, LLMProvider]:
     """Resolve provider settings and construct the selected provider adapter."""
     cli_overrides = {
@@ -155,6 +158,8 @@ def _resolve_provider_and_build(
             "max_retries": max_retries,
             "concurrency": concurrency,
             "allow_insecure_http": allow_insecure_http or None,
+            "max_per_page": max_per_page,
+            "font": font,
         }.items()
         if value is not None
     }
@@ -493,8 +498,8 @@ def main() -> None:
     ),
 )
 @click.option("--pages", default=None, help="Page/chapter range, e.g. '1-5,8'. Default: all.")
-@click.option("--max-per-page", default=5, show_default=True,
-              help="Max annotations per page/chapter.")
+@click.option("--max-per-page", default=None,
+              help="Max annotations per page/chapter. Default: 5.")
 @click.option(
     "--font",
     default=None,
@@ -536,7 +541,7 @@ def annotate(
     persona_file: Path | None,
     persona_name: str | None,
     pages: str | None,
-    max_per_page: int,
+    max_per_page: int | None,
     font: str | None,
     handwriting_engine: Literal["typeset", "procedural"],
     dry_run: bool,
@@ -562,15 +567,6 @@ def annotate(
         unavailable = HandwritingUnavailable()
         raise click.ClickException(f"{unavailable.code}: {unavailable.detail}")
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    if input_file.suffix.lower() == ".epub" and font is not None:
-        console.print(
-            "[yellow]Warning:[/yellow] --font is ignored for EPUB input; "
-            "EPUB typography is controlled by reader/CSS fonts."
-        )
-        font_path = None
-    else:
-        font_path = _resolve_font_option(font) if font is not None else None
-    processor = _processor_for(input_file, font_path, handwriting_engine)
     if not dry_run and output_file.suffix.lower() != input_file.suffix.lower():
         console.print(
             f"[yellow]Warning:[/yellow] output extension {output_file.suffix!r} doesn't "
@@ -589,7 +585,19 @@ def annotate(
         concurrency,
         allow_insecure_http,
         config_path,
+        max_per_page=max_per_page,
+        font=font,
     )
+    effective_font = config.font
+    if input_file.suffix.lower() == ".epub" and effective_font is not None:
+        console.print(
+            "[yellow]Warning:[/yellow] --font is ignored for EPUB input; "
+            "EPUB typography is controlled by reader/CSS fonts."
+        )
+        font_path = None
+    else:
+        font_path = _resolve_font_option(effective_font) if effective_font is not None else None
+    processor = _processor_for(input_file, font_path, handwriting_engine)
     effective_persona = _resolve_persona(persona, persona_file, persona_name, config.persona)
     generator = AnnotationGenerator(
         persona=effective_persona,
@@ -645,7 +653,7 @@ def annotate(
             plan = _generate_with_progress(
                 generator,
                 selected,
-                max_per_page,
+                config.max_per_page,
                 lambda done, _total: progress.update(
                     gen_task, completed=done
                 ),
@@ -726,7 +734,7 @@ def annotate(
         "Mutually exclusive with --persona and --persona-file."
     ),
 )
-@click.option("--max-per-page", default=5, show_default=True)
+@click.option("--max-per-page", default=None, help="Max annotations per page/chapter. Default: 5.")
 @click.option(
     "--annotate-boilerplate",
     is_flag=True,
@@ -743,7 +751,7 @@ def preview(
     persona: str | None,
     persona_file: Path | None,
     persona_name: str | None,
-    max_per_page: int,
+    max_per_page: int | None,
     annotate_boilerplate: bool,
     provider: str | None,
     model: str | None,
@@ -774,6 +782,7 @@ def preview(
         concurrency,
         allow_insecure_http,
         config_path,
+        max_per_page=max_per_page,
     )
     effective_persona = _resolve_persona(persona, persona_file, persona_name, config.persona)
     generator = AnnotationGenerator(
@@ -827,7 +836,7 @@ def preview(
             plan = _generate_with_progress(
                 generator,
                 selected,
-                max_per_page,
+                config.max_per_page,
                 lambda done, _total: progress.update(
                     gen_task, completed=done
                 ),
