@@ -87,7 +87,12 @@ Moved out of the project's root `CLAUDE.md` (which keeps only Mission, architect
 
 ## Low Priority / Nice-to-Have
 
-- **Configuration file support** — `.halfblood.toml` or similar for default persona, model, max-per-page, font path. (Partly built: persona and provider keys exist; see the Medium-priority entry above for the two remaining keys and the hermeticity trap.)
+- **~~Configuration file support~~ — COMPLETE 2026-07-25.** `halfblood.toml` (project) and
+  `<user_config_dir>/halfblood/config.toml` now cover provider, model, base_url, api_key_env,
+  structured_output, timeout, max_retries, concurrency, allow_insecure_http, persona,
+  persona_file, `max_per_page` and `font`, each with a `HALFBLOOD_*` env override and
+  provenance in `sources`. The hermeticity trap that used to sit in front of this is closed
+  (`94494d7`). Nothing outstanding.
 - **Pure usage errors are reported after provider configuration errors.** `annotate --persona x
   --persona-name y` with no API key configured reports the missing-key error, not the
   mutual-exclusion error, because `_resolve_provider_and_build` runs before `_resolve_persona`
