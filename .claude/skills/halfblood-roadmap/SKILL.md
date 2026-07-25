@@ -77,9 +77,15 @@ Moved out of the project's root `CLAUDE.md` (which keeps only Mission, architect
     `node --check` on the generated page's JS (a syntax error in JS-embedded-in-Python is
     invisible to every Python test) and by executing the handler under a DOM stub with
     `navigator.clipboard` absent.
-  - **~~Search/filter~~ — ALREADY BUILT, do not rebuild.** `web_preview.py` has legend-based
-    type filtering (`applyFilters()`, `.filtered-out`). What is genuinely missing is
-    free-text search over annotation *content*.
+  - **~~Search/filter~~ — COMPLETE 2026-07-25 (`cb281db`).** Legend-based *type* filtering
+    already existed; free-text search over annotation *content* is now added, extending
+    `applyFilters()` and reusing `.filtered-out` so the two filters AND rather than
+    clobber each other. Case-insensitive `indexOf`, deliberately not `new RegExp(query)`
+    (a user typing `(` would throw, and it is a ReDoS surface). Empty query = no
+    filtering, not "match nothing".
+    - **Non-obvious:** annotation ids are **page-local** (`a0`, `a1`) and collide across
+      pages, so the match set is per-current-page while the count is book-wide — hence
+      the label reads "N matches in book" rather than a bare count.
   - Note: `tests/test_web_preview.py` exists (~280 lines). The "web preview has zero tests"
     claim that circulated in CLAUDE.md was stale and is corrected.
   - Add annotation editing (modify content, delete, re-position)
