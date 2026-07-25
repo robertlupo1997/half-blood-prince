@@ -13,8 +13,9 @@ annotations with an LLM-as-judge across five quality metrics:
     * density             -- roughly the right number of notes for the passage?
 
 The harness uses the real annotation pipeline and its configured provider
-to generate annotations for each test passage. The judge retains its
-Anthropic transport until the provider layer is generalized for judge output.
+to generate annotations for each test passage. The judge runs through the
+same provider seam as the generator, so any configured provider (including
+free-tier OpenRouter models) can serve as judge.
 
 Usage:
 
@@ -36,9 +37,9 @@ import statistics
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from anthropic import Anthropic
+from pydantic import BaseModel, ConfigDict, Field
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
@@ -57,11 +58,11 @@ if str(_SRC_DIR) not in sys.path:
 from halfblood.annotation_generator import AnnotationGenerator  # noqa: E402
 from halfblood.config import resolve_eval_configs  # noqa: E402
 from halfblood.document_processor import PageContent  # noqa: E402, F401
-from halfblood.generation.errors import (  # noqa: E402
-    ProviderConfigurationError,
-    ProviderError,
+from halfblood.generation.errors import ProviderError  # noqa: E402
+from halfblood.generation.providers.base import (  # noqa: E402
+    GenerationRequest,
+    LLMProvider,
 )
-from halfblood.generation.providers.base import LLMProvider  # noqa: E402
 from halfblood.generation.registry import build_provider  # noqa: E402
 from halfblood.models import Annotation  # noqa: E402
 
@@ -413,43 +414,80 @@ def generate_annotations(
 
 
 # ---------------------------------------------------------------------------
-# LLM-as-judge
+# LLM-as-judge output models and schema
 # ---------------------------------------------------------------------------
 
 
-def _build_judge_tool() -> dict[str, Any]:
-    """Build the tool schema the judge model must fill in, one entry per metric."""
-    properties = {
-        m.key: {
-            "type": "object",
-            "properties": {
-                "score": {"type": "integer", "minimum": 1, "maximum": 5},
-                "justification": {"type": "string"},
-            },
-            "required": ["score", "justification"],
-        }
-        for m in METRICS
-    }
-    return {
-        "name": "record_scores",
-        "description": (
-            "Record a 1-5 score and a specific justification for each "
-            "annotation-quality metric."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": properties,
-            "required": [m.key for m in METRICS],
-        },
-    }
+class _ScoreEntry(BaseModel):
+    """A single metric score returned by the judge model."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    score: int = Field(ge=1, le=5)
+    justification: str
+
+
+class RecordScores(BaseModel):
+    """Structured output returned by the judge provider, one entry per metric."""
+
+    model_config = ConfigDict(extra="forbid", title="record_scores")
+
+    voice_consistency: _ScoreEntry
+    relevance: _ScoreEntry
+    insight_depth: _ScoreEntry
+    variety: _ScoreEntry
+    density: _ScoreEntry
+
+
+def _build_judge_schema() -> dict[str, Any]:
+    """Derive the judge's wire schema from RecordScores.
+
+    Replicates the inline-and-normalize approach from generation/schema.py so
+    the schema and the validation target cannot drift apart.
+    """
+    raw: dict[str, Any] = RecordScores.model_json_schema()
+    defs: dict[str, Any] = raw.pop("$defs", {})
+
+    def _inline(obj: Any) -> Any:
+        if isinstance(obj, list):
+            return [_inline(i) for i in obj]
+        if not isinstance(obj, dict):
+            return obj
+        if "$ref" in obj:
+            name = str(obj["$ref"]).removeprefix("#/$defs/")
+            resolved = _inline(dict(defs.get(name, {})))
+            siblings = {k: _inline(v) for k, v in obj.items() if k != "$ref"}
+            return {**resolved, **siblings}
+        return {k: _inline(v) for k, v in obj.items()}
+
+    schema = _inline(raw)
+
+    def _normalize(obj: Any) -> None:
+        if isinstance(obj, list):
+            for item in obj:
+                _normalize(item)
+            return
+        if not isinstance(obj, dict):
+            return
+        props = obj.get("properties")
+        if isinstance(props, dict):
+            obj["required"] = list(props)
+            for p in props.values():
+                if isinstance(p, dict):
+                    p.pop("default", None)
+        if obj.get("type") == "object" or isinstance(props, dict):
+            obj["additionalProperties"] = False
+        for child in obj.values():
+            _normalize(child)
+
+    _normalize(schema)
+    return schema
 
 
 def judge_annotations(
-    tc: TestCase, annotations: list[Annotation], client: Anthropic, model: str
+    tc: TestCase, annotations: list[Annotation], judge_provider: LLMProvider, judge_model: str
 ) -> list[MetricScore]:
-    """Score a generated annotation set against all metrics using Claude as judge."""
-    tool = _build_judge_tool()
-
+    """Score a generated annotation set against all metrics using the judge provider."""
     if annotations:
         annotations_text = "\n".join(
             f'- [{a.annotation_type.value}] near "{a.target_text}": {a.content} '
@@ -484,33 +522,39 @@ def judge_annotations(
         "each justification (reference actual annotation content), and be "
         "willing to give low scores when warranted."
     )
-    response = client.messages.create(
-        model=model,
+    request = GenerationRequest(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        schema=_build_judge_schema(),
+        model=judge_model,
         max_tokens=1536,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
-        tools=[tool],
-        tool_choice={"type": "tool", "name": "record_scores"},
+        output_model=RecordScores,
+        tool_name="record_scores",
     )
-    tool_block = next((b for b in response.content if b.type == "tool_use"), None)
-    if tool_block is None:
+    try:
+        result = judge_provider.complete(request)
+    except ProviderError:
         return [
             MetricScore(metric_key=m.key, score=0, justification="(judge returned no tool call)", passed=False)
             for m in METRICS
         ]
-    data: dict[str, Any] = tool_block.input  # type: ignore[assignment]
+    data = cast(RecordScores, result.parsed)
 
     scores: list[MetricScore] = []
     for m in METRICS:
-        entry = data.get(m.key, {})
-        score = float(entry.get("score", 0))
-        justification = entry.get("justification", "(no justification returned)")
+        entry: _ScoreEntry | None = getattr(data, m.key, None)
+        if entry is None:
+            score_val = 0.0
+            justification = "(no justification returned)"
+        else:
+            score_val = float(entry.score)
+            justification = entry.justification
         scores.append(
             MetricScore(
                 metric_key=m.key,
-                score=score,
+                score=score_val,
                 justification=justification,
-                passed=score >= m.threshold,
+                passed=score_val >= m.threshold,
             )
         )
     return scores
@@ -525,7 +569,7 @@ def run_eval(
     test_cases: list[TestCase],
     generator_provider: LLMProvider,
     generator_model: str,
-    judge_client: Anthropic,
+    judge_provider: LLMProvider,
     judge_model: str,
     console: Console,
 ) -> list[EvalResult]:
@@ -550,7 +594,7 @@ def run_eval(
                 )
                 progress.advance(task)
                 progress.update(task, description=f"[cyan]{tc.id}[/cyan]: judging quality")
-                scores = judge_annotations(tc, annotations, judge_client, judge_model)
+                scores = judge_annotations(tc, annotations, judge_provider, judge_model)
                 progress.advance(task)
                 results.append(EvalResult(test_case=tc, annotations=annotations, scores=scores))
             except Exception as exc:  # noqa: BLE001 - keep evaluating remaining cases
@@ -798,15 +842,13 @@ def main() -> None:
             generator_config,
             api_key=generator_api_key,
         )
-        if judge_config.provider != "anthropic":
-            raise ProviderConfigurationError(
-                "The Phase 1 eval judge transport supports only the anthropic provider; "
-                "provider-layer judge transport is planned for Phase 5"
-            )
         judge_api_key = (
             os.environ.get(judge_config.api_key_env) if judge_config.api_key_env else None
         )
-        judge_client = Anthropic(api_key=judge_api_key)
+        judge_provider = build_provider(
+            judge_config,
+            api_key=judge_api_key,
+        )
     except ProviderError as exc:
         console.print(f"[bold red]Provider configuration error:[/bold red] {exc}")
         raise SystemExit(1) from exc
@@ -815,7 +857,7 @@ def main() -> None:
         TEST_CASES,
         generator_provider,
         generator_config.model,
-        judge_client,
+        judge_provider,
         judge_config.model,
         console,
     )

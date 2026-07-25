@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
+from pydantic import BaseModel
+
 from halfblood.generation.schema import RecordAnnotations
 
 StructuredOutputMode = Literal["tool", "function", "json-schema", "prompt"]
@@ -38,11 +40,13 @@ class GenerationRequest:
     structured_output_mode: StructuredOutputMode = "tool"
     temperature: float | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    output_model: type[BaseModel] = RecordAnnotations
+    tool_name: str = "record_annotations"
 
 
 @dataclass(frozen=True)
 class GenerationResult:
-    parsed: RecordAnnotations
+    parsed: BaseModel
     request_id: str | None
     finish_reason: str
     usage: GenerationUsage

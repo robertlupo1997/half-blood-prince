@@ -15,6 +15,7 @@ from dataclasses import replace
 from typing import Any, cast
 
 import httpx
+from pydantic import BaseModel
 
 from halfblood.generation.errors import (
     IncompleteResponseError,
@@ -37,7 +38,6 @@ from halfblood.generation.providers.base import (
 )
 from halfblood.generation.structured_output import (
     DEFAULT_PARSE_LIMITS,
-    TOOL_NAME,
     CanonicalMode,
     ParseLimits,
     StructuredOutputPin,
@@ -136,7 +136,12 @@ class OpenAICompatibleProvider:
 
             if response.status_code == 200:
                 try:
-                    outcome = self._parse_success(response, mode=current_mode)
+                    outcome = self._parse_success(
+                        response,
+                        mode=current_mode,
+                        output_model=request.output_model,
+                        tool_name=request.tool_name,
+                    )
                 except _Truncated:
                     if not escalated:
                         escalated = True
@@ -248,7 +253,7 @@ class OpenAICompatibleProvider:
                         {
                             "type": "function",
                             "function": {
-                                "name": TOOL_NAME,
+                                "name": request.tool_name,
                                 "description": _TOOL_DESCRIPTION,
                                 "parameters": schema,
                                 "strict": self._capabilities.supports_strict_json_schema,
@@ -257,7 +262,7 @@ class OpenAICompatibleProvider:
                     ],
                     "tool_choice": {
                         "type": "function",
-                        "function": {"name": TOOL_NAME},
+                        "function": {"name": request.tool_name},
                     },
                     "parallel_tool_calls": False,
                 }
@@ -266,7 +271,7 @@ class OpenAICompatibleProvider:
             body["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": TOOL_NAME,
+                    "name": request.tool_name,
                     "strict": True,
                     "schema": schema,
                 },
@@ -280,6 +285,8 @@ class OpenAICompatibleProvider:
         response: httpx.Response,
         *,
         mode: CanonicalMode,
+        output_model: type[BaseModel],
+        tool_name: str,
     ) -> GenerationResult:
         try:
             body = response.json()
@@ -308,13 +315,19 @@ class OpenAICompatibleProvider:
         if mode == "tool":
             if finish_reason in {"length", "max_tokens"}:
                 raise _Truncated()
-            parsed = parse_tool_mode(message, limits=self._parse_limits)
+            parsed = parse_tool_mode(
+                message,
+                tool_name=tool_name,
+                limits=self._parse_limits,
+                output_model=output_model,
+            )
             result_mode = "function"
         elif mode == "json-schema":
             parsed = parse_json_schema_mode(
                 message,
                 finish_reason=finish_reason,
                 limits=self._parse_limits,
+                output_model=output_model,
             )
             result_mode = "json-schema"
         else:
@@ -322,6 +335,7 @@ class OpenAICompatibleProvider:
             parsed = parse_prompt_mode(
                 content if isinstance(content, str) else "",
                 limits=self._parse_limits,
+                output_model=output_model,
             )
             result_mode = "prompt"
             warnings = ("prompt-mode structured output is less reliable",)

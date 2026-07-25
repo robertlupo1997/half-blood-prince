@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from halfblood.generation.errors import (
     AnnotationValidationError,
@@ -159,17 +159,21 @@ def bounded_json_decode(raw: str, *, limits: ParseLimits = DEFAULT_PARSE_LIMITS)
     return decoded
 
 
-def _validate_record(value: Any) -> RecordAnnotations:
+def _validate_record(
+    value: Any, *, output_model: type[BaseModel] = RecordAnnotations
+) -> BaseModel:
     if not isinstance(value, Mapping):
         raise StructuredOutputError("Structured-output root was not a JSON object")
     try:
-        return RecordAnnotations.model_validate(value)
+        return output_model.model_validate(value)
     except ValidationError as exc:
         raise AnnotationValidationError("Structured output failed annotation validation") from exc
 
 
-def _decode_record(raw: str, limits: ParseLimits) -> RecordAnnotations:
-    return _validate_record(bounded_json_decode(raw, limits=limits))
+def _decode_record(
+    raw: str, limits: ParseLimits, *, output_model: type[BaseModel] = RecordAnnotations
+) -> BaseModel:
+    return _validate_record(bounded_json_decode(raw, limits=limits), output_model=output_model)
 
 
 def parse_tool_mode(
@@ -177,7 +181,8 @@ def parse_tool_mode(
     *,
     tool_name: str = TOOL_NAME,
     limits: ParseLimits = DEFAULT_PARSE_LIMITS,
-) -> RecordAnnotations:
+    output_model: type[BaseModel] = RecordAnnotations,
+) -> BaseModel:
     """Parse an OpenAI-compatible assistant message in forced-tool mode."""
 
     matches: list[Any] = []
@@ -202,7 +207,7 @@ def parse_tool_mode(
     arguments = matches[0]
     if not isinstance(arguments, str):
         raise StructuredOutputError("Tool-call arguments were not a JSON string")
-    return _decode_record(arguments, limits)
+    return _decode_record(arguments, limits, output_model=output_model)
 
 
 def parse_json_schema_mode(
@@ -210,7 +215,8 @@ def parse_json_schema_mode(
     *,
     finish_reason: str | None = None,
     limits: ParseLimits = DEFAULT_PARSE_LIMITS,
-) -> RecordAnnotations:
+    output_model: type[BaseModel] = RecordAnnotations,
+) -> BaseModel:
     """Parse one OpenAI-compatible strict JSON Schema response document."""
 
     if message.get("refusal"):
@@ -223,7 +229,7 @@ def parse_json_schema_mode(
     content = message.get("content")
     if not isinstance(content, str):
         raise StructuredOutputError("JSON Schema response content was not a string")
-    return _decode_record(content, limits)
+    return _decode_record(content, limits, output_model=output_model)
 
 
 def _fenced_blocks(text: str) -> list[str]:
@@ -335,7 +341,8 @@ def parse_prompt_mode(
     text: str,
     *,
     limits: ParseLimits = DEFAULT_PARSE_LIMITS,
-) -> RecordAnnotations:
+    output_model: type[BaseModel] = RecordAnnotations,
+) -> BaseModel:
     """Conservatively extract and validate one JSON object from free-form text."""
 
     try:
@@ -353,7 +360,7 @@ def parse_prompt_mode(
     else:
         if not isinstance(whole_value, Mapping):
             raise StructuredOutputError("Structured-output root was not a JSON object")
-        return _decode_record(cleaned, limits)
+        return _decode_record(cleaned, limits, output_model=output_model)
 
     blocks = _fenced_blocks(cleaned)
     if len(blocks) > 1:
@@ -365,4 +372,4 @@ def parse_prompt_mode(
         raise StructuredOutputError("Prompt response contained no JSON object")
     if len(objects) > 1:
         raise StructuredOutputError("Prompt response contained multiple JSON objects")
-    return _decode_record(objects[0], limits)
+    return _decode_record(objects[0], limits, output_model=output_model)

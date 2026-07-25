@@ -20,9 +20,10 @@ from collections.abc import Callable
 from dataclasses import replace
 
 import httpx
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from halfblood.generation.errors import (
+    AnnotationValidationError,
     IncompleteResponseError,
     ProviderConfigurationError,
     ProviderError,
@@ -54,6 +55,23 @@ DEFAULT_TIMEOUT_SECONDS = 60.0
 _BACKOFF_BASE_SECONDS = 1.0
 _BACKOFF_CAP_SECONDS = 30.0
 _INCOMPLETE_RESPONSE_MAX_TOKENS_CEILING = 8192
+
+
+def _tool_name_for(request: GenerationRequest) -> str:
+    """Return the tool this request asks the model to call.
+
+    ``GenerationRequest.tool_name`` is the single source of truth and defaults to
+    ``record_annotations``, so every pre-existing caller is unaffected.
+    ``openai_compat`` reads the same field; deriving it from the schema title here
+    instead would let the two providers disagree whenever a caller set one but not
+    the other.
+
+    Without this the provider asked for ``record_annotations`` regardless of what it
+    was sending, so a judge request failed with "no record_annotations tool_use block
+    was present" -- invisible to the whole suite, because nothing else sends a
+    non-annotation model through this provider.
+    """
+    return request.tool_name or _TOOL_NAME
 
 
 class AnthropicProvider:
@@ -169,12 +187,12 @@ class AnthropicProvider:
             "messages": [{"role": "user", "content": request.user_prompt}],
             "tools": [
                 {
-                    "name": _TOOL_NAME,
+                    "name": _tool_name_for(request),
                     "description": _TOOL_DESCRIPTION,
                     "input_schema": dict(request.schema),
                 }
             ],
-            "tool_choice": {"type": "tool", "name": _TOOL_NAME},
+            "tool_choice": {"type": "tool", "name": _tool_name_for(request)},
         }
 
     def _should_retry_attempt(self, attempts: int, elapsed_start: float) -> bool:
@@ -223,42 +241,63 @@ class AnthropicProvider:
         if stop_reason == "max_tokens":
             raise _Truncated()
 
+        tool_name = _tool_name_for(request)
         matching = [
             block
             for block in content
             if isinstance(block, dict)
             and block.get("type") == "tool_use"
-            and block.get("name") == _TOOL_NAME
+            and block.get("name") == tool_name
         ]
         if not matching:
-            raise StructuredOutputError("no record_annotations tool_use block was present")
+            raise StructuredOutputError(f"no {tool_name} tool_use block was present")
         if len(matching) != 1:
-            raise StructuredOutputError("multiple record_annotations tool_use blocks were present")
+            raise StructuredOutputError(f"multiple {tool_name} tool_use blocks were present")
 
         warnings: list[str] = []
         if len(content) != 1:
             warnings.append(
                 f"response included {len(content) - 1} extra content block(s) "
-                "alongside record_annotations"
+                f"alongside {tool_name}"
             )
 
         tool_input = matching[0].get("input")
         if not isinstance(tool_input, dict):
-            raise StructuredOutputError("record_annotations input was not a JSON object")
-        if "annotations" not in tool_input:
-            raise StructuredOutputError("record_annotations input omitted the annotations key")
-        raw_annotations = tool_input["annotations"]
-        if not isinstance(raw_annotations, list):
-            raise StructuredOutputError("record_annotations annotations value was not a list")
+            raise StructuredOutputError(f"{tool_name} input was not a JSON object")
 
-        drafts: list[AnnotationDraft] = []
-        for item in raw_annotations:
+        parsed: BaseModel
+        if request.output_model is RecordAnnotations:
+            # The annotation path keeps per-item resilience: one malformed annotation is
+            # dropped with a warning rather than failing the whole page. Validating the
+            # payload as a whole would discard the good annotations alongside the bad one,
+            # which is a materially worse outcome for a 300-page book.
+            if "annotations" not in tool_input:
+                raise StructuredOutputError(
+                    f"{tool_name} input omitted the annotations key"
+                )
+            raw_annotations = tool_input["annotations"]
+            if not isinstance(raw_annotations, list):
+                raise StructuredOutputError(
+                    f"{tool_name} annotations value was not a list"
+                )
+
+            drafts: list[AnnotationDraft] = []
+            for item in raw_annotations:
+                try:
+                    drafts.append(AnnotationDraft.model_validate(item))
+                except ValidationError as exc:
+                    warnings.append(f"dropped invalid annotation: {exc}")
+
+            parsed = RecordAnnotations(annotations=drafts)
+        else:
+            # Any other output model (the eval judge) is validated whole. There is no
+            # meaningful partial result for a scores payload.
             try:
-                drafts.append(AnnotationDraft.model_validate(item))
+                parsed = request.output_model.model_validate(tool_input)
             except ValidationError as exc:
-                warnings.append(f"dropped invalid annotation: {exc}")
-
-        parsed = RecordAnnotations(annotations=drafts)
+                raise AnnotationValidationError(
+                    f"{tool_name} input failed validation"
+                ) from exc
         usage = GenerationUsage(
             input_tokens=int(usage_raw.get("input_tokens", 0)),
             output_tokens=int(usage_raw.get("output_tokens", 0)),

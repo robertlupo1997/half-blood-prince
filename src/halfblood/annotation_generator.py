@@ -21,6 +21,7 @@ import os
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass as _dataclass
+from typing import cast
 
 from halfblood.config import DEFAULT_ANTHROPIC_MODEL as DEFAULT_MODEL
 from halfblood.document_processor import PageContent
@@ -34,7 +35,7 @@ from halfblood.generation.providers.base import (
 )
 from halfblood.generation.report import AllPagesFailedError as _ReportAllPagesFailedError
 from halfblood.generation.report import GenerationReport, PageGenerationStatus
-from halfblood.generation.schema import generate_annotation_schema
+from halfblood.generation.schema import RecordAnnotations, generate_annotation_schema
 from halfblood.models import AnnotatedPage, Annotation, AnnotationPlan, AnnotationType
 
 logger = logging.getLogger(__name__)
@@ -385,7 +386,7 @@ class AnnotationGenerator:
                 confidence=draft.confidence,
                 position=draft.position,
             )
-            for draft in result.parsed.annotations
+            for draft in cast(RecordAnnotations, result.parsed).annotations
         ]
 
     def generate_for_document(
