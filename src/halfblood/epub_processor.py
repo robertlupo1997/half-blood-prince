@@ -51,17 +51,12 @@ from ebooklib import epub
 
 from halfblood.document_processor import PageContent
 from halfblood.documents import (
-    AmbiguousResult,
     CrossNodeMatch,
     CrossNodeSegment,
-    MatchResult,
-    NormalizedText,
-    iter_inline_runs,
     locate_across_nodes,
     normalize,
-    score_candidates,
 )
-from halfblood.documents.epub import _has_overlapping_exact, _owner_map
+from halfblood.documents.epub import _MATCH_LADDER, _scan_with_tolerance
 from halfblood.models import Annotation, AnnotationPlan, AnnotationType
 from halfblood.models.annotations import Annotation as V2Annotation
 from halfblood.models.annotations import MarkIntent, TargetSelector
@@ -460,27 +455,23 @@ class EpubProcessor:
     def _epub_miss_reason(root: Tag, selector: TargetSelector) -> SkipReason:
         """Classify a ``locate_across_nodes`` miss as ambiguous or missing.
 
-        Inspects every inline run to distinguish between a target that truly does
-        not appear in the chapter and one that appears multiple times without
-        enough context to pick a single occurrence.
+        Walks the same tolerance ladder as ``locate_across_nodes`` so the
+        classification is always consistent with the locator's decision: a
+        target that ``locate_across_nodes`` would resolve under a looser rung
+        is classified MISSING rather than AMBIGUOUS, and a target that is
+        ambiguous at any rung halts the ladder immediately.
         """
-        tier0_hit_count = 0
-        for run in iter_inline_runs(root):
-            raw, _ = _owner_map(run)
-            norm = NormalizedText(raw)
-            if _has_overlapping_exact(norm.text, selector.normalized_exact):
+        for tolerance in _MATCH_LADDER:
+            ambiguous, hits = _scan_with_tolerance(root, selector, tolerance)
+            if ambiguous or len(hits) > 1:
                 return SkipReason.AMBIGUOUS_TARGET
-            outcome = score_candidates(selector, norm)
-            if isinstance(outcome, AmbiguousResult):
-                if outcome.candidates and outcome.candidates[0].exactness_tier == 0:
-                    return SkipReason.AMBIGUOUS_TARGET
-            elif isinstance(outcome, MatchResult) and outcome.candidate.exactness_tier == 0:
-                tier0_hit_count += 1
-        return (
-            SkipReason.AMBIGUOUS_TARGET
-            if tier0_hit_count > 1
-            else SkipReason.MISSING_TARGET
-        )
+            if len(hits) == 1:
+                # locate_across_nodes found this hit and then returned None
+                # (e.g., _segments_for_span returned an empty tuple).
+                # That is a technical rendering miss, not an ambiguity.
+                return SkipReason.MISSING_TARGET
+            # clean zero: advance to the next rung
+        return SkipReason.MISSING_TARGET
 
     @staticmethod
     def _epub_spans_overlap(match_a: CrossNodeMatch, match_b: CrossNodeMatch) -> bool:

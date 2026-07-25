@@ -10,6 +10,7 @@ from bs4 import Comment, NavigableString, Tag
 from halfblood.documents.matching import (
     AmbiguousResult,
     MatchResult,
+    MatchTolerance,
     NoMatchResult,
     NormalizedText,
     RawSpan,
@@ -190,25 +191,38 @@ def _has_overlapping_exact(text: str, needle: str) -> bool:
     return False
 
 
-def locate_across_nodes(root: Tag, selector: TargetSelector) -> CrossNodeMatch | None:
-    """Locate one unambiguous full quote within a single inline DOM run.
+# Strictest-first tolerance ladder used by locate_across_nodes and
+# _epub_miss_reason. Both must walk the same sequence so their answers
+# stay consistent.
+_MATCH_LADDER: tuple[MatchTolerance, ...] = (
+    MatchTolerance.EXACT,
+    MatchTolerance.CASE_INSENSITIVE,
+    MatchTolerance.PUNCTUATION_ELASTIC,
+)
 
-    Overlapping or repeated candidates are never guessed: ambiguity within a
-    run, or confident full-quote matches in multiple runs, returns ``None``.
-    The scorer's legacy shortened tiers may rank candidates for older callers,
-    but this DOM-range contract only accepts tier zero so returned segments
-    always represent the selector's complete normalized exact quote.
+_HitList = list[tuple[list[NavigableString], list[tuple[int, int]], RawSpan, str]]
+
+
+def _scan_with_tolerance(
+    root: Tag,
+    selector: TargetSelector,
+    tolerance: MatchTolerance,
+) -> tuple[bool, _HitList]:
+    """Scan all inline runs for tier-0 hits at one tolerance level.
+
+    Returns ``(ambiguous, hits)`` where ``ambiguous`` is ``True`` if any run
+    contained overlapping exact occurrences or produced an ``AmbiguousResult``
+    at tier 0.  The caller decides whether to halt or advance based on these.
     """
-    hits: list[tuple[list[NavigableString], list[tuple[int, int]], RawSpan, str]] = []
+    hits: _HitList = []
     ambiguous = False
-
     for run in iter_inline_runs(root):
         concat_raw, owner = _owner_map(run)
         normalized = NormalizedText(concat_raw)
         if _has_overlapping_exact(normalized.text, selector.normalized_exact):
             ambiguous = True
             continue
-        outcome = score_candidates(selector, normalized)
+        outcome = score_candidates(selector, normalized, tolerance=tolerance)
         if isinstance(outcome, NoMatchResult):
             continue
         if isinstance(outcome, AmbiguousResult):
@@ -219,15 +233,35 @@ def locate_across_nodes(root: Tag, selector: TargetSelector) -> CrossNodeMatch |
             hits.append(
                 (run, owner, outcome.candidate.raw_span, outcome.candidate.reason)
             )
+    return ambiguous, hits
 
-    if ambiguous or len(hits) != 1:
-        return None
 
-    run, owner, raw_span, scorer_reason = hits[0]
-    segments = _segments_for_span(run, owner, raw_span)
-    if not segments:
-        return None
-    return CrossNodeMatch(segments=segments, reason=f"match: {scorer_reason}")
+def locate_across_nodes(root: Tag, selector: TargetSelector) -> CrossNodeMatch | None:
+    """Locate one unambiguous full quote within a single inline DOM run.
+
+    Walks a strictest-first tolerance ladder: EXACT → CASE_INSENSITIVE →
+    PUNCTUATION_ELASTIC.  Each rung is scanned independently across all inline
+    runs; hits from different rungs are never pooled.  The ladder advances only
+    on a clean zero (no hits, no ambiguity at the current rung); ambiguity at
+    any rung halts immediately and returns ``None``.
+
+    Only tier-0 (complete-quote) candidates are accepted so returned segments
+    always represent the selector's full normalized exact quote.
+    """
+    for tolerance in _MATCH_LADDER:
+        ambiguous, hits = _scan_with_tolerance(root, selector, tolerance)
+        if ambiguous or len(hits) > 1:
+            return None  # halt — never loosen past ambiguity or multi-hit
+        if len(hits) == 1:
+            run, owner, raw_span, scorer_reason = hits[0]
+            segments = _segments_for_span(run, owner, raw_span)
+            if not segments:
+                return None
+            return CrossNodeMatch(
+                segments=segments, reason=f"match: {scorer_reason}"
+            )
+        # clean zero at this rung → advance to the next
+    return None
 
 
 def selector_for(target_text: str) -> TargetSelector:

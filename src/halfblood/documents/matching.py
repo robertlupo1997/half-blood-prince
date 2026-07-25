@@ -23,8 +23,10 @@ all and necessarily returns the smallest covering span.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
@@ -46,6 +48,32 @@ AMBIGUITY_MARGIN: float = 0.15
 # (2) Offset-score tiebreaker: when two candidates are already within AMBIGUITY_MARGIN
 #     of each other on context_score, their offset_score difference must exceed
 #     AMBIGUITY_MARGIN to break the tie; otherwise offset_score is treated as negligible.
+
+class MatchTolerance(StrEnum):
+    """How loosely the full-quote tier is compared to source text.
+
+    The tolerance changes *how* a needle is compared, not *which* needles are
+    tried. The exactness-tier ladder (full -> 8-word -> 5-word -> 3-word ->
+    longest word) is orthogonal to tolerance.
+
+    ``EXACT``
+        Byte-identical to today's behaviour; the default. The shortened-tier
+        fallback does not fire when the full quote would have matched under a
+        looser tolerance -- that signals surface drift, not genuine absence.
+    ``CASE_INSENSITIVE``
+        Fold case on both needle and text before comparison. Tier-0 (the
+        complete quote) is searched; shorter tiers are not tried. Folding is
+        length-preserving: ss/fi/dotted-I are left alone so raw spans
+        stay aligned.
+    ``PUNCTUATION_ELASTIC``
+        Optional straight quote characters at word boundaries.
+        Implies case-insensitivity. Tier-0 only.
+    """
+
+    EXACT = "exact"
+    CASE_INSENSITIVE = "case_insensitive"
+    PUNCTUATION_ELASTIC = "punctuation_elastic"
+
 
 _PUNCTUATION_FOLDS = {
     "‘": "'",
@@ -337,6 +365,108 @@ def _find_normalized_occurrences(
         search_from = end
 
 
+def _fold_case(text: str) -> str:
+    """Length-preserving case fold for use on span-aligned text.
+
+    Only lowers a character when the result is a single code point.
+    ``str.casefold()`` maps ``ß``→``ss`` and ``İ``→two code points, which
+    would desynchronise every ``RawSpan`` after the folded character.
+    Those characters are deliberately left unfolded here.
+    """
+    return "".join((low if len(low := c.lower()) == 1 else c) for c in text)
+
+
+def _build_elastic_pattern(normalized_needle: str) -> re.Pattern[str] | None:
+    """Build a PUNCTUATION_ELASTIC regex, or ``None`` for empty needles.
+
+    Semantics: straight quote characters (``'`` / ``"``) at token edges are
+    optional on both sides. Interior apostrophes (``don't``) and all other
+    punctuation are literal. Matching is case-insensitive.
+
+    Adjacent ``["']*`` groups are always separated by a literal space (the
+    token joiner), so catastrophic backtracking cannot occur. Quote-only
+    tokens contribute exactly one group, never an empty alternation.
+    """
+    tokens = normalized_needle.split(" ")
+    parts: list[str] = []
+    for token in tokens:
+        core = token.strip("\"'")
+        if core:
+            # Normal token: optional quotes at both edges, literal interior.
+            parts.append('["\']*' + re.escape(core) + '["\']*')
+        else:
+            # Quote-only token: one optional-quote group. Groups are always
+            # separated by the literal space joiner, so no two unbounded
+            # groups are ever directly adjacent.
+            parts.append('["\']*')
+    if not parts:
+        return None
+    return re.compile(" ".join(parts), re.IGNORECASE)
+
+
+def _find_occurrences_ci(
+    text: NormalizedText,
+    needle: str,
+) -> list[tuple[int, int, RawSpan]]:
+    """Return bounded non-overlapping case-insensitive occurrences.
+
+    Uses ``_fold_case`` (length-preserving) so normalized indices remain
+    aligned to ``text.raw_span``.
+    """
+    if len(needle) > MAX_NEEDLE_CHARS:
+        raise ValueError(f"needle exceeds MAX_NEEDLE_CHARS ({MAX_NEEDLE_CHARS})")
+    if not needle.strip():
+        raise ValueError("needle must contain a non-whitespace character")
+
+    folded_text = _fold_case(text.text)
+    folded_needle = _fold_case(needle)
+    if not folded_needle.strip():
+        raise ValueError("folded needle is empty or whitespace-only")
+
+    matches: list[tuple[int, int, RawSpan]] = []
+    search_from = 0
+    while True:
+        start = folded_text.find(folded_needle, search_from)
+        if start < 0:
+            return matches
+        if len(matches) == MAX_CANDIDATES:
+            raise ValueError(f"match count exceeds MAX_CANDIDATES ({MAX_CANDIDATES})")
+        end = start + len(folded_needle)
+        matches.append((start, end, text.raw_span(start, end)))
+        search_from = end
+
+
+def _find_occurrences_elastic(
+    text: NormalizedText,
+    needle: str,
+) -> list[tuple[int, int, RawSpan]]:
+    """Return bounded non-overlapping punctuation-elastic occurrences.
+
+    Zero-length matches (from quote-only patterns) are filtered out.
+    Honouring ``MAX_CANDIDATES`` exactly as ``_find_normalized_occurrences``
+    does: raises ``ValueError`` when a (MAX_CANDIDATES+1)-th match is found.
+    """
+    if len(needle) > MAX_NEEDLE_CHARS:
+        raise ValueError(f"needle exceeds MAX_NEEDLE_CHARS ({MAX_NEEDLE_CHARS})")
+    if not needle.strip():
+        raise ValueError("needle must contain a non-whitespace character")
+
+    pattern = _build_elastic_pattern(needle)
+    if pattern is None:
+        return []
+
+    matches: list[tuple[int, int, RawSpan]] = []
+    for m in pattern.finditer(text.text):
+        start, end = m.start(), m.end()
+        if start == end:
+            # Zero-length match from a quote-only pattern — discard.
+            continue
+        if len(matches) == MAX_CANDIDATES:
+            raise ValueError(f"match count exceeds MAX_CANDIDATES ({MAX_CANDIDATES})")
+        matches.append((start, end, text.raw_span(start, end)))
+    return matches
+
+
 def _context_score(
     norm_text: str,
     n_start: int,
@@ -394,61 +524,19 @@ def _candidate(
     )
 
 
-def score_candidates(
+def _score_occurrences(
     selector: TargetSelector,
     text: NormalizedText,
-    *,
-    legacy_exact_only: bool = False,
+    tier_idx: int,
+    occurrences: list[tuple[int, int, RawSpan]],
 ) -> ScoringOutcome:
-    """Rank candidates across exactness tiers and reject ambiguous targets.
+    """Score and rank occurrences, returning the shared MatchResult/AmbiguousResult/NoMatchResult.
 
-    Default mode searches the full quote followed by progressively shorter legacy
-    fallbacks, stopping at the first tier with occurrences. Candidates in that tier
-    are ranked by context agreement, offset proximity, and source position.
-
-    Legacy mode searches only the full normalized quote and returns its first
-    occurrence without scoring or fallback selection.
+    All tolerance modes use the same scoring logic; this helper avoids repetition.
     """
-    tiers = _exactness_tiers(selector.normalized_exact)
-    if not tiers:
-        return NoMatchResult(reason="tiers=0 candidates=0")
-
-    if legacy_exact_only:
-        try:
-            occurrences = _find_normalized_occurrences(text, tiers[0])
-        except ValueError:
-            return NoMatchResult(reason="legacy=1 tier=0 bounded=0")
-        if not occurrences:
-            return NoMatchResult(reason="legacy=1 tier=0 candidates=0")
-        _n_start, _n_end, span = occurrences[0]
-        return MatchResult(
-            ScoredCandidate(
-                raw_span=span,
-                context_score=1.0,
-                offset_score=0.0,
-                exactness_tier=0,
-                reason="legacy: first occurrence tier=0",
-            )
-        )
-
-    winning_tier: int | None = None
-    winning_occurrences: list[tuple[int, int, RawSpan]] = []
-    for tier, needle in enumerate(tiers):
-        try:
-            occurrences = _find_normalized_occurrences(text, needle)
-        except ValueError:
-            return NoMatchResult(reason=f"tier={tier} bounded=0")
-        if occurrences:
-            winning_tier = tier
-            winning_occurrences = occurrences
-            break
-
-    if winning_tier is None:
-        return NoMatchResult(reason=f"tiers={len(tiers)} candidates=0")
-
     candidates = [
-        _candidate(selector, text, winning_tier, occurrence)
-        for occurrence in winning_occurrences
+        _candidate(selector, text, tier_idx, occurrence)
+        for occurrence in occurrences
     ]
     max_context = max(candidate.context_score for candidate in candidates)
     if max_context < MIN_CONTEXT_SCORE:
@@ -462,7 +550,7 @@ def score_candidates(
         )
         return NoMatchResult(
             reason=(
-                f"tier={winning_tier} context={top.context_score:.2f} "
+                f"tier={tier_idx} context={top.context_score:.2f} "
                 f"threshold={MIN_CONTEXT_SCORE:.2f} pos={top.raw_span.start}"
             )
         )
@@ -489,3 +577,83 @@ def score_candidates(
     ]
     pool.sort(key=lambda candidate: candidate.raw_span.start)
     return AmbiguousResult(pool)
+
+
+def score_candidates(
+    selector: TargetSelector,
+    text: NormalizedText,
+    *,
+    legacy_exact_only: bool = False,
+    tolerance: MatchTolerance = MatchTolerance.EXACT,
+) -> ScoringOutcome:
+    """Rank candidates across exactness tiers and reject ambiguous targets.
+
+    ``EXACT`` mode (the default) searches the full quote followed by
+    progressively shorter legacy fallbacks, stopping at the first tier with
+    occurrences. Candidates in that tier are ranked by context agreement,
+    offset proximity, and source position. This is unchanged by the tolerance
+    ladder: adding a looser tolerance must never alter what an existing caller
+    already receives.
+
+    ``CASE_INSENSITIVE`` and ``PUNCTUATION_ELASTIC`` modes search tier 0 only
+    using the appropriate fold or regex. A dropped word is a genuine miss at
+    any tolerance; the shortened tiers are not tried.
+
+    Legacy mode ignores ``tolerance`` entirely and searches only the full
+    normalized quote, returning its first occurrence without scoring.
+    """
+    tiers = _exactness_tiers(selector.normalized_exact)
+    if not tiers:
+        return NoMatchResult(reason="tiers=0 candidates=0")
+
+    if legacy_exact_only:
+        try:
+            occurrences = _find_normalized_occurrences(text, tiers[0])
+        except ValueError:
+            return NoMatchResult(reason="legacy=1 tier=0 bounded=0")
+        if not occurrences:
+            return NoMatchResult(reason="legacy=1 tier=0 candidates=0")
+        _n_start, _n_end, span = occurrences[0]
+        return MatchResult(
+            ScoredCandidate(
+                raw_span=span,
+                context_score=1.0,
+                offset_score=0.0,
+                exactness_tier=0,
+                reason="legacy: first occurrence tier=0",
+            )
+        )
+
+    if tolerance in (MatchTolerance.CASE_INSENSITIVE, MatchTolerance.PUNCTUATION_ELASTIC):
+        # Looser tolerances: search tier-0 only with the appropriate finder.
+        # Shorter exactness tiers are not tried — a dropped word is a miss,
+        # not a match on the longest remaining word.
+        tier0_needle = tiers[0]
+        try:
+            if tolerance is MatchTolerance.CASE_INSENSITIVE:
+                occurrences = _find_occurrences_ci(text, tier0_needle)
+            else:
+                occurrences = _find_occurrences_elastic(text, tier0_needle)
+        except ValueError:
+            return NoMatchResult(reason="tier=0 bounded=0")
+        if not occurrences:
+            return NoMatchResult(reason="tier=0 candidates=0")
+        return _score_occurrences(selector, text, 0, occurrences)
+
+    # EXACT mode: original tier loop with an elastic pre-check guard.
+    winning_tier: int | None = None
+    winning_occurrences: list[tuple[int, int, RawSpan]] = []
+    for tier, needle in enumerate(tiers):
+        try:
+            occurrences = _find_normalized_occurrences(text, needle)
+        except ValueError:
+            return NoMatchResult(reason=f"tier={tier} bounded=0")
+        if occurrences:
+            winning_tier = tier
+            winning_occurrences = occurrences
+            break
+
+    if winning_tier is None:
+        return NoMatchResult(reason=f"tiers={len(tiers)} candidates=0")
+
+    return _score_occurrences(selector, text, winning_tier, winning_occurrences)
