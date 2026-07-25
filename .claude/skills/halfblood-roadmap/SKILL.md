@@ -120,11 +120,16 @@ Moved out of the project's root `CLAUDE.md` (which keeps only Mission, architect
     mutually exclusive.
 
 - **Config keys for `max_per_page` and `font_path`.** Genuinely absent (`config.py` has
-  `persona` and the provider keys, not these). **Hermeticity requirement:** there is no
-  injectable config path today, so a test that reaches the real resolver reads
-  `cwd/halfblood.toml` and the developer's user config off the real machine — green locally,
-  broken elsewhere, and both the suite and code review are blind to it. Any brief for this
-  must require injectable search roots in the tests.
+  `persona` and the provider keys, not these). The old warning here — "no injectable config
+  path" — was **wrong**: `resolve_generation_config` has taken `environ=`,
+  `project_config_path=` and `user_config_path=` all along; only the *defaults* leaked.
+  **That leak is now closed** (`94494d7`): `tests/conftest.py` has an autouse fixture
+  repointing the default user-config lookup at an empty directory, plus a collection hook
+  that aborts with a clear message if a stray `halfblood.toml` sits in the repo root.
+  Proven load-bearing — a hostile `$XDG_CONFIG_HOME/halfblood/config.toml` used to turn two
+  `test_cli_provider_seam.py` tests red and now does not. **Re-run that probe after any
+  change to config resolution**; it is the only thing that distinguishes real hermeticity
+  from "passes because a file happens not to exist."
 - **Batch mode** — `halfblood annotate-batch *.pdf` processing multiple books.
 - **PDF-to-EPUB annotation transfer** — Generate annotations against a PDF, render into the corresponding EPUB.
 - **Annotation diff** — Compare two annotation plans (e.g., different models or personas) side by side.

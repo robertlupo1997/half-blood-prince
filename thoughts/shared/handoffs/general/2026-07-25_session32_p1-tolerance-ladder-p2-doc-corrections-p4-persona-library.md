@@ -223,11 +223,8 @@ files, not implementer error.
 1. **P3 — prove quality on a frontier model.** Still the open product question, still
    blocked: the OpenRouter key has no credit and spending money is owner-gated. All
    evidence to date is from one free model.
-2. **Config keys for `max_per_page` / `font_path`.** Genuinely absent. **Any brief must
-   require injectable config search roots in the tests** — there is no injectable config
-   path today, so a test reaching the real resolver reads `cwd/halfblood.toml` and the
-   developer's user config off the real machine. Green here, broken elsewhere, and both the
-   suite and code review are blind to it.
+2. **Config keys for `max_per_page` / `font_path`.** Genuinely absent. The hermeticity
+   blocker that used to sit in front of this is **closed** (`94494d7`) — see below.
 3. **Free-text search over annotation content in the web preview.** Legend-based *type*
    filtering already exists (`applyFilters()`); searching note text does not. Probe before
    building — the roadmap has been wrong about this file twice.
@@ -239,6 +236,33 @@ files, not implementer error.
    without an exception.
 7. Connector Layer 2/3 remains deliberately deferred — build only if a real book produces a
    forced-far placement.
+
+## Hermeticity: probed, found broken, fixed (`94494d7`)
+
+Worth repeating because it is the clearest example this session of a defect no gate catches.
+Planting a user config at `$XDG_CONFIG_HOME/halfblood/config.toml`:
+
+    [generation]
+    provider = "openrouter"
+    model = "hostile/model"
+    concurrency = 17
+
+turned **two** previously-green tests in `test_cli_provider_seam.py` red. Any developer who
+actually uses this tool and has a real `~/.config/halfblood/config.toml` hits those failures
+while CI stays green, and the failure output never mentions the config file. One of the two
+tests carried a docstring explicitly asserting it was safe against this; the probe disproved
+it, and the docstring is corrected.
+
+`tests/conftest.py` was 14 lines of `sys.path` setup. It now also has an autouse fixture
+repointing the default user-config lookup at an empty directory, and a collection hook that
+aborts with an actionable message if a stray `halfblood.toml` sits in the repo root. Result:
+1582 passed both with the hostile config planted and without.
+
+Note for whoever touches this next: **patch `halfblood.config.user_config_dir`, not
+`XDG_CONFIG_HOME`.** platformdirs uses `~/Library/Application Support` on macOS, so an
+XDG-based fix would silently fail to protect mac developers. And re-run the hostile-config
+probe after any change to config resolution — it is the only thing that distinguishes real
+hermeticity from "passes because a file happens not to exist."
 
 ## Hard guardrails (unchanged, still owner-gated)
 
