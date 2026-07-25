@@ -444,6 +444,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     <div class="controls">
       <div class="legend" id="legend" aria-label="Annotation types (click to toggle)"></div>
+      <button type="button" id="copy-json" class="theme-toggle" aria-label="Copy the annotation plan as JSON">&#128203; Copy JSON</button>
       <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">&#127769; Dark</button>
     </div>
   </header>
@@ -736,6 +737,7 @@ _JS = r"""
     persona: document.getElementById("book-persona"),
     legend: document.getElementById("legend"),
     themeToggle: document.getElementById("theme-toggle"),
+    copyJson: document.getElementById("copy-json"),
     prevBtn: document.getElementById("prev-btn"),
     nextBtn: document.getElementById("next-btn"),
     pageFrame: document.getElementById("page-frame"),
@@ -797,6 +799,48 @@ _JS = r"""
     applyTheme(next);
     try { localStorage.setItem("hb-theme", next); } catch (e) { /* ignore */ }
     requestAnimationFrame(doLayout);
+  });
+
+  // ---------------- copy JSON ----------------
+  // A preview is normally opened over file://, which is NOT a secure context in
+  // Chrome, so navigator.clipboard is frequently undefined exactly where this
+  // button gets used. Feature-detect it and fall back to a hidden textarea, and
+  // always report the outcome -- a silent copy is indistinguishable from a
+  // broken button.
+
+  function flashCopyLabel(message) {
+    var original = "&#128203; Copy JSON";
+    els.copyJson.innerHTML = message;
+    setTimeout(function () { els.copyJson.innerHTML = original; }, 1600);
+  }
+
+  function legacyCopy(text) {
+    var scratch = document.createElement("textarea");
+    scratch.value = text;
+    // Keep it off-screen but focusable; display:none would not be selectable.
+    scratch.setAttribute("readonly", "");
+    scratch.style.position = "absolute";
+    scratch.style.left = "-9999px";
+    document.body.appendChild(scratch);
+    scratch.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(scratch);
+    return ok;
+  }
+
+  els.copyJson.addEventListener("click", function () {
+    var text = JSON.stringify(DATA, null, 2);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { flashCopyLabel("&#10003; Copied"); },
+        function () {
+          flashCopyLabel(legacyCopy(text) ? "&#10003; Copied" : "Copy failed");
+        }
+      );
+      return;
+    }
+    flashCopyLabel(legacyCopy(text) ? "&#10003; Copied" : "Copy failed");
   });
 
   // ---------------- legend / filtering ----------------
