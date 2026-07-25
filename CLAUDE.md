@@ -160,7 +160,7 @@ When reviewing, check each module for:
 - [ ] **Error handling** — Are exceptions caught at the right level? Any bare `except Exception`? (Known: eval harness has intentional broad catches at the case boundary.)
 - [ ] **Logging** — Is the logging level appropriate? Are log messages actionable? (Known: font fallback WARNING is noisy.)
 - [ ] **Docstrings** — Are all public classes and methods documented? Are the docstrings accurate after the bug fixes?
-- [ ] **Test coverage** — What's not tested? (Known gaps: EPUB processor has zero tests, web preview has zero tests, eval harness's real-pipeline path is only tested manually.)
+- [ ] **Test coverage** — What's not tested? (The former "EPUB processor and web preview have zero tests" note is **stale**: `tests/test_epub_processor.py`, `tests/test_epub_render_report.py` and `tests/test_web_preview.py` all exist. Verify with `ls tests/` before believing any coverage claim here. Remaining real gap: the eval harness's real-pipeline path is only tested manually.)
 - [ ] **Import hygiene** — Any circular imports? Any unnecessary imports?
 - [ ] **Constants** — Any magic numbers that should be named constants? (Known: 500-char context window, 8-item running_notes cap.)
 - [ ] **Thread safety** — `random.Random` instance per `DocumentProcessor` is fine, but is there shared mutable state elsewhere?

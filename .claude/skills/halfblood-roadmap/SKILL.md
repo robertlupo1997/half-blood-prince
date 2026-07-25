@@ -76,8 +76,32 @@ Moved out of the project's root `CLAUDE.md` (which keeps only Mission, architect
 
 ## Low Priority / Nice-to-Have
 
-- **Configuration file support** — `.halfblood.toml` or similar for default persona, model, max-per-page, font path.
-- **Persona library** — A directory of pre-built persona files (`personas/chemist.txt`, `personas/philosopher.txt`) that `--persona-file` can load.
+- **Configuration file support** — `.halfblood.toml` or similar for default persona, model, max-per-page, font path. (Partly built: persona and provider keys exist; see the Medium-priority entry above for the two remaining keys and the hermeticity trap.)
+- **Elastic-only overlap is not caught by `_has_overlapping_exact`.** That guard checks the
+  *exact* needle at every rung, and `finditer` is non-overlapping, so a target that overlaps
+  itself only once quotes are made elastic would report a single hit rather than ambiguity.
+  Not reachable with realistic 4–15-word book quotes (it needs a short self-overlapping
+  phrase with a quote character between the repeats). Recorded, not fixed.
+- **~~Persona library~~ — SHIPPED 2026-07-25.** `personas/{chemist,philosopher,editor,detective}.txt`
+  plus `personas/README.md`. Building it surfaced and fixed a real defect: `--persona`/
+  `--persona-file` *replace* the persona string, and the eight annotation-type definitions
+  lived inside `DEFAULT_PERSONA`, so a custom persona silently produced a **707-character**
+  system prompt instead of 4779 — no type guidance at all. Split into `DEFAULT_PERSONA`
+  (voice) + `ANNOTATION_CRAFT` (shared machinery, always appended). The default prompt is
+  pinned **byte-identical** by `tests/test_persona_craft.py`; persona files must describe a
+  voice only, which is also asserted.
+  - **Follow-up:** `personas/` is a repo-root asset and is NOT in the wheel
+    (`packages = ["src/halfblood"]`). To make it work for pip installs, ship a copy under
+    `src/halfblood/personas/` and add `--persona-name` resolving against it — mirror
+    `_resolve_font_option(value, fonts_dir=None)` in `cli.py`, which already has the
+    injectable-directory shape that keeps its tests hermetic.
+
+- **Config keys for `max_per_page` and `font_path`.** Genuinely absent (`config.py` has
+  `persona` and the provider keys, not these). **Hermeticity requirement:** there is no
+  injectable config path today, so a test that reaches the real resolver reads
+  `cwd/halfblood.toml` and the developer's user config off the real machine — green locally,
+  broken elsewhere, and both the suite and code review are blind to it. Any brief for this
+  must require injectable search roots in the tests.
 - **Batch mode** — `halfblood annotate-batch *.pdf` processing multiple books.
 - **PDF-to-EPUB annotation transfer** — Generate annotations against a PDF, render into the corresponding EPUB.
 - **Annotation diff** — Compare two annotation plans (e.g., different models or personas) side by side.

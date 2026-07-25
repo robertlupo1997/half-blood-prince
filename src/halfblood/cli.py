@@ -405,6 +405,8 @@ def main() -> None:
     default=None,
     help=(
         "Path to a UTF-8 text file containing the annotator persona. "
+        "Ready-made voices ship in personas/ (chemist, philosopher, editor, "
+        "detective); see personas/README.md to write your own. "
         "Mutually exclusive with --persona."
     ),
 )
@@ -626,6 +628,8 @@ def annotate(
     default=None,
     help=(
         "Path to a UTF-8 text file containing the annotator persona. "
+        "Ready-made voices ship in personas/ (chemist, philosopher, editor, "
+        "detective); see personas/README.md to write your own. "
         "Mutually exclusive with --persona."
     ),
 )

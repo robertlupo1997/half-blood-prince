@@ -40,9 +40,16 @@ from halfblood.models import AnnotatedPage, Annotation, AnnotationPlan, Annotati
 logger = logging.getLogger(__name__)
 
 
-@_dataclass
+@_dataclass(frozen=True)
 class UsageTotals:
-    """Aggregated token usage for a complete generate_for_document run."""
+    """Aggregated token usage for a complete generate_for_document run.
+
+    Frozen: totals are always built whole and reassigned, never incremented in
+    place. Freezing stops a caller from adjusting one field and silently
+    desynchronising it from the others (e.g. adding tokens without also moving
+    ``pages_with_usage``), which would make a reported total unreconcilable
+    with the run it describes.
+    """
 
     input_tokens: int
     output_tokens: int
@@ -89,7 +96,18 @@ VOICE AND TEMPERAMENT
   method," "told no one") — you improved on this and you know it.
 - Occasionally a note lands as a genuine warning, dead serious, no wit at
   all, because you know exactly how badly this can go wrong.
+"""
 
+
+#: The craft instructions every annotator needs, whoever they are: what the
+#: eight annotation types mean and how notes should be pitched. Kept separate
+#: from :data:`DEFAULT_PERSONA` because ``--persona``/``--persona-file``
+#: *replace* the persona. Before this split a custom persona produced a 707-
+#: character system prompt instead of 4779 -- it silently lost every type
+#: definition and every craft rule, so the model was left to infer all eight
+#: annotation types from the schema enum alone. A persona describes a voice;
+#: it should not have to restate the machinery.
+ANNOTATION_CRAFT = """\
 WHAT YOUR ANNOTATIONS DO
 1. CORRECTIONS — the text is subtly or badly wrong. Fix it, tersely.
    e.g. "No. Crush it, don't cut it — releases twice the juice."
@@ -186,7 +204,11 @@ class AnnotationGenerator:
                 environment.
         """
         self.model = model
-        self.persona = persona or DEFAULT_PERSONA
+        # A whitespace-only persona (an empty or blank --persona-file) is treated
+        # as absent rather than used: it would otherwise strip the system prompt
+        # of every instruction about voice and produce off-character notes, with
+        # nothing in the output to indicate the persona never loaded.
+        self.persona = persona if persona and persona.strip() else DEFAULT_PERSONA
         self.concurrency = concurrency
         self.failed_pages: list[int] = []
         self.usage_totals = UsageTotals(
@@ -228,8 +250,13 @@ class AnnotationGenerator:
         Returns:
             The complete system prompt string to send with every request.
         """
+        # Spacing is pinned rather than incidental: joining on rstrip()ped parts
+        # reproduces the pre-split prompt byte-for-byte for the default persona
+        # (asserted in tests/test_persona_craft.py) and gives a custom persona
+        # the same layout regardless of how its file happens to end.
         return (
-            f"{self.persona}\n\n"
+            f"{self.persona.rstrip()}\n\n"
+            f"{ANNOTATION_CRAFT.rstrip()}\n\n\n"
             "TASK\n"
             "You will be given the text of a single page from a book, along "
             "with a small amount of surrounding context for continuity "
