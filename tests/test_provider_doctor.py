@@ -46,7 +46,13 @@ _FAKE_SOURCES: dict[str, str] = {
     "max_retries": "default",
     "concurrency": "default",
     "allow_insecure_http": "default",
+    "max_per_page": "default",
+    "font": "default",
 }
+# Every field in ResolvedConfig.safe_repr()'s tuple must appear above. The real resolver
+# always records a source for each, so safe_repr indexes this dict strictly -- a missing
+# key is a bug in provenance tracking, and a diagnostics function that quietly prints
+# "source=unknown" hides exactly what `providers doctor` exists to reveal.
 
 #: Pre-built hermetic ResolvedConfig.  Tests that need it monkeypatch
 #: ``cli_module.resolve_generation_config`` to return this object directly,

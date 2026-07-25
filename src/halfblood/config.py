@@ -138,7 +138,7 @@ class ResolvedConfig:
             "font",
         )
         details = ", ".join(
-            f"{field}={getattr(self, field)!r} (source={self.sources.get(field, 'unknown')})"
+            f"{field}={getattr(self, field)!r} (source={self.sources[field]})"
             for field in fields
         )
         return f"ResolvedConfig({details})"
