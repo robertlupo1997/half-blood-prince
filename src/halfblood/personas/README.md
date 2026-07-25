@@ -1,27 +1,28 @@
 # Persona library
 
-Ready-made annotator voices for `--persona-file`:
+Ready-made annotator voices, selectable by name:
 
 ```bash
-halfblood annotate book.epub -o annotated.epub --persona-file personas/philosopher.txt
+halfblood annotate book.epub -o annotated.epub --persona-name chemist
 ```
 
-| file | voice |
-|---|---|
-| `chemist.txt` | An 1890s industrial chemist. Practical, quantitative, has been burned before. |
-| `philosopher.txt` | Argues with the author's unexamined premises. Dry, precise about language. |
-| `editor.txt` | An old-school line editor. Performs the cut rather than describing it. |
-| `detective.txt` | Reads narrative as testimony. Hunts inconsistency and the unnoticed detail. |
+| name | file | voice |
+|---|---|---|
+| `chemist` | `chemist.txt` | An 1890s industrial chemist. Practical, quantitative, has been burned before. |
+| `philosopher` | `philosopher.txt` | Argues with the author's unexamined premises. Dry, precise about language. |
+| `editor` | `editor.txt` | An old-school line editor. Performs the cut rather than describing it. |
+| `detective` | `detective.txt` | Reads narrative as testimony. Hunts inconsistency and the unnoticed detail. |
 
 The built-in default (no flag) is the Half-Blood Prince — a young Severus Snape
 annotating his Potions textbook.
 
-> **These files live in the repository, not in the installed package.** `pyproject.toml`
-> ships only `src/halfblood`, so the paths above work from a git checkout. If you
-> installed via `pip`, copy a persona out of the repo (or write your own) and point
-> `--persona-file` at it. Packaging the library and adding a `--persona-name` shortcut —
-> mirroring how `--font` resolves registered names against a bundled directory — is a
-> tracked follow-up.
+For a custom persona from a file:
+
+```bash
+halfblood annotate book.epub -o annotated.epub --persona-file my-voice.txt
+```
+
+`--persona`, `--persona-file`, and `--persona-name` are mutually exclusive.
 
 ## Writing your own
 

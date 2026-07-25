@@ -30,7 +30,7 @@ from halfblood.generation.providers.base import (
     ProviderCapabilities,
 )
 
-PERSONAS_DIR = Path(__file__).resolve().parents[1] / "personas"
+PERSONAS_DIR = Path(__file__).resolve().parents[1] / "src" / "halfblood" / "personas"
 
 ANNOTATION_TYPES = (
     "CORRECTIONS",

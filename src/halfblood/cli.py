@@ -14,6 +14,7 @@ type from its extension (``.pdf`` or ``.epub``) and dispatch to
 
 from __future__ import annotations
 
+import importlib.resources as resources
 import inspect
 import logging
 import os
@@ -171,15 +172,84 @@ def _resolve_provider_and_build(
     return config, provider_obj
 
 
+def available_personas(personas_dir: Path | None = None) -> list[str]:
+    """Sorted names of the bundled personas (file stems, no extension).
+
+    Args:
+        personas_dir: Injectable search directory for tests.  When *None* the
+            directory that ships inside the installed ``halfblood`` package is
+            used.
+    """
+    if personas_dir is not None and personas_dir.is_dir():
+        names = sorted(
+            p.stem for p in personas_dir.iterdir()
+            if p.suffix == ".txt" and p.stem != "README"
+        )
+        if names:
+            return names
+    # Fall back to the package-bundled directory.
+    pkg_dir = Path(str(resources.files("halfblood").joinpath("personas")))
+    return sorted(
+        p.stem for p in pkg_dir.iterdir()
+        if p.suffix == ".txt" and p.stem != "README"
+    )
+
+
+def _resolve_persona_name(name: str, personas_dir: Path | None = None) -> str:
+    """Return the text of a bundled persona, or raise ``click.ClickException``.
+
+    Resolution order: injected ``personas_dir`` first (so tests and custom
+    directories work without touching the package), then the directory bundled
+    inside the installed ``halfblood`` package.  A name that resolves in
+    neither raises a :class:`click.ClickException` that lists every available
+    persona.
+
+    Args:
+        name: Stem of a persona file (e.g. ``"chemist"``).
+        personas_dir: Injectable directory, searched before the package
+            resource.  When *None* only the package resource is searched.
+
+    Raises:
+        click.ClickException: if *name* is unknown.
+    """
+    # Injected directory first.
+    if personas_dir is not None:
+        candidate = personas_dir / f"{name}.txt"
+        if candidate.is_file():
+            return candidate.read_text(encoding="utf-8")
+
+    # Package resource second.
+    pkg_dir = Path(str(resources.files("halfblood").joinpath("personas")))
+    pkg_candidate = pkg_dir / f"{name}.txt"
+    if pkg_candidate.is_file():
+        return pkg_candidate.read_text(encoding="utf-8")
+
+    available = ", ".join(available_personas(personas_dir))
+    raise click.ClickException(
+        f"Unknown persona {name!r}. Available names: {available}."
+    )
+
+
 def _resolve_persona(
     persona_flag: str | None,
     persona_file: Path | None,
+    persona_name: str | None,
     config_persona: str | None,
 ) -> str | None:
-    """Resolve effective persona: CLI flag > CLI file > config > None."""
-    if persona_flag is not None and persona_file is not None:
+    """Resolve the effective persona: whichever CLI flag was given > config > None.
+
+    ``--persona``, ``--persona-file`` and ``--persona-name`` are mutually
+    exclusive -- supplying two or more is a :class:`click.UsageError`, which
+    extends the pre-existing rule for the first two rather than introducing a
+    new convention. There is therefore no precedence *between* the flags; the
+    order they are checked in below is unreachable for a conflicting call, and
+    only the flag-vs-config precedence is observable.
+    """
+    flags_given = sum(x is not None for x in (persona_flag, persona_file, persona_name))
+    if flags_given >= 2:
         raise click.UsageError(
-            "--persona and --persona-file are mutually exclusive; provide at most one."
+            "--persona, --persona-file, and --persona-name are mutually exclusive; "
+            "provide at most one."
         )
     if persona_flag is not None:
         return persona_flag
@@ -192,6 +262,8 @@ def _resolve_persona(
             raise click.ClickException(
                 f"Could not read persona file {persona_file}: {exc}"
             ) from exc
+    if persona_name is not None:
+        return _resolve_persona_name(persona_name)
     return config_persona
 
 
@@ -404,10 +476,20 @@ def main() -> None:
     type=click.Path(dir_okay=False, path_type=Path),
     default=None,
     help=(
-        "Path to a UTF-8 text file containing the annotator persona. "
-        "Ready-made voices ship in personas/ (chemist, philosopher, editor, "
-        "detective); see personas/README.md to write your own. "
-        "Mutually exclusive with --persona."
+        "Path to a UTF-8 text file containing a custom annotator persona. "
+        "Use --persona-name for built-in voices (chemist, philosopher, editor, detective). "
+        "Mutually exclusive with --persona and --persona-name."
+    ),
+)
+@click.option(
+    "--persona-name",
+    "persona_name",
+    default=None,
+    metavar="NAME",
+    help=(
+        "Built-in annotator persona by name. "
+        "Available: chemist, detective, editor, philosopher. "
+        "Mutually exclusive with --persona and --persona-file."
     ),
 )
 @click.option("--pages", default=None, help="Page/chapter range, e.g. '1-5,8'. Default: all.")
@@ -452,6 +534,7 @@ def annotate(
     output_file: Path,
     persona: str | None,
     persona_file: Path | None,
+    persona_name: str | None,
     pages: str | None,
     max_per_page: int,
     font: str | None,
@@ -507,7 +590,7 @@ def annotate(
         allow_insecure_http,
         config_path,
     )
-    effective_persona = _resolve_persona(persona, persona_file, config.persona)
+    effective_persona = _resolve_persona(persona, persona_file, persona_name, config.persona)
     generator = AnnotationGenerator(
         persona=effective_persona,
         model=config.model,
@@ -627,10 +710,20 @@ def annotate(
     type=click.Path(dir_okay=False, path_type=Path),
     default=None,
     help=(
-        "Path to a UTF-8 text file containing the annotator persona. "
-        "Ready-made voices ship in personas/ (chemist, philosopher, editor, "
-        "detective); see personas/README.md to write your own. "
-        "Mutually exclusive with --persona."
+        "Path to a UTF-8 text file containing a custom annotator persona. "
+        "Use --persona-name for built-in voices (chemist, philosopher, editor, detective). "
+        "Mutually exclusive with --persona and --persona-name."
+    ),
+)
+@click.option(
+    "--persona-name",
+    "persona_name",
+    default=None,
+    metavar="NAME",
+    help=(
+        "Built-in annotator persona by name. "
+        "Available: chemist, detective, editor, philosopher. "
+        "Mutually exclusive with --persona and --persona-file."
     ),
 )
 @click.option("--max-per-page", default=5, show_default=True)
@@ -649,6 +742,7 @@ def preview(
     pages: str,
     persona: str | None,
     persona_file: Path | None,
+    persona_name: str | None,
     max_per_page: int,
     annotate_boilerplate: bool,
     provider: str | None,
@@ -681,7 +775,7 @@ def preview(
         allow_insecure_http,
         config_path,
     )
-    effective_persona = _resolve_persona(persona, persona_file, config.persona)
+    effective_persona = _resolve_persona(persona, persona_file, persona_name, config.persona)
     generator = AnnotationGenerator(
         persona=effective_persona,
         model=config.model,
