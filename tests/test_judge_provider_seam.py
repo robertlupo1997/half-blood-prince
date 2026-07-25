@@ -336,3 +336,29 @@ class TestAnthropicProviderHonoursTheOutputModel:
         assert isinstance(result.parsed, _RA)
         assert len(result.parsed.annotations) == 1
         assert any("dropped invalid annotation" in w for w in result.warnings)
+
+
+def test_the_project_declares_no_llm_vendor_sdk_dependency() -> None:
+    """The judge was the last thing needing a vendor SDK; the dependency goes with it.
+
+    Generation and judging both run over the httpx provider seam now, so `anthropic`
+    was removed from the `[eval]` extra. Left in place it would be an invisible
+    dependency nobody imports — and its presence is what made "we have no vendor SDK
+    dependency" false while looking true.
+    """
+    import tomllib
+
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+
+    declared = [
+        requirement
+        for group in data["project"].get("optional-dependencies", {}).values()
+        for requirement in group
+    ] + list(data["project"].get("dependencies", []))
+
+    offenders = [r for r in declared if r.lower().startswith(("anthropic", "openai"))]
+    assert not offenders, f"vendor SDK dependency reintroduced: {offenders}"
+    assert "eval" in data["project"]["optional-dependencies"], (
+        "the [eval] extra must still exist; the README documents installing it"
+    )

@@ -93,6 +93,27 @@ Moved out of the project's root `CLAUDE.md` (which keeps only Mission, architect
 
 ## Low Priority / Nice-to-Have
 
+- **~~Eval-judge migration onto the provider seam~~ — SHIPPED 2026-07-25 (`4effd2e`).**
+  The harness was the last `anthropic` importer and hard-refused any judge provider but
+  anthropic, which made the quality gate **unrunnable without Anthropic credit**. Judge now
+  builds through `build_provider` like the generator. `structured_output` and both providers
+  take `output_model` (defaulting to `RecordAnnotations`, so generation is untouched); the
+  retry loops were not modified. The `anthropic` dependency is dropped from `pyproject.toml`
+  entirely — **no LLM vendor SDK in any dependency group**, pinned by
+  `test_packaging.py::test_anthropic_is_absent_from_every_dependency_group`.
+  - **The migration first broke the Anthropic judge and nothing caught it.** `anthropic.py`
+    never calls `structured_output` — it parses inline and was hardcoded to
+    `record_annotations` in four places (tool_choice sent, block name required,
+    `"annotations"` key demanded, `RecordAnnotations` constructed). All 1640 tests and both
+    linters were green over the regression. Found only by hand-constructing a judge request.
+    **If you touch the seam, exercise a non-annotation model against BOTH providers.**
+  - The annotation path deliberately keeps per-item resilience (one malformed annotation is
+    dropped with a warning, not the whole page); the generic path validates whole. Asserted.
+  - First-ever eval run on this machine: 4.72/5, grade A — but **self-judged on one free
+    model, so it proves the transport, not the quality.** A defensible score needs an
+    independent judge, which still needs credit.
+
+
 - **~~Configuration file support~~ — COMPLETE 2026-07-25.** `halfblood.toml` (project) and
   `<user_config_dir>/halfblood/config.toml` now cover provider, model, base_url, api_key_env,
   structured_output, timeout, max_retries, concurrency, allow_insecure_http, persona,

@@ -40,17 +40,27 @@ def test_every_runtime_dependency_has_an_upper_bound(pyproject: dict) -> None:
         assert "<" in spec, f"floor-only dependency permits breaking upgrades: {spec!r}"
 
 
-def test_anthropic_is_absent_from_core_dependencies(pyproject: dict) -> None:
-    """P1-T5: production Anthropic traffic moved to a native ``httpx``
-    adapter, so the ``anthropic`` SDK is no longer a core runtime
-    dependency. It still ships, bounded, in the ``eval`` extra --
-    ``test_eval_extra_is_present_and_bounded`` covers that bound generically."""
-    deps = pyproject["project"]["dependencies"]
-    assert not any(spec.startswith("anthropic") for spec in deps), deps
+def test_anthropic_is_absent_from_every_dependency_group(pyproject: dict) -> None:
+    """No LLM vendor SDK anywhere -- core or extras.
 
-    eval_extra = pyproject["project"]["optional-dependencies"]["eval"]
-    spec = next(s for s in eval_extra if s.startswith("anthropic"))
-    assert re.search(r"<\s*2\b", spec), spec
+    P1-T5 moved production Anthropic traffic to a native ``httpx`` adapter but left the
+    SDK in the ``eval`` extra, because the eval *judge* still used it. This test asserted
+    that boundary: absent from core, present-and-bounded in ``eval``.
+
+    Phase 5 moved the judge onto the same provider seam, so nothing imports the SDK at
+    all and the dependency was dropped. The old assertion is now inverted -- it would
+    require reintroducing a package no code uses. Updated rather than deleted so the
+    stronger property is still pinned: generation *and* judging run over the shared httpx
+    seam, and this project depends on no LLM vendor package.
+    """
+    deps = pyproject["project"]["dependencies"]
+    extras = pyproject["project"]["optional-dependencies"]
+    everywhere = list(deps) + [spec for group in extras.values() for spec in group]
+
+    offenders = [spec for spec in everywhere if spec.lower().startswith("anthropic")]
+    assert not offenders, (
+        f"the anthropic SDK is declared but nothing imports it: {offenders}"
+    )
 
 
 def test_eval_extra_is_present_and_bounded(pyproject: dict) -> None:

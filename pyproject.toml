@@ -45,7 +45,10 @@ Repository = "https://github.com/robertlupo1997/half-blood-prince"
 Issues = "https://github.com/robertlupo1997/half-blood-prince/issues"
 
 [project.optional-dependencies]
-eval = ["anthropic>=0.30.0,<2", "rich>=13.0.0,<16"]
+# The eval harness judges through the same httpx provider seam as generation, so no
+# vendor SDK is required. `anthropic` was dropped here once the judge migrated (see
+# tests/test_judge_provider_seam.py); the project now depends on no LLM vendor package.
+eval = ["rich>=13.0.0,<16"]
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.5.0",
