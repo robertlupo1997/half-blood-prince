@@ -69,8 +69,19 @@ Moved out of the project's root `CLAUDE.md` (which keeps only Mission, architect
     tell a real improvement from noise — see the reverted verbatim-quoting experiment above.
 - **PDF text extraction quality.** Some PDFs have weird text layer encodings. Consider adding OCR fallback via `page.get_text("text", flags=fitz.TEXT_PRESERVE_WHITESPACE)` or PyMuPDF's built-in OCR.
 - **Web preview improvements:**
-  - Add a "Copy JSON" button to export the annotation plan
-  - Add search/filter by annotation content
+  - **~~Copy JSON button~~ — SHIPPED 2026-07-25 (`b8cf39b`).** Reads the already-embedded
+    `window.__HB_DATA__`; no new data path. Key constraint: previews open over `file://`,
+    which is **not** a secure context in Chrome, so `navigator.clipboard` is often
+    `undefined` exactly where the button is used — it is feature-detected with a hidden
+    `<textarea>` + `execCommand` fallback and a visible outcome either way. Verified by
+    `node --check` on the generated page's JS (a syntax error in JS-embedded-in-Python is
+    invisible to every Python test) and by executing the handler under a DOM stub with
+    `navigator.clipboard` absent.
+  - **~~Search/filter~~ — ALREADY BUILT, do not rebuild.** `web_preview.py` has legend-based
+    type filtering (`applyFilters()`, `.filtered-out`). What is genuinely missing is
+    free-text search over annotation *content*.
+  - Note: `tests/test_web_preview.py` exists (~280 lines). The "web preview has zero tests"
+    claim that circulated in CLAUDE.md was stale and is corrected.
   - Add annotation editing (modify content, delete, re-position)
   - Server-sent events for live preview during generation
 

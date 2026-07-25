@@ -1,10 +1,10 @@
 ---
 date: 2026-07-25
 researcher: Claude (Opus 5)
-git_commit: 97f345e
+git_commit: b8cf39b
 branch: main
 repository: half-blood-prince
-topic: "Session 32 — P1 EPUB recovery shipped (88%→96%), P2 doc corrections, P4 persona library; prompt hardening measured and rejected"
+topic: "Session 32 — P1 EPUB recovery (88%→96%), P2 doc corrections, P4 persona library + wheel packaging + Copy-JSON; prompt hardening measured and rejected"
 tags: [matching, tolerance-ladder, epub, personas, prompt-engineering, negative-result, autonomy, session-close]
 status: complete
 last_updated: 2026-07-25
@@ -24,7 +24,7 @@ watched print.** It worked again. It also caught a live problem again — see Le
 
 ## What shipped
 
-Three commits, all pushed to `origin/main`.
+Five commits, all pushed to `origin/main`.
 
 ### `96a715e` — P1: match-tolerance ladder (the headline)
 
@@ -113,6 +113,32 @@ cannot distinguish a prompt win from noise on this model.** Any future prompt ch
 at this metric needs several paired runs before it means anything. The prompt already said
 "exact, verbatim" twice — saying it louder did nothing. **The matcher is the lever.**
 
+### `8b6ff05` — P4: persona library ships in the wheel, `--persona-name`
+
+`personas/` was a repo-root asset and `pyproject.toml` packages only `src/halfblood`, so none
+of it reached an installed wheel. Moved into the package with `--persona-name NAME` on both
+commands, mirroring the font solution (`importlib.resources` + injectable directory). Verified
+independently of the implementer's report: built the wheel and inspected it, and ran
+`--persona-name chemist` against the real book.
+
+The three persona flags are mutually exclusive, extending the existing
+`--persona`/`--persona-file` rule. **My spec asserted both a flag-vs-flag precedence and mutual
+exclusion for the same call** — unsatisfiable. Codex stopped and reported rather than picking
+one. Fixed by testing what was meant (each flag outranks config) plus a three-way conflict case.
+
+### `b8cf39b` — P4: Copy-JSON button in the web preview
+
+Reads the already-embedded `window.__HB_DATA__`; no new data path. The design constraint:
+previews open over `file://`, which is **not** a secure context in Chrome, so
+`navigator.clipboard` is frequently `undefined` exactly where the button is used. Feature-detected
+with a hidden-textarea + `execCommand` fallback and visible confirmation either way.
+
+**Verified beyond what Python tests can reach.** JS embedded in a Python string means a syntax
+error is invisible to the whole suite, so: extracted the JS from a real 50-annotation preview and
+ran `node --check`, then executed the handler under a DOM stub with `navigator.clipboard` absent
+— proving the fallback runs, the text is pretty-printed, it round-trips through `JSON.parse`, and
+the "Copied" label appears. Worth reusing for any future preview JS.
+
 ## Learnings
 
 ### 1. The offline A/B harness is the most valuable tool here — reuse it
@@ -168,9 +194,9 @@ papered over.
 
 | Claim | Command | Result |
 |---|---|---|
-| HEAD, clean tree | `git status --short` / `git rev-parse --short HEAD` | empty / `97f345e` |
+| HEAD, clean tree | `git status --short` / `git rev-parse --short HEAD` | empty / `b8cf39b` |
 | everything pushed | `git rev-parse HEAD origin/main` | identical |
-| suite | `python -m pytest tests/ -q` | **1537 passed** (1461 → 1537) |
+| suite | `python -m pytest tests/ -q` | **1582 passed** (1461 → 1582) |
 | ruff | `ruff check src tests eval scripts` | `All checks passed!` |
 | mypy | `mypy src/halfblood` | `Success: no issues found in 43 source files` |
 | real book, final HEAD | `analyze_skips.py` | **`rendered=48 skipped=2`** |
@@ -181,21 +207,31 @@ papered over.
 | custom persona fixed | live check | 707 → 3461 chars, all 8 types |
 | persona works on real text | detective persona, Jekyll ch7 | 5 in-voice notes, no Snape residue |
 
+### 5. Delegation: an idle notification is not a completion report
+
+The implementer sent an idle notification with no report; the tree showed `web_preview.py`
+untouched and the spec still 8-red. It had simply not done the work. **Always check the tree
+before acting on any agent signal.** For a single-file change that was already fully specified,
+re-dispatching would have cost more than building it — so Copy-JSON was implemented directly.
+
+Across three dispatches the pattern held: briefs that *name the forbidden shortcut* produce
+escalation instead of silent workarounds. Two of the three stops were defects in my own spec
+files, not implementer error.
+
 ## Next steps, ranked
 
 1. **P3 — prove quality on a frontier model.** Still the open product question, still
    blocked: the OpenRouter key has no credit and spending money is owner-gated. All
    evidence to date is from one free model.
-2. **Package `personas/` + add `--persona-name`.** Mirror
-   `_resolve_font_option(value, fonts_dir=None)` — it already has the injectable-directory
-   shape that keeps tests hermetic.
-3. **Config keys for `max_per_page` / `font_path`.** Genuinely absent. **Any brief must
+2. **Config keys for `max_per_page` / `font_path`.** Genuinely absent. **Any brief must
    require injectable config search roots in the tests** — there is no injectable config
    path today, so a test reaching the real resolver reads `cwd/halfblood.toml` and the
    developer's user config off the real machine. Green here, broken elsewhere, and both the
    suite and code review are blind to it.
-4. **Web-preview Copy-JSON button.** Filtering already exists; this genuinely does not.
-5. **Narrow the shortened-tier fallback** (PDF anchors to a single word like `circulars` on
+3. **Free-text search over annotation content in the web preview.** Legend-based *type*
+   filtering already exists (`applyFilters()`); searching note text does not. Probe before
+   building — the roadmap has been wrong about this file twice.
+4. **Narrow the shortened-tier fallback** (PDF anchors to a single word like `circulars` on
    a drifted target). Needs its own before/after measurement on a real PDF — do not fold it
    into an unrelated change, which is exactly what went wrong once already this session.
 6. **Eval-judge migration onto the provider seam.** `eval/eval_harness.py` is now the *only*
@@ -221,5 +257,5 @@ papered over.
   passes `env=` to `subprocess.run`.
 - Free-tier flakiness is real: one full-book run lost a page to
   `Provider response did not contain a choice`. Budget for it when measuring.
-- Rollback is one revert each: `97f345e` (personas), `84aadd4` (docs), `96a715e` (matcher).
+- Rollback is one revert each: `b8cf39b` (copy-json), `8b6ff05` (persona packaging), `97f345e` (personas), `84aadd4` (docs), `96a715e` (matcher).
   All landed linear.
