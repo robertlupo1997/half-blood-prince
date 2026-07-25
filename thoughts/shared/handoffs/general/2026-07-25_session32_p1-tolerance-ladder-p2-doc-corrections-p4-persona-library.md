@@ -1,7 +1,7 @@
 ---
 date: 2026-07-25
 researcher: Claude (Opus 5)
-git_commit: 3eb6315
+git_commit: ad78d01
 branch: main
 repository: half-blood-prince
 topic: "Session 32 — P1 EPUB recovery (88%→96%), P2 doc corrections, P4 persona library + wheel packaging + Copy-JSON; prompt hardening measured and rejected"
@@ -24,7 +24,7 @@ watched print.** It worked again. It also caught a live problem again — see Le
 
 ## What shipped
 
-Ten commits, all pushed to `origin/main`.
+Fourteen commits, all pushed to `origin/main`.
 
 ### `96a715e` — P1: match-tolerance ladder (the headline)
 
@@ -178,6 +178,35 @@ implementations that don't work. Both preview features were verified by executio
 Harnesses are in the scratchpad (`copy_harness.js`, `search_harness.js`); they are ~30
 lines each and worth recreating.
 
+### `4effd2e` / `ad78d01` — Phase 5: the eval judge on the provider seam
+
+The harness was the last `anthropic` importer and refused any judge provider but
+anthropic, so **the quality gate could not be run without Anthropic credit** — every
+quality claim in this project rested on reading output by eye. The judge now builds
+through `build_provider`; `structured_output` and both providers take an `output_model`
+defaulting to `RecordAnnotations`, so generation is untouched and the retry loops were not
+modified. The SDK dependency is now gone from `pyproject.toml` entirely.
+
+**First-ever eval run on this machine: 4.72/5, grade A.** It is self-judged on one free
+model, so it proves the *transport*, not the quality. A defensible score still needs an
+independent judge, which still needs credit.
+
+#### The regression that everything missed
+
+`anthropic.py` never calls `structured_output` — it parses inline, hardcoded to
+`record_annotations` in four separate places: the `tool_choice` it sends, the block name
+it requires, the `"annotations"` key it demands, and the `RecordAnnotations` it builds.
+Routing the judge through `build_provider` therefore **broke `provider="anthropic"`, the
+one judge path that previously worked** — while all 1640 tests and both linters stayed
+green, because nothing else sends a non-annotation model through that provider.
+
+Found by hand-constructing a judge request and watching the provider ask for
+`tool_choice=record_annotations` and fail. **If you touch the seam, exercise a
+non-annotation model against BOTH providers.** Also note the annotation path keeps
+per-item resilience on purpose (one malformed annotation is dropped with a warning rather
+than failing the whole page); the generic path validates whole. That distinction is
+asserted, because collapsing it would silently lose good annotations.
+
 ## Learnings
 
 ### 1. The offline A/B harness is the most valuable tool here — reuse it
@@ -233,9 +262,9 @@ papered over.
 
 | Claim | Command | Result |
 |---|---|---|
-| HEAD, clean tree | `git status --short` / `git rev-parse --short HEAD` | empty / `3eb6315` |
+| HEAD, clean tree | `git status --short` / `git rev-parse --short HEAD` | empty / `ad78d01` |
 | everything pushed | `git rev-parse HEAD origin/main` | identical |
-| suite | `python -m pytest tests/ -q` | **1628 passed** (1461 → 1628) |
+| suite | `python -m pytest tests/ -q` | **1644 passed** (1461 → 1644) |
 | ruff | `ruff check src tests eval scripts` | `All checks passed!` |
 | mypy | `mypy src/halfblood` | `Success: no issues found in 43 source files` |
 | real book, final HEAD | `analyze_skips.py` | **`rendered=48 skipped=2`** |
