@@ -444,6 +444,8 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     <div class="controls">
       <div class="legend" id="legend" aria-label="Annotation types (click to toggle)"></div>
+      <input type="search" id="note-search" aria-label="Search annotations" placeholder="Search annotations…">
+      <span id="search-count"></span>
       <button type="button" id="copy-json" class="theme-toggle" aria-label="Copy the annotation plan as JSON">&#128203; Copy JSON</button>
       <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">&#127769; Dark</button>
     </div>
@@ -750,6 +752,8 @@ _JS = r"""
     slider: document.getElementById("page-slider"),
     indicator: document.getElementById("page-indicator"),
     stamp: document.getElementById("generated-stamp"),
+    noteSearch: document.getElementById("note-search"),
+    searchCount: document.getElementById("search-count"),
   };
 
   var state = {
@@ -760,6 +764,7 @@ _JS = r"""
     leftItems: [],
     rightItems: [],
     revealTimers: [],
+    query: null,
   };
 
   function escapeHtml(s) {
@@ -843,6 +848,34 @@ _JS = r"""
     flashCopyLabel(legacyCopy(text) ? "&#10003; Copied" : "Copy failed");
   });
 
+  // ---------------- search ----------------
+  // Count is whole-book (useful for "where did the Prince mention bezoars?");
+  // filtering is per-current-page (handled inside applyFilters).
+
+  if (els.noteSearch) {
+    els.noteSearch.addEventListener("input", function (e) {
+      var q = e.target.value.trim();
+      state.query = q || null;
+      if (state.query && els.searchCount) {
+        var ql = state.query.toLowerCase();
+        var n = 0;
+        (DATA.pages || []).forEach(function (page) {
+          (page.annotations || []).forEach(function (ann) {
+            if (ann.content && ann.content.toLowerCase().indexOf(ql) !== -1) n++;
+          });
+        });
+        // "in book", not just "N results": filtering below is per-page (only the
+        // current page's DOM is live), so a bare count reads as "N on this page"
+        // and looks broken when the page shows fewer.
+        els.searchCount.textContent =
+          n === 1 ? "1 match in book" : n + " matches in book";
+      } else if (els.searchCount) {
+        els.searchCount.textContent = "";
+      }
+      applyFilters();
+    });
+  }
+
   // ---------------- legend / filtering ----------------
 
   function buildLegend() {
@@ -867,9 +900,24 @@ _JS = r"""
   }
 
   function applyFilters() {
+    // Build a per-page match set so IDs (which are page-local, e.g. "a0")
+    // don't collide across pages — only the current page's DOM is live.
+    var matchIds = null;
+    if (state.query) {
+      var q = state.query.toLowerCase();
+      var pg = (DATA.pages || [])[state.idx];
+      matchIds = new Set();
+      ((pg && pg.annotations) || []).forEach(function (ann) {
+        if (ann.content && ann.content.toLowerCase().indexOf(q) !== -1) {
+          matchIds.add(ann.id);
+        }
+      });
+    }
     document.querySelectorAll("[data-type]").forEach(function (el) {
       if (el.classList.contains("legend-chip")) return;
-      el.classList.toggle("filtered-out", state.hiddenTypes.has(el.dataset.type));
+      var typeHidden = state.hiddenTypes.has(el.dataset.type);
+      var searchHidden = matchIds !== null && !matchIds.has(el.dataset.annId);
+      el.classList.toggle("filtered-out", typeHidden || searchHidden);
     });
   }
 
