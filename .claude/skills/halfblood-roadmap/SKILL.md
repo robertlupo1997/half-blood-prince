@@ -119,17 +119,20 @@ Moved out of the project's root `CLAUDE.md` (which keeps only Mission, architect
     precedence. The three persona flags (`--persona`, `--persona-file`, `--persona-name`) are
     mutually exclusive.
 
-- **Config keys for `max_per_page` and `font_path`.** Genuinely absent (`config.py` has
-  `persona` and the provider keys, not these). The old warning here — "no injectable config
-  path" — was **wrong**: `resolve_generation_config` has taken `environ=`,
-  `project_config_path=` and `user_config_path=` all along; only the *defaults* leaked.
-  **That leak is now closed** (`94494d7`): `tests/conftest.py` has an autouse fixture
-  repointing the default user-config lookup at an empty directory, plus a collection hook
-  that aborts with a clear message if a stray `halfblood.toml` sits in the repo root.
-  Proven load-bearing — a hostile `$XDG_CONFIG_HOME/halfblood/config.toml` used to turn two
-  `test_cli_provider_seam.py` tests red and now does not. **Re-run that probe after any
-  change to config resolution**; it is the only thing that distinguishes real hermeticity
-  from "passes because a file happens not to exist."
+- **~~Config keys for `max_per_page` and `font`~~ — SHIPPED 2026-07-25 (`2a7d113`).**
+  Key is `font` (not `font_path`): `--font` takes NAME|PATH, so a path-only key would be
+  less capable than the flag. A relative `font` naming an existing file resolves against the
+  config file's directory (persona_file precedent); everything else passes through so
+  `_resolve_font_option` owns the error. `max_per_page` **raises** rather than clamps,
+  unlike `concurrency` — clamping suits a transport setting, not one where `0` silently
+  yields a book with no annotations. Both flow through the single `cli_overrides` dict and
+  both appear in `safe_repr()`.
+  - **Watch for this pattern:** adding the two fields broke nine CLI tests because
+    `test_persona_config.py` faked `ResolvedConfig` with a hand-maintained
+    `SimpleNamespace`. The first implementation absorbed that with
+    `getattr(config, "font", None)` in *production* — a test double's gaps dictating
+    production code. Fixed by making the double the real dataclass. Grep for
+    `SimpleNamespace` before adding a field to a widely-faked type.
 - **Batch mode** — `halfblood annotate-batch *.pdf` processing multiple books.
 - **PDF-to-EPUB annotation transfer** — Generate annotations against a PDF, render into the corresponding EPUB.
 - **Annotation diff** — Compare two annotation plans (e.g., different models or personas) side by side.
