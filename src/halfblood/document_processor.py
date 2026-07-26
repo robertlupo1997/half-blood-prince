@@ -205,7 +205,10 @@ def _wrap_text_with_font(
     if not words:
         return [""]
 
-    def split_word(word: str) -> list[str]:
+    def fits(chunk: str) -> bool:
+        return font.text_length(chunk, fontsize=fontsize) <= max_width
+
+    def split_chars(word: str) -> list[str]:
         chunks: list[str] = []
         current_chunk = ""
         for char in word:
@@ -217,6 +220,26 @@ def _wrap_text_with_font(
                 current_chunk = candidate
         if current_chunk:
             chunks.append(current_chunk)
+        return chunks
+
+    def split_word(word: str) -> list[str]:
+        """Break a word too wide for the margin, at a hyphen where one exists.
+
+        Splitting purely by character produced breaks like "counter-clockw" /
+        "ise", which read as a typo rather than a wrap. A word carrying its own
+        hyphen already tells us where it may be divided, so use that first and
+        fall back to character splitting only for the pieces that are still too
+        wide (or for words with no hyphen at all).
+        """
+        if fits(word):
+            return [word]
+        # Keep the hyphen with the leading piece: "counter-" / "clockwise".
+        pieces = [p for p in re.split(r"(?<=-)", word) if p]
+        if len(pieces) == 1:
+            return split_chars(word)
+        chunks: list[str] = []
+        for piece in pieces:
+            chunks.extend([piece] if fits(piece) else split_chars(piece))
         return chunks
 
     wrapped_words = [chunk for word in words for chunk in split_word(word)]
