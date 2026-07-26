@@ -140,13 +140,20 @@ class TestShortenedTierFallbackIsUnchanged:
     single word and anchors to the first tier that hits. On a case- or quote-drifted
     target that means anchoring to one word: ``death``, ``circulars``.
 
-    That is a poor anchor, and it is tempting to "fix" it while implementing the
-    tolerance ladder — an earlier build of this feature did exactly that. It is out of
-    scope here for two reasons. It only affects the PDF path (``document_processor``
-    passes ``EXACT``; the EPUB locator rejects every tier but 0), and narrowing it
-    changes which PDF annotations render, which needs its own measurement on a real
-    PDF. Recorded in the roadmap as a separate item. These tests exist so that change
-    is deliberate rather than a side effect.
+    That is a poor anchor. It has since been addressed, but **not here** — this
+    function's contract is deliberately unchanged, and these tests pin that.
+
+    The fix lives in the PDF caller (``DocumentProcessor._resolve_annotation_to_anchor``):
+    it walks a tolerance ladder for the complete quote before accepting any shortened
+    tier, and applies ``_MIN_ANCHOR_COVERAGE`` to whatever the shortened tiers return,
+    skipping the annotation rather than mis-anchoring it. Measured on a real book:
+    5 stub anchors before, 0 after, 48/50 rendered — matching the EPUB path exactly.
+    See ``tests/test_pdf_anchor_coverage.py``.
+
+    So ``score_candidates`` still returns a single-word tier-4 match here, and must:
+    the EPUB locator and every other caller depend on this default. What changed is
+    what the PDF path *does* with that answer. If these tests go red, the scorer's
+    shared contract has moved and every caller needs re-checking.
     """
 
     def test_case_drift_still_falls_back_to_the_longest_word(self) -> None:

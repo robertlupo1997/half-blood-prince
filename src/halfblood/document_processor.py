@@ -56,7 +56,9 @@ from halfblood.documents import (
 from halfblood.documents.matching import (
     AmbiguousResult,
     MatchResult,
+    MatchTolerance,
     NormalizedText,
+    ScoredCandidate,
     score_candidates,
 )
 from halfblood.documents.pdf_occupancy import PdfTextLayerOccupancyProvider
@@ -161,6 +163,35 @@ _MARGIN_GAP = 10.0  # points between target text and margin note
 _MAX_MARGIN_WIDTH = 150.0
 _MIN_MARGIN_WIDTH = 40.0
 _PAGE_EDGE_PAD = 12.0
+
+#: Tolerances tried, in order, against the *complete* quote before the matcher is
+#: allowed to fall back to a shortened tier. The EPUB locator already walks this
+#: ladder (``documents/epub.py:_MATCH_LADDER``); the PDF path passed ``EXACT``
+#: only, so surface drift in the model's quote sent it straight to a prefix or a
+#: single word. Each of these searches tier 0 exclusively, with exact semantics —
+#: no similarity matching (see docs/decisions/verbatim-quoting-prompt-vs-matcher.md).
+_PDF_TOLERANCE_LADDER: tuple[MatchTolerance, ...] = (
+    MatchTolerance.CASE_INSENSITIVE,
+    MatchTolerance.PUNCTUATION_ELASTIC,
+)
+
+#: Least fraction of the target passage a shortened-tier anchor may cover before
+#: the annotation is skipped instead of mis-anchored.
+#:
+#: The shortened tiers (8-word -> 5-word -> 3-word -> longest single word) are
+#: kept, because real PDFs have genuinely messy text layers — hyphenation,
+#: columns, running headers — where a prefix anchor is the honest best available.
+#: But an anchor covering a small fraction of the passage is a guess, not an
+#: anchor: the note claims a sentence while the underline sits on one word, and
+#: a reader cannot tell. The EPUB path already refuses these (it accepts tier 0
+#: only); this makes the PDF path agree.
+#:
+#: Half is the meaning-based line: an anchor must cover at least half of what the
+#: note claims. Measured on a real book (50 annotations, Jekyll & Hyde), the
+#: constant is nowhere near load-bearing — once the tolerance ladder above runs,
+#: every legitimate match sits at coverage 1.00 and the only shortened-tier
+#: survivors are two genuine paraphrases at 0.13 and 0.18.
+_MIN_ANCHOR_COVERAGE = 0.5
 
 
 def _wrap_text_with_font(
@@ -572,23 +603,70 @@ class DocumentProcessor:
         # repeated target text using prefix/suffix/offset context from TargetSelector.
         if index is not None:
             norm_page = NormalizedText(index.text)
-            outcome = score_candidates(annotation.target, norm_page)
-            if isinstance(outcome, MatchResult):
-                raw = outcome.candidate.raw_span
-                anchor = resolve_pdf_anchor(index, raw.start, raw.end)
-                if anchor is not None:
-                    return anchor
-                # span covers only whitespace/separators; fall through to legacy
-            elif isinstance(outcome, AmbiguousResult):
+
+            def _ambiguous(candidates: int) -> None:
                 # Fail-closed: do NOT guess the first hit when we know it's ambiguous.
                 logger.debug(
                     "Ambiguous target %r: %d near-tie candidates — skipping annotation %s",
                     annotation.target.exact,
-                    len(outcome.candidates),
+                    candidates,
                     annotation.id,
                 )
+
+            outcome = score_candidates(annotation.target, norm_page)
+            # A shortened-tier hit is held back rather than used immediately: the
+            # tolerance ladder below may still place the *complete* quote, which is
+            # always the better anchor.
+            shortened: ScoredCandidate | None = None
+            if isinstance(outcome, MatchResult):
+                if outcome.candidate.exactness_tier == 0:
+                    raw = outcome.candidate.raw_span
+                    anchor = resolve_pdf_anchor(index, raw.start, raw.end)
+                    if anchor is not None:
+                        return anchor
+                    # span covers only whitespace/separators; fall through to legacy
+                else:
+                    shortened = outcome.candidate
+            elif isinstance(outcome, AmbiguousResult):
+                _ambiguous(len(outcome.candidates))
                 return None
-            # NoMatchResult: fall through to the existing _search_variants + page.search_for chain
+            # NoMatchResult: try looser tolerances before giving up on tier 0.
+
+            for tolerance in _PDF_TOLERANCE_LADDER:
+                loose = score_candidates(
+                    annotation.target, norm_page, tolerance=tolerance
+                )
+                if isinstance(loose, AmbiguousResult):
+                    _ambiguous(len(loose.candidates))
+                    return None
+                if isinstance(loose, MatchResult):
+                    raw = loose.candidate.raw_span
+                    anchor = resolve_pdf_anchor(index, raw.start, raw.end)
+                    if anchor is not None:
+                        logger.debug(
+                            "Target %r matched the complete quote under %s tolerance",
+                            annotation.target.exact,
+                            tolerance.value,
+                        )
+                        return anchor
+
+            if shortened is not None:
+                needed = len(normalize(annotation.target.exact).strip())
+                short_span = shortened.raw_span
+                coverage = (short_span.end - short_span.start) / max(1, needed)
+                if coverage < _MIN_ANCHOR_COVERAGE:
+                    logger.debug(
+                        "Target %r only anchors to %.0f%% of itself (tier %d) — "
+                        "skipping annotation %s rather than mis-anchoring it",
+                        annotation.target.exact,
+                        coverage * 100,
+                        shortened.exactness_tier,
+                        annotation.id,
+                    )
+                    return None
+                anchor = resolve_pdf_anchor(index, short_span.start, short_span.end)
+                if anchor is not None:
+                    return anchor
         # ---- end scorer path -------------------------------------------------------
 
         for variant in self._search_variants(normalized):
