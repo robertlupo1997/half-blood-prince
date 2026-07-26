@@ -724,6 +724,40 @@ mark.target.filtered-out{box-shadow:none;background:transparent;opacity:.55;}
   .title-block h1{font-size:1.2rem;}
   .book-text{font-size:1rem;}
 }
+
+/* ---------- annotation editing controls ---------- */
+.note-controls{
+  display:flex;gap:.3em;margin-top:.35rem;
+  opacity:0;transition:opacity .15s ease;
+  justify-content:flex-end;
+}
+.note:hover .note-controls,
+.note:focus-within .note-controls,
+.note.active .note-controls{opacity:1;}
+@media (max-width: 1000px){
+  .note-controls{opacity:.75;}
+}
+.note-ctrl-btn{
+  background:transparent;border:1px solid var(--ink);color:var(--ink);
+  border-radius:3px;padding:.1em .3em;font-size:.62rem;cursor:pointer;
+  line-height:1;font-family:var(--serif);
+  transition:background-color .15s ease;
+}
+.note-ctrl-btn:hover{background:var(--ink-soft);}
+.note-edit-area{
+  width:100%;display:block;margin-top:.3rem;
+  font-family:var(--hand);font-size:.88em;color:var(--ink);
+  background:var(--bg-page);border:1px solid var(--ink);
+  border-radius:3px;padding:.3em;resize:vertical;
+  box-sizing:border-box;
+}
+.note-edit-row{display:flex;gap:.3em;margin-top:.25rem;justify-content:flex-end;}
+.note-edit-save,.note-edit-cancel{
+  background:transparent;border:1px solid var(--ink);color:var(--ink);
+  border-radius:3px;padding:.15em .45em;font-size:.68rem;cursor:pointer;
+  font-family:var(--serif);transition:background-color .15s ease;
+}
+.note-edit-save:hover,.note-edit-cancel:hover{background:var(--ink-soft);}
 """
 
 _JS = r"""
@@ -765,6 +799,7 @@ _JS = r"""
     rightItems: [],
     revealTimers: [],
     query: null,
+    editingId: null,
   };
 
   function escapeHtml(s) {
@@ -991,6 +1026,45 @@ _JS = r"""
       el.appendChild(flag);
     }
 
+    // --- inline editing controls (edit / reposition / delete) ---
+    var controls = document.createElement("div");
+    controls.className = "note-controls";
+
+    var editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "note-ctrl-btn note-ctrl-edit";
+    editBtn.setAttribute("aria-label", "Edit annotation");
+    editBtn.textContent = "✎";
+    editBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      startEdit(ann.id);
+    });
+
+    var sideBtn = document.createElement("button");
+    sideBtn.type = "button";
+    sideBtn.className = "note-ctrl-btn note-ctrl-side";
+    sideBtn.setAttribute("aria-label", "Move to other margin");
+    sideBtn.textContent = "⇄";
+    sideBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      repositionAnnotation(ann.id);
+    });
+
+    var delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "note-ctrl-btn note-ctrl-delete";
+    delBtn.setAttribute("aria-label", "Delete annotation");
+    delBtn.textContent = "✕";
+    delBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      deleteAnnotation(ann.id);
+    });
+
+    controls.appendChild(editBtn);
+    controls.appendChild(sideBtn);
+    controls.appendChild(delBtn);
+    el.appendChild(controls);
+
     bindHover(el, ann.id);
     return el;
   }
@@ -1005,6 +1079,7 @@ _JS = r"""
 
     state.revealTimers.forEach(clearTimeout);
     state.revealTimers = [];
+    state.editingId = null; // cancel any in-progress edit when the page changes
 
     var page = pages[index];
 
@@ -1156,6 +1231,168 @@ _JS = r"""
     layoutMargin(state.leftItems, "left");
     layoutMargin(state.rightItems, "right");
     applyFilters();
+  }
+
+  // ---------------- annotation editing ----------------
+
+  function deleteAnnotation(annId) {
+    var page = DATA.pages[state.idx];
+    if (!page) return;
+    var annIdx = -1;
+    var i;
+    for (i = 0; i < page.annotations.length; i++) {
+      if (page.annotations[i].id === annId) { annIdx = i; break; }
+    }
+    if (annIdx === -1) return;
+    var wasMatched = !!page.annotations[annIdx].matched;
+    // Close any in-progress edit for this annotation to unblock startEdit
+    // on other notes — if we don't clear editingId here the guard in
+    // startEdit would treat every subsequent note as "already editing".
+    if (state.editingId === annId) state.editingId = null;
+    page.annotations.splice(annIdx, 1);
+
+    // Unwrap the <mark> in the book text and snapshot the updated HTML so
+    // navigating away and back doesn't re-show the deleted mark.
+    var mark = els.bookText.querySelector('mark[data-ann-id="' + annId + '"]');
+    if (mark) {
+      mark.replaceWith(document.createTextNode(mark.textContent));
+      DATA.pages[state.idx].html = els.bookText.innerHTML;
+    }
+
+    // Remove note element from its margin
+    var noteEl = document.querySelector('.note[data-ann-id="' + cssEscape(annId) + '"]');
+    if (noteEl) noteEl.remove();
+
+    // Remove connector path
+    var conn = els.connectorLayer.querySelector('[data-ann-id="' + annId + '"]');
+    if (conn) conn.remove();
+
+    // Remove from state items so doLayout doesn't try to position it
+    state.leftItems = state.leftItems.filter(function (it) { return it.ann.id !== annId; });
+    state.rightItems = state.rightItems.filter(function (it) { return it.ann.id !== annId; });
+
+    // Re-run layout so remaining notes reflow
+    requestAnimationFrame(doLayout);
+
+    // Update page indicator count
+    var count = page.annotations.length;
+    els.indicator.textContent =
+      "Page " + (state.idx + 1) + " of " + DATA.pages.length + " \xb7 " +
+      count + " note" + (count === 1 ? "" : "s");
+    DATA.totals.annotations = Math.max(0, (DATA.totals.annotations || 0) - 1);
+    if (wasMatched) DATA.totals.matched = Math.max(0, (DATA.totals.matched || 0) - 1);
+  }
+
+  function repositionAnnotation(annId) {
+    var page = DATA.pages[state.idx];
+    if (!page) return;
+    var ann = null;
+    var i;
+    for (i = 0; i < page.annotations.length; i++) {
+      if (page.annotations[i].id === annId) { ann = page.annotations[i]; break; }
+    }
+    if (!ann) return;
+
+    var newPos = ann.position === "margin_left" ? "margin_right" : "margin_left";
+    ann.position = newPos;
+
+    var noteEl = document.querySelector('.note[data-ann-id="' + cssEscape(annId) + '"]');
+    if (noteEl) {
+      var targetMargin = newPos === "margin_left" ? els.marginLeft : els.marginRight;
+      targetMargin.appendChild(noteEl);
+
+      // Move the item between leftItems / rightItems so doLayout redraws connectors
+      // on the correct side.
+      var movedItem = null;
+      state.leftItems = state.leftItems.filter(function (it) {
+        if (it.ann.id === annId) { movedItem = it; return false; }
+        return true;
+      });
+      state.rightItems = state.rightItems.filter(function (it) {
+        if (it.ann.id === annId) { if (!movedItem) { movedItem = it; } return false; }
+        return true;
+      });
+      if (movedItem) {
+        if (newPos === "margin_left") {
+          state.leftItems.push(movedItem);
+        } else {
+          state.rightItems.push(movedItem);
+        }
+      }
+    }
+
+    requestAnimationFrame(doLayout);
+  }
+
+  function startEdit(annId) {
+    // Prevent opening a second edit panel while one is already open.
+    if (state.editingId !== null) return;
+    var page = DATA.pages[state.idx];
+    if (!page) return;
+    var ann = null;
+    var i;
+    for (i = 0; i < page.annotations.length; i++) {
+      if (page.annotations[i].id === annId) { ann = page.annotations[i]; break; }
+    }
+    if (!ann) return;
+
+    var noteEl = document.querySelector('.note[data-ann-id="' + cssEscape(annId) + '"]');
+    if (!noteEl) return;
+    var noteText = noteEl.querySelector(".note-text");
+    if (!noteText) return;
+
+    state.editingId = annId;
+    noteText.style.display = "none";
+
+    // Use createElement + textContent/value throughout — never innerHTML with
+    // user-supplied content.
+    var ta = document.createElement("textarea");
+    ta.className = "note-edit-area";
+    ta.value = ann.content;
+    ta.rows = 3;
+    noteEl.appendChild(ta);
+
+    var row = document.createElement("div");
+    row.className = "note-edit-row";
+
+    var saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "note-edit-save";
+    saveBtn.textContent = "✓ Save";
+
+    var cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "note-edit-cancel";
+    cancelBtn.textContent = "Cancel";
+
+    row.appendChild(saveBtn);
+    row.appendChild(cancelBtn);
+    noteEl.appendChild(row);
+
+    if (ta.focus) ta.focus();
+
+    function closeEdit() {
+      noteEl.removeChild(ta);
+      noteEl.removeChild(row);
+      noteText.style.display = "";
+      state.editingId = null;
+    }
+
+    saveBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var newContent = ta.value.trim();
+      if (newContent) {
+        ann.content = newContent;
+        // Use textContent (not innerHTML) — handles all special characters safely.
+        noteText.textContent = newContent;
+      }
+      closeEdit();
+    });
+
+    cancelBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      closeEdit();
+    });
   }
 
   // ---------------- navigation ----------------
