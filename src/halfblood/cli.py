@@ -54,7 +54,14 @@ Processor = DocumentProcessor | EpubProcessor
 #: File extensions this CLI knows how to route to a processor.
 _SUPPORTED_SUFFIXES = {".pdf", ".epub"}
 
-_FONTS_DIR = Path(__file__).resolve().parents[2] / "fonts"
+#: The handwriting fonts ship *inside* the package (``halfblood/fonts``), so the
+#: registry must resolve them through package resources. Deriving this from
+#: ``__file__.parents[2]`` pointed at the repo-root ``fonts/`` directory, which
+#: exists only in a source checkout: from a pip-installed wheel it resolved to a
+#: non-existent path above site-packages, and every registered ``--font`` name
+#: (and the config ``font`` key) failed with "is not installed" while pointing
+#: the user at a font already bundled in the package.
+_FONTS_DIR = Path(str(resources.files("halfblood").joinpath("fonts")))
 
 #: PDF handwriting fonts understood by ``annotate --font``. Values are
 #: ``(display name, expected filename, download URL)``.

@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+import halfblood.cli as cli_module
 from halfblood.document_processor import DocumentProcessor
 
 # The four cleared fonts, pinned to the exact cleared artifact (sha256). "unmodified"
@@ -86,6 +87,31 @@ def test_default_font_resolves_from_package_not_helvetica(tmp_path: Path) -> Non
     assert Path(dp._fontfile).resolve() == (_pkg_fonts_dir() / DEFAULT_FONT).resolve(), (
         "default font did not resolve to the packaged copy"
     )
+
+
+@pytest.mark.parametrize("name", sorted(cli_module.REGISTERED_FONTS))
+def test_registered_font_names_resolve_to_the_packaged_copy(name: str) -> None:
+    """``--font <name>`` and the config ``font`` key must find the bundled font.
+
+    The registry used to be rooted at ``cli.__file__.parents[2] / "fonts"`` — the
+    repo-root ``fonts/`` directory, which is gitignored and exists only in a
+    source checkout. From a pip-installed wheel that path lands above
+    site-packages and does not exist, so every registered name failed with
+    "Font ... is not installed", pointing the user at a download for a font that
+    was already inside the package. Asserting resolution lands in the packaged
+    directory is what distinguishes the two, since the dev tree has both.
+    """
+    resolved = cli_module._resolve_font_option(name)
+    assert resolved.is_file(), f"{name} did not resolve to an existing file"
+    assert resolved.resolve().parent == _pkg_fonts_dir().resolve(), (
+        f"{name} resolved to {resolved}, outside the packaged fonts directory "
+        f"{_pkg_fonts_dir()} — this is the installed-wheel failure"
+    )
+
+
+def test_font_registry_dir_is_not_derived_from_the_repo_layout() -> None:
+    """Guard the root cause directly: the registry dir must be the packaged one."""
+    assert Path(cli_module._FONTS_DIR).resolve() == _pkg_fonts_dir().resolve()
 
 
 # --- provenance: THIRD_PARTY_NOTICES.md + bundled license texts -----------------------
