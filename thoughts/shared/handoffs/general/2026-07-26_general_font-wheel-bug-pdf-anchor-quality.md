@@ -1,7 +1,7 @@
 ---
 date: 2026-07-26
 researcher: Claude (Opus 5)
-git_commit: 8c474c2
+git_commit: 2bc6f2c
 branch: main
 repository: half-blood-prince
 topic: "Session 33 — --font broken in every installed wheel; PDF anchor quality 5→0 and 10→0 stubs; preview editing"
@@ -12,8 +12,8 @@ last_updated: 2026-07-26
 
 # Session 33 — the shipped wheel couldn't find its own fonts
 
-**8 commits. Suite 1644 → 1743. All four suggested lanes landed, plus three defects
-found by rendering the real book and looking at it.**
+**10 commits. Suite 1644 → 1750. All four suggested lanes landed, plus five defects found by
+rendering the real book, and by testing against a genuinely scanned one.**
 
 The single most valuable thing here is **Learnings §1**: the session's biggest bug was
 invisible to 1644 tests *and* to both linters *and* to the dev tree, because the dev tree
@@ -54,6 +54,45 @@ found it.
 | `a955ee9` | PDF: `_first_baseline` reserves glyph ascent + rotation lift at the page top |
 | `f78e181` | PDF: break over-wide words at their hyphen |
 | `8c474c2` | PDF: same ladder + floor on the un-indexed path; line-break union fix |
+| `8ca46e6` | PDF: reject lone-word anchors instead of low coverage (scanned-book evidence) |
+| `2bc6f2c` | CLI: name the cause when a PDF is a scan with no OCR text layer |
+
+### The scanned book (`8ca46e6`, `2bc6f2c`) — the coverage floor did not survive it
+
+Tested against the Internet Archive's 1886 scan of Jekyll & Hyde
+(`strangecaseofdrj00stevrich`, "Text PDF", 151 pages with an OCR layer), with 88 real
+annotations generated over 20 story pages.
+
+**Mechanism first:** on a scanned book the model *silently repairs OCR damage while
+quoting*. Handed `tlie sight of a pol` it writes `the sight of a policeman`; handed
+`mould- ings` broken across a line it writes `mould-ings`. The quote is faithful to the
+text as a human reads it and unfaithful to the bytes, so the complete quote matched only
+**53 of 88** here against 48 of 50 on the clean corpus, and a prefix tier picked each
+passage up as far as the first corrupted word. Those prefixes are correct anchors.
+
+`coverage >= 0.5` was throwing them away — 28 of 88, nearly a third of the book:
+
+| policy | clean (50) | scanned (88) | lone-word anchors admitted |
+|---|---|---|---|
+| `coverage >= 0.5` (was shipped) | 48 | **60** | 0 |
+| `coverage >= 0.2` | 48 | 76 | 0 |
+| **reject lone words** (now) | **49** | **84** | **0** |
+| both | 48 | 76 | 0 |
+
+`_exactness_tiers` makes the replacement structural rather than tuned: the ladder is full
+quote → 8-word → 5-word → 3-word → longest single word, so **every multi-word tier is a
+prefix** (it starts where the passage starts) and the single-word tier is the only one that
+can land anywhere. `_is_lone_word_anchor` rejects exactly that. It *dominates* on both
+corpora at once, which is the sign it is the rule and not a fitted constant.
+
+Tier-0 rates above are from one generation run on one free-tier model. The ranking does not
+depend on them.
+
+**Also found:** `PdfAlignmentError` fired **0 of 156** times on the real scan too, so the
+un-indexed path remains rare even on genuinely messy input — but a *different* real-world
+class does break the tool: a page-image scan with no OCR layer at all. The first candidate
+downloaded (`strangecasedrje01stevgoog`) has text on exactly 1 of 171 pages. That reported
+"0 annotations" and exited 0. It now fails with the cause and `ocrmypdf` as the next step.
 
 ### The un-indexed path (`8c474c2`)
 
@@ -176,11 +215,13 @@ All run at `f78e181`, clean tree, this session.
 
 | Claim | Command | Result |
 |---|---|---|
-| full suite | `python -m pytest tests/ -q` | **`1743 passed`** |
+| full suite | `python -m pytest tests/ -q` | **`1750 passed`** |
 | ruff | `ruff check src tests eval scripts` | `All checks passed!` |
 | mypy | `mypy src/halfblood` | `Success: no issues found in 43 source files` |
-| PDF anchor quality (indexed) | `python pdf_anchor_quality3.py` | **`48/50, STUB ANCHORS = 0`** (was 5) |
-| PDF anchor quality (un-indexed) | `python unindexed_quality.py` | **`48/50, STUB ANCHORS = 0`** (was 10) |
+| PDF anchor quality (indexed) | `python pdf_anchor_quality3.py` | **`49/50`**, 0 lone-word anchors |
+| PDF anchor quality (un-indexed) | `python unindexed_quality.py` | **`49/50`**, 0 stubs (was 10) |
+| real scanned book | `python floor_policy_ab.py` | **`84/88`** (was 60), 0 lone-word anchors |
+| image-only scan is diagnosed | real CLI on `scanned_jekyll.pdf` | exit 1, names OCR + `ocrmypdf` |
 | EPUB unchanged | `python analyze_skips.py` | `rendered=48 skipped=2` |
 | font from real wheel | `python prove_font_bug.py` | `RESOLVED -> site-packages/halfblood/fonts/...` |
 | CLI precedence, 7 cases | `python probe_cli_precedence.py` | all correct, exit 2 / 1 as designed |
@@ -223,20 +264,24 @@ Scratchpad (session-local, recreate as needed): `build_jekyll_tall.py`,
 
 ## Action Items & Next Steps
 
-1. **PDF text-extraction quality / OCR fallback** — never investigated, and it is now the
-   most likely place for real-world anchor failures, since the corpus used here is clean.
-   Get a genuinely typeset or scanned PDF before assuming the 48/50 generalises. Both
-   resolution paths are now guarded, so what a messy book would establish is how often
-   `PdfAlignmentError` actually fires in the wild and whether `_MIN_ANCHOR_COVERAGE = 0.5`
-   is still the right line when the text layer itself is unreliable — a scanned page may
-   legitimately need a prefix anchor that this floor now rejects.
-2. **Annotation collision detection** — still open (known issue #14). Notes at the top of a
+1. **OCR fallback for page-image scans.** Now that a textless scan is *diagnosed* rather
+   than silently empty, the open question is whether the tool should OCR such files itself
+   (shelling out to `ocrmypdf`/Tesseract behind a flag) or keep telling the user to. That
+   is a dependency decision, not a matcher one. The rest of the "PDF extraction quality"
+   item is answered: on a real OCR'd scan the anchor rules hold at 84/88, and
+   `PdfAlignmentError` fired 0 of 156 times.
+2. **Should the EPUB path accept prefix anchors too?** `documents/epub.py` is still tier-0
+   only, so PDF renders 49/50 where EPUB renders 48/50 on the same plan. Its docstring
+   frames tier-0-only as a contract ("segments always represent the selector's full
+   normalized exact quote"), not a technical limit — a prefix span would still produce
+   valid segments. Wants its own measurement on a real EPUB before changing.
+3. **Annotation collision detection** — still open (known issue #14). Notes at the top of a
    page now stay on the sheet, but nothing prevents two notes overlapping each other.
-3. **Connector re-draw after a preview re-position was never executed** — `doLayout` is
+4. **Connector re-draw after a preview re-position was never executed** — `doLayout` is
    stubbed in the JS harness. Correct by construction, not verified.
-4. **P3 — frontier-model quality run** (owner-gated, needs credit) and the **release
+5. **P3 — frontier-model quality run** (owner-gated, needs credit) and the **release
    decision** (owner-gated) are both unchanged from Session 32.
-5. The `hasattr(processor, "render_plan")` branch in `cli.py` is effectively dead — both
+6. The `hasattr(processor, "render_plan")` branch in `cli.py` is effectively dead — both
    processors have `render_plan`. Harmless, but it hides which path is live.
 
 ## Other Notes
