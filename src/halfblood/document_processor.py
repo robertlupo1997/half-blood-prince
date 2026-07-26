@@ -760,6 +760,30 @@ class DocumentProcessor:
         finally:
             doc.close()
 
+    def _first_baseline(
+        self, page: fitz.Page, note_rect: fitz.Rect, fontsize: float, angle: float
+    ) -> float:
+        """First baseline for a note block, kept clear of the page's top edge.
+
+        ``note_rect.y0 + fontsize`` alone is not enough headroom. Two things eat
+        into it, and the layout engine — which clamps the note box to the page —
+        cannot see either, because both are properties of how the text is drawn:
+
+        * the glyph **ascent**, which is ``ascender * fontsize`` and is only
+          fractionally smaller than ``fontsize`` for the handwriting faces; and
+        * the **rotation lift**: each line is drawn with ``morph`` pivoting about
+          the box's horizontal centre, so the line's left end rises by
+          ``(width / 2) * sin(angle)`` — up to ~3.9pt at the widest margin and the
+          3 degrees ``_organic_angle`` can return.
+
+        Together those exceeded the available headroom, so any note the layout
+        placed flush with the top of the page had its first line sheared off.
+        Measured on a real render: glyph top at y = -0.39 on a 792pt page.
+        """
+        ascent = abs(self._measure_font.ascender) * fontsize
+        lift = (note_rect.width / 2.0) * math.sin(math.radians(abs(angle)))
+        return max(note_rect.y0 + fontsize, page.rect.y0 + ascent + lift)
+
     def _draw_resolved_note(
         self,
         page: fitz.Page,
@@ -795,7 +819,7 @@ class DocumentProcessor:
         note_width = max(1.0, note_rect.width)
         lines = self._wrap_text(annotation.content, note_width, fontsize)
         line_gap = fontsize * 1.3
-        y = note_rect.y0 + fontsize
+        y = self._first_baseline(page, note_rect, fontsize, angle)
 
         for line in lines:
             if y > note_rect.y1 + line_gap:
@@ -860,7 +884,7 @@ class DocumentProcessor:
         note_width = max(1.0, note_rect.width)
         lines = self._wrap_text(annotation.content, note_width, fontsize)
         line_gap = fontsize * 1.3
-        y = note_rect.y0 + fontsize
+        y = self._first_baseline(page, note_rect, fontsize, angle)
 
         for line in lines:
             if y > note_rect.y1 + line_gap:
