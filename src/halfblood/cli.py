@@ -301,6 +301,35 @@ def _parse_page_range(spec: str | None, total_pages: int) -> list[int]:
     return sorted(p for p in pages if 1 <= p <= total_pages)
 
 
+def _require_text_layer(selected: list[PageContent]) -> None:
+    """Fail with an actionable message when nothing readable was extracted.
+
+    A page-image PDF with no OCR layer is a normal thing for a user to try, and
+    the pipeline's honest answer is that it cannot do anything with it. Without
+    this check it reported "0 annotations" and exited 0, which is
+    indistinguishable from a book the annotator simply had no opinions about.
+
+    The condition is deliberately "not one readable character anywhere in the
+    selection" rather than a per-page character threshold. A threshold has to
+    guess how sparse a real page may be, and would misfire on a range that is
+    legitimately thin -- a title page, a part-divider, a page holding one line of
+    verse. Nothing at all is unambiguous. It is also sufficient: measured on the
+    Internet Archive's Google scan of Jekyll & Hyde, exactly 1 of 171 pages
+    carried any text, and that one was the scanner's own front-matter notice.
+    """
+    if not selected:
+        return
+    if any(p.text and not p.text.isspace() for p in selected):
+        return
+    raise click.ClickException(
+        "No readable text found in the selected pages. This usually means the "
+        "file is a scan of page images with no OCR text layer — the annotator "
+        "works from the text layer, so there is nothing for it to read.\n"
+        "Run the file through OCR first (for example: "
+        "'ocrmypdf input.pdf output.pdf'), then annotate the result."
+    )
+
+
 def _filter_pages(all_pages: list[PageContent], page_numbers: list[int]) -> list[PageContent]:
     """Keep only pages whose page_number is in the requested set."""
     wanted = set(page_numbers)
@@ -639,6 +668,7 @@ def annotate(
         # Filter pages
         page_numbers = _parse_page_range(pages, len(all_pages))
         selected = _filter_pages(all_pages, page_numbers)
+        _require_text_layer(selected)
 
         # Filter boilerplate sections (unless overridden)
         if not annotate_boilerplate:
@@ -825,6 +855,7 @@ def preview(
 
         page_numbers = _parse_page_range(pages, len(all_pages))
         selected = _filter_pages(all_pages, page_numbers)
+        _require_text_layer(selected)
 
         # Filter boilerplate sections (unless overridden)
         if not annotate_boilerplate:
