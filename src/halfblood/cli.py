@@ -574,6 +574,11 @@ def annotate(
             f"{input_file.suffix.lower()}-formatted content to {output_file} regardless."
         )
 
+    # Resolve persona before provider setup so that pure usage errors
+    # (mutual exclusion, bad name, missing file) surface with the correct
+    # exit code regardless of whether an API key is present.
+    early_persona = _resolve_persona(persona, persona_file, persona_name, None)
+
     config, provider_obj = _resolve_provider_and_build(
         provider,
         model,
@@ -598,7 +603,8 @@ def annotate(
     else:
         font_path = _resolve_font_option(effective_font) if effective_font is not None else None
     processor = _processor_for(input_file, font_path, handwriting_engine)
-    effective_persona = _resolve_persona(persona, persona_file, persona_name, config.persona)
+    # If no persona flag was given, fall back to the config-layer persona.
+    effective_persona = early_persona if early_persona is not None else config.persona
     generator = AnnotationGenerator(
         persona=effective_persona,
         model=config.model,
@@ -771,6 +777,11 @@ def preview(
     _validate_input_signature(input_file)
     processor = _processor_for(input_file)
 
+    # Resolve persona before provider setup so that pure usage errors
+    # (mutual exclusion, bad name, missing file) surface with the correct
+    # exit code regardless of whether an API key is present.
+    early_persona = _resolve_persona(persona, persona_file, persona_name, None)
+
     config, provider_obj = _resolve_provider_and_build(
         provider,
         model,
@@ -784,7 +795,8 @@ def preview(
         config_path,
         max_per_page=max_per_page,
     )
-    effective_persona = _resolve_persona(persona, persona_file, persona_name, config.persona)
+    # If no persona flag was given, fall back to the config-layer persona.
+    effective_persona = early_persona if early_persona is not None else config.persona
     generator = AnnotationGenerator(
         persona=effective_persona,
         model=config.model,
