@@ -533,6 +533,19 @@ class DocumentProcessor:
         transcription drift from an LLM-generated `target_text` doesn't
         cause the whole annotation to be dropped.
 
+        .. note::
+           This is the **v1** locator, used by :meth:`render_annotations`. It
+           deliberately keeps the unconditional single-word fallback, which
+           ``tests/test_pdf_targeting.py`` pins (AUD-26 requires that fallback to
+           fire and to anchor exactly one occurrence).
+
+           The v2 render path — :meth:`render_plan` via
+           :meth:`_resolve_annotation_to_anchor`, which is what the CLI actually
+           runs — is stricter: it walks a tolerance ladder for the complete quote
+           and applies ``_MIN_ANCHOR_COVERAGE``, skipping an annotation rather
+           than anchoring it to a stray word. Do not assume the two agree; the
+           looser behaviour here is scoped to the legacy path on purpose.
+
         Returns:
             A `fitz.Rect` spanning all matched hits (unioned across lines
             if the passage wraps), or `None` if nothing could be found.

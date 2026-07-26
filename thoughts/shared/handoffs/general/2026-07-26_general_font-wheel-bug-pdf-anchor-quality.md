@@ -1,10 +1,10 @@
 ---
 date: 2026-07-26
 researcher: Claude (Opus 5)
-git_commit: f78e181
+git_commit: 8c474c2
 branch: main
 repository: half-blood-prince
-topic: "Session 33 — --font broken in every installed wheel; PDF anchor quality 5 stubs → 0; preview editing"
+topic: "Session 33 — --font broken in every installed wheel; PDF anchor quality 5→0 and 10→0 stubs; preview editing"
 tags: [packaging, fonts, matching, pdf, rendering, web-preview, cli, parallel-lanes, negative-result]
 status: complete
 last_updated: 2026-07-26
@@ -12,7 +12,7 @@ last_updated: 2026-07-26
 
 # Session 33 — the shipped wheel couldn't find its own fonts
 
-**6 commits. Suite 1644 → 1738. All four suggested lanes landed, plus two defects
+**8 commits. Suite 1644 → 1743. All four suggested lanes landed, plus three defects
 found by rendering the real book and looking at it.**
 
 The single most valuable thing here is **Learnings §1**: the session's biggest bug was
@@ -28,10 +28,11 @@ found it.
 2. ✅ **NEW — `--font <name>` broken in every pip-installed wheel.** Found, proven, fixed.
 3. ✅ **Lane A — PDF anchor quality.** 5 stub anchors → 0; 48/50, matching EPUB exactly.
 4. ✅ **Lane B — web preview editing.** Edit content, delete, re-position, edited export.
-5. ✅ **NEW — margin notes clipped by the page top.** Glyph tops at y = −0.39, fixed.
-6. ✅ **NEW — over-wide words broke mid-morpheme.** `counter-clockw`/`ise`, now hyphen-aware.
-7. ⏳ **P3 — quality on a frontier model.** Still owner-gated (needs credit).
-8. ⏳ **Release decision.** Still owner-gated.
+5. ✅ **NEW — un-indexed resolution path unguarded.** 10 stub anchors of 50 → 0.
+6. ✅ **NEW — margin notes clipped by the page top.** Glyph tops at y = −0.39, fixed.
+7. ✅ **NEW — over-wide words broke mid-morpheme.** `counter-clockw`/`ise`, now hyphen-aware.
+8. ⏳ **P3 — quality on a frontier model.** Still owner-gated (needs credit).
+9. ⏳ **Release decision.** Still owner-gated.
 
 ## Critical References
 
@@ -52,6 +53,36 @@ found it.
 | `5b09bcf` | Preview: annotation edit / delete / re-position + edited Copy-JSON |
 | `a955ee9` | PDF: `_first_baseline` reserves glyph ascent + rotation lift at the page top |
 | `f78e181` | PDF: break over-wide words at their hyphen |
+| `8c474c2` | PDF: same ladder + floor on the un-indexed path; line-break union fix |
+
+### The un-indexed path (`8c474c2`)
+
+`1c5e8ed` fixed only the `index is not None` branch. Forcing `index=None` over the same
+book and plan showed the un-indexed chain was **worse than the indexed path had ever been**:
+
+```
+un-indexed  before: matched 50/50, 10 stub anchors, 40 clean
+un-indexed  after:  matched 48/50,  0 stub anchors, 48 clean
+indexed     after:  matched 48/50,  0 stub anchors, 48 clean   (unchanged)
+EPUB        after:  rendered 48, skipped 2                     (unchanged)
+```
+
+`page.search_for` is already case-insensitive, so the drift it cannot absorb alone is
+punctuation the model dropped. `_tolerant_full_quote_hits` locates the quote in the page's
+own text layer at `PUNCTUATION_ELASTIC` tolerance and then searches for the substring the
+page *actually* contains — verbatim, therefore findable. The `_search_variants` loop is now
+gated by the same coverage floor, which also closes the matching bypass on the indexed path
+(reachable when `score_candidates` returns `NoMatchResult`).
+
+**A bug was introduced and caught inside this work**, worth knowing because it is
+counter-intuitive: a passage crossing a line break returns *one rect per line*, and all of
+them belong to the single occurrence just located. Running them through
+`_first_contiguous_hit_group_rects` — which exists to stop a short variant unioning across
+*distinct* occurrences — kept only the first line, collapsing `"Mr.\nHyde has a key."` onto
+a 15pt anchor over `"Mr."`: the exact symptom being fixed. Grouping now applies only when
+the needle genuinely repeats on the page. The first version of the regression test did not
+catch this, because a single line at fontsize 11 is ~13.9pt tall and cleared its
+`height > 12` threshold; the test asserts both dimensions now.
 
 ## Learnings
 
@@ -145,10 +176,11 @@ All run at `f78e181`, clean tree, this session.
 
 | Claim | Command | Result |
 |---|---|---|
-| full suite | `python -m pytest tests/ -q` | **`1738 passed`** |
+| full suite | `python -m pytest tests/ -q` | **`1743 passed`** |
 | ruff | `ruff check src tests eval scripts` | `All checks passed!` |
 | mypy | `mypy src/halfblood` | `Success: no issues found in 43 source files` |
-| PDF anchor quality | `python pdf_anchor_quality3.py` | **`48/50, STUB ANCHORS = 0`** (was 5) |
+| PDF anchor quality (indexed) | `python pdf_anchor_quality3.py` | **`48/50, STUB ANCHORS = 0`** (was 5) |
+| PDF anchor quality (un-indexed) | `python unindexed_quality.py` | **`48/50, STUB ANCHORS = 0`** (was 10) |
 | EPUB unchanged | `python analyze_skips.py` | `rendered=48 skipped=2` |
 | font from real wheel | `python prove_font_bug.py` | `RESOLVED -> site-packages/halfblood/fonts/...` |
 | CLI precedence, 7 cases | `python probe_cli_precedence.py` | all correct, exit 2 / 1 as designed |
@@ -163,15 +195,19 @@ jekyll.epub*. The needle drift it measures is real (it is the model's own output
 haystack is cleaner than a scanned or typeset book. It does not exercise hyphenation across
 line breaks, columns, or OCR noise.
 
-**Caveat 2 — the fix is scoped to the indexed path.** Both the tolerance ladder and
-`_MIN_ANCHOR_COVERAGE` live inside the `index is not None` branch of
-`_resolve_annotation_to_anchor`. When `PdfPageIndex` raises `PdfAlignmentError`, resolution
-falls through to the older `_search_variants` + `page.search_for` loop, which still anchors
-to the longest single word with no floor and no ladder — the very defect fixed above, still
-live on that path. Measured reachability: **0 of 77 pages** across `jekyll_tall.pdf` (13),
-`jekyll.pdf` (59) and a real rendered output (5) failed to index, so this is a rare
-degradation path rather than the common case. Not a regression — it was always like this —
-but it is the natural companion to the OCR item below.
+**Caveat 2 — RESOLVED in `8c474c2`.** The ladder and floor initially lived only inside the
+`index is not None` branch, leaving the un-indexed chain unguarded. Forcing `index=None`
+over the same book showed it was **worse than the indexed path had been — 10 stub anchors
+of 50** (`"Mr. Hyde has a key."` → `"Mr."`). Now fixed; all three paths agree at 48/50.
+See "The un-indexed path" below. Reachability of that branch remains low (**0 of 77 pages**
+across `jekyll_tall.pdf`, `jekyll.pdf` and a real rendered output failed to index), but it
+is no longer a hole.
+
+**Caveat 3 — `find_text_rect` (v1) is deliberately still loose.** It keeps the
+unconditional single-word fallback, because `tests/test_pdf_targeting.py` (AUD-26) pins that
+fallback firing, and because the CLI never reaches it — `render_plan` exists on both
+processors, so the `hasattr` branch always takes v2. The asymmetry is now recorded in the
+method's docstring so it is not mistaken for an oversight.
 
 ## Artifacts
 
@@ -181,7 +217,7 @@ Committed: `src/halfblood/{cli,document_processor,web_preview}.py`; new tests
 and `test_match_tolerance.py` extended.
 
 Scratchpad (session-local, recreate as needed): `build_jekyll_tall.py`,
-`pdf_anchor_quality3.py`, `tier_census.py`, `prove_font_bug.py`, `probe_cli_precedence.py`,
+`pdf_anchor_quality3.py`, `unindexed_quality.py`, `diagnose_unindexed.py`, `tier_census.py`, `prove_font_bug.py`, `probe_cli_precedence.py`,
 `check_render_geometry.py`, `check_epub_output.py`, `check_preview_js.py`, `xss_probe.py`,
 `analyze_skips.py`, `run_halfblood.py`.
 
@@ -189,11 +225,11 @@ Scratchpad (session-local, recreate as needed): `build_jekyll_tall.py`,
 
 1. **PDF text-extraction quality / OCR fallback** — never investigated, and it is now the
    most likely place for real-world anchor failures, since the corpus used here is clean.
-   Get a genuinely typeset or scanned PDF before assuming the 48/50 generalises.
-   **Do this together with Caveat 2 above**: the un-indexed fallback path still mis-anchors,
-   and a messy real-world PDF is exactly what would drive resolution onto it. Measuring on a
-   scanned book would establish both how often `PdfAlignmentError` really fires and whether
-   the ladder plus coverage floor need lifting out of the `index is not None` branch.
+   Get a genuinely typeset or scanned PDF before assuming the 48/50 generalises. Both
+   resolution paths are now guarded, so what a messy book would establish is how often
+   `PdfAlignmentError` actually fires in the wild and whether `_MIN_ANCHOR_COVERAGE = 0.5`
+   is still the right line when the text layer itself is unreliable — a scanned page may
+   legitimately need a prefix anchor that this floor now rejects.
 2. **Annotation collision detection** — still open (known issue #14). Notes at the top of a
    page now stay on the sheet, but nothing prevents two notes overlapping each other.
 3. **Connector re-draw after a preview re-position was never executed** — `doLayout` is
