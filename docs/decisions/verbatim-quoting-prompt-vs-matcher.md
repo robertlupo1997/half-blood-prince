@@ -111,3 +111,64 @@ Two things worth keeping from the experiment:
 
 **Conclusion: the matcher, not the prompt, is the effective lever here.** The prompt
 already said "exact, verbatim" twice before this experiment; saying it louder did nothing.
+
+---
+
+## Addendum (2026-07-26): what "a wrong anchor is worse than none" actually forbids
+
+This document has been cited to justify dropping any annotation whose quote cannot be
+matched in full. That is too strong, and a real scanned book showed the cost.
+
+The principle is about anchors a reader **cannot interpret**. It is worth separating two
+things the earlier text ran together:
+
+- A **prefix** of the correct passage. The mark is shorter than the note's quote, but it
+  begins exactly where the passage begins, so the reader's eye lands on the right words.
+  This is honest and should render.
+- A **lone word** from somewhere inside the passage. The note discusses a sentence, the
+  mark sits on one word, and nothing distinguishes that from a correct anchor. This is the
+  case the principle forbids.
+
+`_exactness_tiers` makes the separation exact rather than a matter of taste: the ladder is
+full quote → 8-word prefix → 5-word prefix → 3-word prefix → longest single word. Every
+multi-word tier *is* a prefix; the single-word tier is the only one that can land anywhere.
+So "reject lone-word anchors" is a structural predicate, not a tuned threshold.
+
+### Why this needed a scanned book to see
+
+The PDF path first shipped a `coverage >= 0.5` rule (`1c5e8ed`). That was correct on the
+only corpus that existed — a clean PDF synthesised from the EPUB, where every legitimate
+match sat at coverage 1.00 and the rule cost nothing.
+
+A genuine OCR'd scan (Internet Archive `strangecaseofdrj00stevrich`, the 1886 edition,
+151 pages with a text layer) behaves completely differently, because **the model silently
+repairs OCR damage while quoting**. Handed a page reading `tlie sight of a pol`, it writes
+`the sight of a policeman`; handed `mould- ings` broken across a line, it writes
+`mould-ings`. The quote is faithful to the text as a human reads it and unfaithful to the
+bytes, so the complete quote matches far less often — **53 of 88** on this book, against
+48 of 50 on the clean one — and a prefix tier picks the passage up as far as the first
+corrupted word.
+
+Those prefixes are correct anchors. Measured over the same 88 real annotations:
+
+| policy | clean corpus (50) | scanned corpus (88) | lone-word anchors admitted |
+|---|---|---|---|
+| `coverage >= 0.5` | 48 | **60** | 0 |
+| `coverage >= 0.2` | 48 | 76 | 0 |
+| **reject lone words** | **49** | **84** | **0** |
+| both | 48 | 76 | 0 |
+
+Rejecting lone words *dominates* — same protection, 24 more annotations on the scanned
+book. A tuned constant trades; this one does not, which is the sign it is the right rule.
+
+Caveat: the tier-0 rates above come from one generation run on one free-tier model. The
+policy comparison does not depend on them, because the ranking holds at any rate.
+
+### Known divergence from the EPUB path
+
+`documents/epub.py:locate_across_nodes` still accepts **tier 0 only**, so on the same plan
+EPUB renders 48/50 where PDF now renders 49/50. That is a policy choice, not a technical
+limit — its docstring says tier-0-only exists "so returned segments always represent the
+selector's full normalized exact quote", and a prefix span would still produce valid
+segments. Whether EPUB should adopt the same rule is undecided and wants its own
+measurement on a real EPUB; it is recorded here so the difference is not mistaken for a bug.

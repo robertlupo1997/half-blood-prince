@@ -175,23 +175,34 @@ _PDF_TOLERANCE_LADDER: tuple[MatchTolerance, ...] = (
     MatchTolerance.PUNCTUATION_ELASTIC,
 )
 
-#: Least fraction of the target passage a shortened-tier anchor may cover before
-#: the annotation is skipped instead of mis-anchored.
-#:
-#: The shortened tiers (8-word -> 5-word -> 3-word -> longest single word) are
-#: kept, because real PDFs have genuinely messy text layers — hyphenation,
-#: columns, running headers — where a prefix anchor is the honest best available.
-#: But an anchor covering a small fraction of the passage is a guess, not an
-#: anchor: the note claims a sentence while the underline sits on one word, and
-#: a reader cannot tell. The EPUB path already refuses these (it accepts tier 0
-#: only); this makes the PDF path agree.
-#:
-#: Half is the meaning-based line: an anchor must cover at least half of what the
-#: note claims. Measured on a real book (50 annotations, Jekyll & Hyde), the
-#: constant is nowhere near load-bearing — once the tolerance ladder above runs,
-#: every legitimate match sits at coverage 1.00 and the only shortened-tier
-#: survivors are two genuine paraphrases at 0.13 and 0.18.
-_MIN_ANCHOR_COVERAGE = 0.5
+def _is_lone_word_anchor(matched: str) -> bool:
+    """True when a shortened-tier match landed on the longest-single-word tier.
+
+    ``_exactness_tiers`` is: full quote -> 8-word prefix -> 5-word prefix ->
+    3-word prefix -> longest single word. Every multi-word tier is therefore a
+    *prefix*, which starts exactly where the passage starts: the underline is
+    shorter than the note's quote, but it points the reader at the right words.
+    The single-word tier is the only one that can land anywhere in the passage,
+    which is the anchor a reader cannot interpret — the note discusses a
+    sentence while the mark sits on one word somewhere inside it.
+
+    So "more than one word" is not a tuned threshold; it is exactly the
+    predicate that separates the prefix tiers from the lone-word tier.
+
+    This replaced a ``coverage >= 0.5`` rule, which was correct on the only
+    corpus available at the time (a clean synthesised PDF, where every
+    legitimate match sat at coverage 1.00) but did not survive a real scanned
+    book. On a genuine OCR'd scan the model silently repairs OCR damage while
+    quoting -- it reads "tlie" and writes "the" -- so the complete quote matches
+    only 53 of 88 times and a prefix tier picks up the text as far as the first
+    corrupted word. Those prefixes are correct anchors. Measured over the same
+    88 real annotations on 20 scanned pages: the coverage rule rendered 60,
+    this rule renders 84, and both admit exactly zero lone-word anchors. On the
+    clean corpus it is 48 vs 49, also with zero. (Tier-0 rates come from a
+    single generation run on one model; the comparison holds at any rate,
+    because this rule dominates rather than trades.)
+    """
+    return len(matched.split()) < 2
 
 
 def _wrap_text_with_font(
@@ -542,9 +553,10 @@ class DocumentProcessor:
            The v2 render path — :meth:`render_plan` via
            :meth:`_resolve_annotation_to_anchor`, which is what the CLI actually
            runs — is stricter: it walks a tolerance ladder for the complete quote
-           and applies ``_MIN_ANCHOR_COVERAGE``, skipping an annotation rather
-           than anchoring it to a stray word. Do not assume the two agree; the
-           looser behaviour here is scoped to the legacy path on purpose.
+           and rejects lone-word anchors (see :func:`_is_lone_word_anchor`),
+           skipping an annotation rather than anchoring it to a stray word. Do
+           not assume the two agree; the looser behaviour here is scoped to the
+           legacy path on purpose.
 
         Returns:
             A `fitz.Rect` spanning all matched hits (unioned across lines
@@ -745,15 +757,14 @@ class DocumentProcessor:
                         return anchor
 
             if shortened is not None:
-                needed = len(normalize(annotation.target.exact).strip())
                 short_span = shortened.raw_span
-                coverage = (short_span.end - short_span.start) / max(1, needed)
-                if coverage < _MIN_ANCHOR_COVERAGE:
+                matched_text = index.text[short_span.start : short_span.end]
+                if _is_lone_word_anchor(matched_text):
                     logger.debug(
-                        "Target %r only anchors to %.0f%% of itself (tier %d) — "
+                        "Target %r would anchor to the lone word %r (tier %d) — "
                         "skipping annotation %s rather than mis-anchoring it",
                         annotation.target.exact,
-                        coverage * 100,
+                        matched_text.strip(),
                         shortened.exactness_tier,
                         annotation.id,
                     )
@@ -781,11 +792,10 @@ class DocumentProcessor:
             return _fallback_anchor(self._union_rects(group))
 
         for variant in self._search_variants(normalized):
-            # Same rule the scorer path applies: a shortened needle covering only a
-            # sliver of the passage is a guess, not an anchor. Variants are ordered
-            # longest-first, but the trailing single-word variant can exceed a short
-            # prefix, so skip rather than break.
-            if len(variant) < _MIN_ANCHOR_COVERAGE * len(normalized):
+            # Same rule the scorer path applies. `_search_variants` mirrors
+            # `_exactness_tiers`, so a single-word variant *is* the lone-word tier;
+            # every other variant is a prefix and anchors where the passage starts.
+            if variant != normalized and _is_lone_word_anchor(variant):
                 continue
             hits = page.search_for(variant)
             if not hits:

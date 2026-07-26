@@ -8,11 +8,12 @@ Two linked behaviours are pinned here:
    by nothing more than letter case or curly-vs-straight quotes skipped past
    tier 0 and anchored to a shortened tier -- in the worst case a single word.
 
-2. **Coverage floor on shortened tiers.** The shortened tiers are retained for
-   genuinely messy text layers, but an anchor covering less than
-   ``_MIN_ANCHOR_COVERAGE`` of the target is a guess: the note claims a
-   sentence while the underline sits on one word, and the reader cannot tell.
-   Those are now skipped, which is what the EPUB path already does.
+2. **Lone-word anchors are rejected.** The shortened tiers are retained for
+   genuinely messy text layers, but ``_exactness_tiers`` makes every multi-word
+   tier a *prefix* -- it starts where the passage starts -- while the
+   longest-single-word tier can land anywhere inside it. A note claiming a
+   sentence while the mark sits on one word is the anchor a reader cannot
+   interpret, so exactly that tier is skipped (see ``_is_lone_word_anchor``).
 
 Measured on a real book (Jekyll & Hyde, 50 real annotations): 5 stub anchors
 before, 0 after; 48/50 rendered, exactly matching the EPUB path, with the same
@@ -31,7 +32,7 @@ import fitz
 import pytest
 from pydantic import ValidationError
 
-from halfblood.document_processor import _MIN_ANCHOR_COVERAGE, DocumentProcessor
+from halfblood.document_processor import DocumentProcessor, _is_lone_word_anchor
 from halfblood.documents import PdfPageIndex
 from halfblood.documents.matching import normalize
 from halfblood.models.annotations import Annotation, MarkIntent, TargetSelector
@@ -138,23 +139,26 @@ class TestToleranceLadderOnThePdfPath:
 
 
 # ---------------------------------------------------------------------------
-# 2. The coverage floor drops guesses but keeps substantial prefix anchors
+# 2. Lone-word anchors are rejected; prefix anchors are kept
 # ---------------------------------------------------------------------------
 
 
-class TestShortenedTierCoverageFloor:
-    def test_a_single_word_anchor_for_a_long_target_is_skipped(self) -> None:
-        """A paraphrase sharing only one long word must NOT be mis-anchored.
+class TestLoneWordAnchorsAreRejected:
+    def test_a_lone_word_anchor_for_a_long_target_is_skipped(self) -> None:
+        """No prefix matches, so only a word from mid-passage is left.
 
         This is the defect: the margin note refers to a whole sentence while the
-        underline sits on one word, and nothing tells the reader.
+        mark sits on one word, and nothing tells the reader. Note the page shares
+        no opening words with the target -- when it does, the prefix tier gives a
+        correct anchor and that is kept (see the prefix tests below).
         """
         anchor, _ = _resolve(
-            "the radiance of a foul soul that transfigures its clay continent.",
-            "the radiance of a foul soul that thus transpires through, and "
-            "wholly alters, the moulded flesh of its earthly prison",
+            "He observed that no gentleman would walk into a cellar door at "
+            "four in the morning.",
+            "and that a man does not, in real life, walk into a cellar door at "
+            "four in the morning",
         )
-        assert anchor is None, "a one-word anchor for a 20-word target was rendered"
+        assert anchor is None, "a lone-word anchor for a 20-word target was rendered"
 
     def test_a_substantial_prefix_anchor_is_still_used(self) -> None:
         """The shortened tiers are gated, not deleted.
@@ -167,10 +171,35 @@ class TestShortenedTierCoverageFloor:
             "Add the powdered root of asphodel to an infusion of QQQZZZ",
         )
         assert anchor is not None, "a substantial prefix anchor was dropped"
-        assert coverage >= _MIN_ANCHOR_COVERAGE
+        assert coverage > 0.5
 
-    def test_the_floor_is_a_named_constant_in_the_documented_range(self) -> None:
-        assert 0.0 < _MIN_ANCHOR_COVERAGE < 1.0
+    def test_a_low_coverage_prefix_of_a_long_target_still_anchors(self) -> None:
+        """The behaviour a coverage floor got wrong, and why it was replaced.
+
+        On a scanned book the model silently repairs OCR damage while quoting, so
+        the complete quote misses and a prefix tier picks up the text only as far
+        as the first corrupted word. That prefix is short relative to a long
+        target -- but it starts exactly where the passage starts, so it points
+        the reader at the right words. A `coverage >= 0.5` rule dropped 24 such
+        anchors on one real scanned book; this pins that they render.
+        """
+        anchor, coverage = _resolve(
+            "Crush the sopophorous bean and then proceed to add the powdered root "
+            "of asphodel to the wormwood infusion before the seventh stir.",
+            "Crush the sopophorous bean and QQQZ WWWY the powdered root of asphodel "
+            "to the wormwood infusion before the seventh stir, stirring throughout",
+        )
+        assert anchor is not None, "a correct prefix anchor was dropped"
+        assert coverage < 0.5, (
+            "this case is only meaningful below the old floor; "
+            f"coverage was {coverage:.2f}"
+        )
+
+    def test_the_rule_is_exactly_lone_word_rejection(self) -> None:
+        assert _is_lone_word_anchor("transfigures")
+        assert _is_lone_word_anchor("  morning  ")
+        assert not _is_lone_word_anchor("the death of Sir")
+        assert not _is_lone_word_anchor("Mr. Hyde")
 
 
 # ---------------------------------------------------------------------------
@@ -187,13 +216,14 @@ class TestUnindexedPathHoldsTheSameLine:
     50 before, 0 after.
     """
 
-    def test_a_single_word_anchor_for_a_long_target_is_skipped(self) -> None:
+    def test_a_lone_word_anchor_for_a_long_target_is_skipped(self) -> None:
         anchor, _ = _resolve_unindexed(
-            "the radiance of a foul soul that transfigures its clay continent.",
-            "the radiance of a foul soul that thus transpires through, and "
-            "wholly alters, the moulded flesh of its earthly prison",
+            "He observed that no gentleman would walk into a cellar door at "
+            "four in the morning.",
+            "and that a man does not, in real life, walk into a cellar door at "
+            "four in the morning",
         )
-        assert anchor is None, "a one-word anchor for a 20-word target was rendered"
+        assert anchor is None, "a lone-word anchor for a 20-word target was rendered"
 
     def test_dropped_quote_marks_still_find_the_whole_quote(self) -> None:
         """`page.search_for` is already case-insensitive, so punctuation is the
