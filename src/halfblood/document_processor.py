@@ -584,6 +584,64 @@ class DocumentProcessor:
         digest = hashlib.sha256(f"render:{document_seed}:{annotation_id}".encode()).digest()
         return int.from_bytes(digest[:8], byteorder="big", signed=False)
 
+    def _tolerant_full_quote_hits(
+        self, page: fitz.Page, target: Any
+    ) -> list[fitz.Rect]:
+        """Find the *complete* quote on a page, tolerating surface drift.
+
+        This is the no-index counterpart of the tolerance ladder in
+        :meth:`_resolve_annotation_to_anchor`. ``page.search_for`` is already
+        case-insensitive, so the drift it cannot absorb is punctuation the model
+        dropped — quote marks around reported speech, most often.
+
+        Rather than trying to express "optional quote characters" as a search
+        string, locate the quote in the page's own text layer at
+        ``PUNCTUATION_ELASTIC`` tolerance and then search for the substring the
+        page *actually* contains. That substring is verbatim page text, so
+        ``search_for`` finds it, and a passage spanning a line break simply comes
+        back as one rect per line for the existing grouping to union.
+
+        Returns an empty list when the complete quote is not present, which is a
+        genuine miss and must not be downgraded to a shortened-tier guess.
+        """
+        try:
+            page_text = str(page.get_text("text"))
+            normalized_page = NormalizedText(page_text)
+        except (ValueError, TypeError):
+            # Page too large for the matcher's input bound, or no text layer.
+            return []
+
+        for tolerance in _PDF_TOLERANCE_LADDER:
+            try:
+                outcome = score_candidates(target, normalized_page, tolerance=tolerance)
+            except ValueError:
+                continue
+            if not isinstance(outcome, MatchResult):
+                continue
+            if outcome.candidate.exactness_tier != 0:
+                continue
+            raw = outcome.candidate.raw_span
+            needle = page_text[raw.start : raw.end].strip()
+            if not needle:
+                continue
+            hits = page.search_for(needle)
+            if not hits:
+                continue
+            # A passage crossing a line break comes back as one rect per line, and
+            # every one of those belongs to the single occurrence just located --
+            # they must all be unioned. Grouping them as if they were competing
+            # occurrences keeps only the first line, which is how "Mr.\nHyde has a
+            # key." collapsed onto a 15pt-wide anchor over "Mr.". Only when the
+            # needle genuinely repeats on the page is grouping the right move.
+            if page_text.count(needle) > 1:
+                hits = self._first_contiguous_hit_group_rects(hits)
+            logger.debug(
+                "Un-indexed page: matched the complete quote under %s tolerance",
+                tolerance.value,
+            )
+            return list(hits)
+        return []
+
     def _resolve_annotation_to_anchor(
         self,
         page: fitz.Page,
@@ -692,7 +750,30 @@ class DocumentProcessor:
                     return anchor
         # ---- end scorer path -------------------------------------------------------
 
+        # Without a character index the tolerance ladder cannot run against
+        # index.text, but the page's own text layer serves the same purpose:
+        # locate the complete quote there, then search for the substring the page
+        # actually contains, which is verbatim and therefore findable.
+        tolerant_hits = self._tolerant_full_quote_hits(page, annotation.target)
+        if tolerant_hits:
+            # Already narrowed to a single occurrence by the helper; union as-is.
+            group = tolerant_hits
+            if index is None:
+                return _fallback_anchor(self._union_rects(group))
+            span = index.char_span_for_rects(group)
+            if span is not None:
+                anchor = resolve_pdf_anchor(index, *span)
+                if anchor is not None:
+                    return anchor
+            return _fallback_anchor(self._union_rects(group))
+
         for variant in self._search_variants(normalized):
+            # Same rule the scorer path applies: a shortened needle covering only a
+            # sliver of the passage is a guess, not an anchor. Variants are ordered
+            # longest-first, but the trailing single-word variant can exceed a short
+            # prefix, so skip rather than break.
+            if len(variant) < _MIN_ANCHOR_COVERAGE * len(normalized):
+                continue
             hits = page.search_for(variant)
             if not hits:
                 continue
