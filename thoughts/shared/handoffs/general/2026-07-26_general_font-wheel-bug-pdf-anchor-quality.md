@@ -158,10 +158,20 @@ All run at `f78e181`, clean tree, this session.
 | EPUB structure | `python check_epub_output.py` | mimetype/container OK, 14/14 XHTML well-formed, 48↔48 |
 | end-to-end | real `annotate` via OpenRouter | `Rendered 24 / Skipped 0`, page image inspected |
 
-**Caveat:** the PDF measurement replays a frozen plan against a PDF *synthesised from
+**Caveat 1:** the PDF measurement replays a frozen plan against a PDF *synthesised from
 jekyll.epub*. The needle drift it measures is real (it is the model's own output), but the
 haystack is cleaner than a scanned or typeset book. It does not exercise hyphenation across
 line breaks, columns, or OCR noise.
+
+**Caveat 2 — the fix is scoped to the indexed path.** Both the tolerance ladder and
+`_MIN_ANCHOR_COVERAGE` live inside the `index is not None` branch of
+`_resolve_annotation_to_anchor`. When `PdfPageIndex` raises `PdfAlignmentError`, resolution
+falls through to the older `_search_variants` + `page.search_for` loop, which still anchors
+to the longest single word with no floor and no ladder — the very defect fixed above, still
+live on that path. Measured reachability: **0 of 77 pages** across `jekyll_tall.pdf` (13),
+`jekyll.pdf` (59) and a real rendered output (5) failed to index, so this is a rare
+degradation path rather than the common case. Not a regression — it was always like this —
+but it is the natural companion to the OCR item below.
 
 ## Artifacts
 
@@ -180,6 +190,10 @@ Scratchpad (session-local, recreate as needed): `build_jekyll_tall.py`,
 1. **PDF text-extraction quality / OCR fallback** — never investigated, and it is now the
    most likely place for real-world anchor failures, since the corpus used here is clean.
    Get a genuinely typeset or scanned PDF before assuming the 48/50 generalises.
+   **Do this together with Caveat 2 above**: the un-indexed fallback path still mis-anchors,
+   and a messy real-world PDF is exactly what would drive resolution onto it. Measuring on a
+   scanned book would establish both how often `PdfAlignmentError` really fires and whether
+   the ladder plus coverage floor need lifting out of the `index is not None` branch.
 2. **Annotation collision detection** — still open (known issue #14). Notes at the top of a
    page now stay on the sheet, but nothing prevents two notes overlapping each other.
 3. **Connector re-draw after a preview re-position was never executed** — `doLayout` is
