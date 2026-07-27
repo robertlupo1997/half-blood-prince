@@ -358,6 +358,41 @@ def _pinched_midpoint(
     return bool(above and below and min(below) - max(above) <= 2.0 * clearance)
 
 
+#: Maximum obstacles the connector router processes per ``make_connector`` call.
+#:
+#: Bounds the O(n) cost of ``_segment_hits`` (21 samples × up to 4 segments ×
+#: ``connector_max_route_attempts`` iterations). At the default style of 8 attempts
+#: the worst-case work is 21 × 4 × 8 × 100 ≈ 67 200 float comparisons — fast enough
+#: that latency is dominated by PDF rendering, not routing.  Pages with more obstacles
+#: (e.g. densely-typeset Internet Archive scans) are handled by geographic pruning
+#: first; this constant is the final safety cap after pruning.
+_CONNECTOR_OBSTACLE_LIMIT: int = 100
+
+
+def _rect_min_dist_sq_to_segment(
+    rect: LocalRect,
+    start: tuple[float, float],
+    target: tuple[float, float],
+) -> float:
+    """Return the minimum squared distance from *rect* to 21 sampled points on *start*→*target*.
+
+    Uses the same 21-point grid as ``_segment_hits``, so an obstacle that would
+    register a hit there has distance zero here and sorts first when the cap
+    selects the most relevant obstacles.
+    """
+    min_d2 = math.inf
+    for i in range(21):
+        t = i / 20.0
+        px = start[0] + t * (target[0] - start[0])
+        py = start[1] + t * (target[1] - start[1])
+        dx = max(rect.x0 - px, 0.0, px - rect.x1)
+        dy = max(rect.y0 - py, 0.0, py - rect.y1)
+        d2 = dx * dx + dy * dy
+        if d2 < min_d2:
+            min_d2 = d2
+    return min_d2
+
+
 def _connector_commands(
     rng: random.Random,
     anchors: Sequence[tuple[float, float]],
@@ -403,22 +438,73 @@ def make_connector(
     bounds: LocalRect,
     group_id: str = "connector",
 ) -> ConnectorResult:
-    """Generate a low-frequency cubic connector with a two-stroke arrowhead."""
+    """Generate a low-frequency cubic connector with a two-stroke arrowhead.
 
-    if len(obstacles) > 100:
-        raise ValueError("too many obstacles")
+    Obstacle handling is two-phase so this function never raises regardless of
+    obstacle density (e.g. densely-typeset pages with 500+ text-line runs):
+
+    1. **Corridor pruning** — obstacles whose expanded bounding box does not
+       overlap the connector corridor (the bounding box of *note_edge*→*target_edge*
+       expanded by *clearance* on all sides) are discarded.  They cannot block the
+       direct segment and are irrelevant to bypass-Y collection.
+
+    2. **Cap with degradation** — if after pruning the set still exceeds
+       ``_CONNECTOR_OBSTACLE_LIMIT``, the ``_CONNECTOR_OBSTACLE_LIMIT`` nearest
+       obstacles (by minimum squared distance to the direct segment, consistent with
+       ``_segment_hits``) are kept, and ``ConnectorDegradation.ROUTING_FALLBACK`` is
+       recorded.  A ``ConnectorResult`` is always returned.
+    """
     clearance = max(clearance, 0.0)
     start = _point(note_edge.x, note_edge.y, bounds)
     target = _point(target_edge.x, target_edge.y, bounds)
+
+    # ---- Phase 1: corridor pruning -----------------------------------------------
+    # Keep only obstacles whose *expanded* bounding box overlaps the connector
+    # corridor.  The expanded check (±clearance on each side of the obstacle)
+    # matches the expansion used in the hit-tests below, so no blocking obstacle
+    # is ever discarded.
+    cx0 = min(start[0], target[0]) - clearance
+    cy0 = min(start[1], target[1]) - clearance
+    cx1 = max(start[0], target[0]) + clearance
+    cy1 = max(start[1], target[1]) + clearance
+    route_obstacles: tuple[LocalRect, ...] = tuple(
+        obs
+        for obs in obstacles
+        if (obs.x1 + clearance) > cx0
+        and (obs.x0 - clearance) < cx1
+        and (obs.y1 + clearance) > cy0
+        and (obs.y0 - clearance) < cy1
+    )
+
+    # ---- Phase 2: cap with degradation -------------------------------------------
+    # If the pruned set still exceeds the routing budget, retain the N nearest
+    # to the direct segment (same metric as _segment_hits) and record a fallback.
+    # The sort key includes the rect coords as a deterministic tiebreaker so
+    # structural-hash stability is preserved across identical inputs.
+    degradation: list[ConnectorDegradation] = []
+    if len(route_obstacles) > _CONNECTOR_OBSTACLE_LIMIT:
+        route_obstacles = tuple(
+            sorted(
+                route_obstacles,
+                key=lambda obs: (
+                    _rect_min_dist_sq_to_segment(obs, start, target),
+                    obs.x0,
+                    obs.y0,
+                    obs.x1,
+                    obs.y1,
+                ),
+            )[:_CONNECTOR_OBSTACLE_LIMIT]
+        )
+        degradation.append(ConnectorDegradation.ROUTING_FALLBACK)
+
     dx = target[0] - start[0]
     dy = target[1] - start[1]
     distance = math.hypot(dx, dy)
     midpoint = ((start[0] + target[0]) / 2.0, (start[1] + target[1]) / 2.0)
-    expanded = tuple(_expanded(obstacle, clearance) for obstacle in obstacles)
+    expanded = tuple(_expanded(obstacle, clearance) for obstacle in route_obstacles)
     blocked = any(_inside(midpoint, obstacle) for obstacle in expanded)
     blocked = blocked or _pinched_midpoint(midpoint, expanded, clearance)
     anchors: list[tuple[float, float]] = [start, target]
-    degradation: tuple[ConnectorDegradation, ...] = ()
     connector_wobble = style.rough.wobble_amplitude * distance
 
     if blocked:
@@ -442,7 +528,7 @@ def make_connector(
             found_waypoint = True
             break
         if not found_waypoint:
-            for obstacle in obstacles:
+            for obstacle in route_obstacles:
                 expanded_obstacle = _expanded(obstacle, clearance)
                 bypass_levels = (
                     expanded_obstacle.y0 - 1.0,
@@ -468,8 +554,9 @@ def make_connector(
                     break
                 if found_waypoint:
                     break
-        if not found_waypoint:
-            degradation = (ConnectorDegradation.ROUTING_FALLBACK,)
+        if not found_waypoint and ConnectorDegradation.ROUTING_FALLBACK not in degradation:
+            # Accumulate: ROUTING_FALLBACK may already be set by the obstacle cap.
+            degradation.append(ConnectorDegradation.ROUTING_FALLBACK)
 
     main_commands = _connector_commands(
         rng,
@@ -509,7 +596,9 @@ def make_connector(
         command_count += len(commands)
 
     group = InkGroup(group_id=group_id, role=InkRole.CONNECTOR, paths=tuple(paths))
-    return ConnectorResult(group=group, degradation=degradation)
+    # Deduplicate: both the cap and routing failure can append ROUTING_FALLBACK;
+    # dict.fromkeys preserves insertion order and removes duplicates in O(n).
+    return ConnectorResult(group=group, degradation=tuple(dict.fromkeys(degradation)))
 
 
 def _doodle_path(
