@@ -1196,14 +1196,30 @@ class DocumentProcessor:
                         "connector_routing_fallback": (
                             DegradationFlag.CONNECTOR_ROUTING_FALLBACK
                         ),
+                        "connector_obstacle_cap": (
+                            DegradationFlag.CONNECTOR_OBSTACLE_CAP
+                        ),
                         "ink_path_budget_exceeded": (
                             DegradationFlag.INK_PATH_BUDGET_EXCEEDED
                         ),
                     }
                     for degradation in composition.degradations:
                         flag = degradation_mapping.get(degradation.code)
-                        if flag is not None:
-                            degradation_flags.append(flag)
+                        if flag is None:
+                            # An unmapped code is silently invisible to the user,
+                            # which is how the obstacle cap shipped unreportable:
+                            # the composer emitted it and this dict dropped it.
+                            # Log rather than swallow, so the next new code
+                            # announces itself instead of vanishing.
+                            logger.warning(
+                                "Unmapped composition degradation code %r "
+                                "(annotation %s) — it will not appear in the "
+                                "render report",
+                                degradation.code,
+                                resolved_ann.annotation_id,
+                            )
+                            continue
+                        degradation_flags.append(flag)
 
                     if isinstance(composition.body, HandwritingUnavailable):
                         degradation_flags.append(DegradationFlag.GLYPH_FALLBACK)
