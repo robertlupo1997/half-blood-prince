@@ -205,6 +205,12 @@ def _is_lone_word_anchor(matched: str) -> bool:
     return len(matched.split()) < 2
 
 
+#: Minimum characters allowed on the final line of a character-split word.
+#: Two, because a single orphaned letter reads as a rendering fault rather than
+#: a wrap (observed as "recrystallisation" / "s" in a real narrow-margin render).
+_MIN_WRAP_TAIL_CHARS = 2
+
+
 def _wrap_text_with_font(
     text: str,
     max_width: float,
@@ -220,6 +226,15 @@ def _wrap_text_with_font(
         return font.text_length(chunk, fontsize=fontsize) <= max_width
 
     def split_chars(word: str) -> list[str]:
+        """Split an over-wide word by character, without orphaning its tail.
+
+        Greedy filling leaves whatever is left over on the final line, which for
+        a long word in a narrow margin is often a single letter: a real render
+        produced "recrystallisation" / "s", and at 30pt this yields
+        "seventee" / "n". A lone letter on its own line reads as a rendering
+        fault rather than a wrap, so the tail borrows characters back from the
+        previous chunk while that keeps the tail fitting.
+        """
         chunks: list[str] = []
         current_chunk = ""
         for char in word:
@@ -231,6 +246,20 @@ def _wrap_text_with_font(
                 current_chunk = candidate
         if current_chunk:
             chunks.append(current_chunk)
+
+        # Rebalance an orphaned tail. Bounded by the loop condition: every pass
+        # shortens chunks[-2], and it stops as soon as the tail is long enough,
+        # the donor would empty, or the tail would no longer fit -- so a margin
+        # so narrow that only one character fits per line simply keeps its
+        # greedy result rather than looping.
+        while (
+            len(chunks) >= 2
+            and len(chunks[-1]) < _MIN_WRAP_TAIL_CHARS
+            and len(chunks[-2]) > 1
+            and fits(chunks[-2][-1] + chunks[-1])
+        ):
+            chunks[-1] = chunks[-2][-1] + chunks[-1]
+            chunks[-2] = chunks[-2][:-1]
         return chunks
 
     def split_word(word: str) -> list[str]:

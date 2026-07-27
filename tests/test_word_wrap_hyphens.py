@@ -93,3 +93,44 @@ class TestFallbacksAreUnchanged:
         text = "My own pattern: three counter-clockwise turns, one sharp clockwise jerk."
         for line in _wrap(text, width, font):
             assert font.text_length(line, fontsize=9.5) <= width + 1e-6, line
+
+
+class TestOverWideWordTailIsNotOrphaned:
+    """A character-split word must not strand a single letter on its own line.
+
+    Found by rendering a real annotated PDF and reading the page image: a note
+    in a narrow left margin read "recrystallisation" / "s". A lone letter looks
+    like a rendering fault, not a wrap. Greedy character splitting leaves
+    whatever remains on the last line, so the tail borrows characters back from
+    the previous chunk while that keeps it fitting.
+    """
+
+    def test_no_single_letter_tail_at_realistic_margin_widths(self, font: fitz.Font) -> None:
+        text = (
+            "Simple. Ha. That 'simple' salt took him seventeen recrystallisations "
+            "and a moonless night under a fume hood I warded myself."
+        )
+        for width in (24.0, 30.0, 36.0, 48.0):
+            lines = _wrap_text_with_font(text, width, 9.0, font)
+            orphans = [
+                line for line in lines if len(line.strip()) == 1 and line.strip().isalpha()
+            ]
+            assert not orphans, (
+                f"width {width}: single-letter line(s) {orphans} in {lines}"
+            )
+
+    def test_rebalancing_never_overflows_the_margin(self, font: fitz.Font) -> None:
+        """Borrowing a character back must not push the tail past max_width."""
+        for width in (12.0, 16.0, 24.0, 30.0, 48.0):
+            lines = _wrap_text_with_font("recrystallisations", width, 9.0, font)
+            for line in lines:
+                assert font.text_length(line, fontsize=9.0) <= width + 0.01, (
+                    f"width {width}: line {line!r} overflows"
+                )
+
+    def test_all_characters_survive_rebalancing(self, font: fitz.Font) -> None:
+        """Rebalancing moves characters; it must never drop or duplicate one."""
+        word = "recrystallisations"
+        for width in (12.0, 16.0, 24.0, 30.0):
+            lines = _wrap_text_with_font(word, width, 9.0, font)
+            assert "".join(lines) == word, f"width {width}: {lines}"
