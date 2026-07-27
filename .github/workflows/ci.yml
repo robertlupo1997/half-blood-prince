@@ -10,13 +10,31 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        # 3.13 is advertised in pyproject's classifiers, so it is tested here.
+        # Previously the matrix stopped at 3.12 while the package claimed 3.13.
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
-      - run: ruff check src tests eval
+      - run: ruff check src tests eval scripts
       - run: mypy src/halfblood
       - run: pytest tests/ -q
+
+  wheel:
+    # Builds the wheel, installs it into a clean venv outside the repo, and uses
+    # the installed CLI. This is the only check that can catch the bug class
+    # where the DEVELOPMENT TREE HAS FILES THE WHEEL DOES NOT -- twice now a
+    # feature has shipped broken for every installed user while the whole suite
+    # and both linters stayed green, because path arithmetic relative to the repo
+    # resolves fine in a checkout and lands outside the package from a wheel.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --upgrade pip
+      - run: python scripts/wheel_smoke.py
