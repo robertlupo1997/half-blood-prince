@@ -18,7 +18,7 @@ from typing import Any
 import httpx
 import pytest
 
-from halfblood.generation.errors import StructuredOutputError
+from halfblood.generation.errors import ProviderTransientError, StructuredOutputError
 from halfblood.generation.providers.anthropic import AnthropicProvider
 from halfblood.generation.providers.base import (
     GenerationRequest,
@@ -265,4 +265,100 @@ def test_non_json_200_raises_structured_output_error_not_json_decode_error(
     # Full retry budget must be consumed: 1 initial + 2 retries = 3 calls.
     assert len(calls) == 3, (
         f"expected 3 HTTP calls (1 initial + 2 retries) at max_retries=2, got {len(calls)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Shared contract: HTTP 200 whose body is valid JSON but not a JSON object
+# (a list, string, null, or number) must raise StructuredOutputError — not
+# AttributeError, TypeError, or any other built-in — and must exhaust the full
+# retry budget.  This class of response is produced by proxies and gateways
+# that return valid JSON in error pages.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "body_text",
+    ["[]", '"ok"', "null", "7"],
+    ids=["list", "string", "null", "number"],
+)
+@pytest.mark.parametrize(
+    "make_provider",
+    [_make_anthropic_with_handler, _make_openai_compat_with_handler],
+    ids=["anthropic", "openai_compat"],
+)
+def test_non_mapping_200_body_raises_structured_output_error(
+    make_provider: Callable[..., LLMProvider],
+    body_text: str,
+) -> None:
+    """A 200 whose body is valid JSON but not an object must not leak builtin
+    exceptions through the provider seam.  Both providers must raise
+    StructuredOutputError and exhaust the retry budget."""
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(
+            200, text=body_text, headers={"content-type": "application/json"}
+        )
+
+    provider = make_provider(handler, max_retries=2)
+    # ProviderError (the base class) is NOT a builtin; asserting its subtype is
+    # sufficient to prove no AttributeError/TypeError escaped the seam.
+    with pytest.raises(StructuredOutputError):
+        provider.complete(_sample_request())
+
+    assert len(calls) == 3, (
+        f"expected 3 HTTP calls at max_retries=2, got {len(calls)} "
+        f"(body={body_text!r})"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Shared contract: non-2xx responses whose body is a non-Mapping JSON value
+# (or whose "error" field is a scalar, not an object) must still produce the
+# correct provider error taxonomy based on the HTTP status code, not leak
+# AttributeError or TypeError.  Both providers must exhaust the retry budget
+# for retryable status codes.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("status_code", "body_text"),
+    [
+        (500, "[]"),                      # valid JSON, not a Mapping
+        (500, '{"error":"gateway"}'),     # "error" is a string, not an object
+    ],
+    ids=["500-list-body", "500-error-string"],
+)
+@pytest.mark.parametrize(
+    "make_provider",
+    [_make_anthropic_with_handler, _make_openai_compat_with_handler],
+    ids=["anthropic", "openai_compat"],
+)
+def test_error_response_non_mapping_body_is_classified_correctly(
+    make_provider: Callable[..., LLMProvider],
+    status_code: int,
+    body_text: str,
+) -> None:
+    """A non-2xx response with a non-Mapping body must be classified by HTTP
+    status, not raise a builtin exception during message extraction.  For 5xx
+    both providers must retry to budget exhaustion then raise ProviderTransientError."""
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(
+            status_code,
+            text=body_text,
+            headers={"content-type": "application/json"},
+        )
+
+    provider = make_provider(handler, max_retries=2)
+    with pytest.raises(ProviderTransientError):
+        provider.complete(_sample_request())
+
+    assert len(calls) == 3, (
+        f"expected 3 HTTP calls at max_retries=2, got {len(calls)} "
+        f"(status={status_code}, body={body_text!r})"
     )
