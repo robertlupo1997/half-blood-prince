@@ -123,6 +123,7 @@ class DegradationFlag(str, Enum):  # noqa: UP042  # Preserve the pinned string-e
     SVG_UNSUPPORTED_TEXT_NOTE = "svg_unsupported_text_note"
     NOTE_SKIPPED_UNFITTABLE = "note_skipped_unfittable"
     CONNECTOR_ROUTING_FALLBACK = "connector_routing_fallback"
+    CONNECTOR_OBSTACLE_CAP = "connector_obstacle_cap"
     INK_PATH_BUDGET_EXCEEDED = "ink_path_budget_exceeded"
 
 

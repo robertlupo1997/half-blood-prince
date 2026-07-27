@@ -374,15 +374,24 @@ class BuiltinRoughInkEngine:
                 request.local_bounds,
                 group_id,
             )
+            _connector_details: dict[ConnectorDegradation, str] = {
+                ConnectorDegradation.ROUTING_FALLBACK: (
+                    "Connector routing exhausted all waypoint attempts; "
+                    "direct path used as fallback."
+                ),
+                ConnectorDegradation.OBSTACLE_CAP_USED: (
+                    "Obstacle set was capped before routing; "
+                    "distant obstacles were dropped."
+                ),
+            }
             degradations = tuple(
                 InkDegradation(
                     annotation_id=request.composition.annotation.id,
                     role=role,
                     code=value.value,
-                    detail="Connector routing used the direct fallback.",
+                    detail=_connector_details.get(value, value.value),
                 )
                 for value in connector.degradation
-                if value is ConnectorDegradation.ROUTING_FALLBACK
             )
             return RoughResult(groups=(connector.group,), degradations=degradations)
         else:
