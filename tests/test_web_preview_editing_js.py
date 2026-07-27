@@ -1,9 +1,10 @@
 """Node.js-based execution tests for the annotation editing JS handlers.
 
 These tests extract the actual function bodies from the generated HTML,
-combine them with a minimal DOM stub, and run assertions under Node.js.
-This proves the editing logic executes correctly — something a static
-regex test cannot do.
+combine them with a geometry-aware DOM stub, and run assertions under Node.js.
+This proves the editing logic — including the real doLayout / layoutMargin /
+drawConnectors call chain — executes correctly and produces geometrically
+correct connector paths.  A static regex or Python-side test cannot do this.
 
 Skipped automatically when Node.js is not on PATH.
 """
@@ -145,30 +146,127 @@ class TestNodeCheck:
 
 
 # ---------------------------------------------------------------------------
-# DOM-stub harness: edit / delete / reposition / export
+# DOM-stub harness: edit / delete / reposition / export / connector geometry
+#
+# Design notes:
+#
+#   - noteEl tracks which margin it is in via ._side ("left" / "right").
+#     getBoundingClientRect() returns left-column or right-column coordinates
+#     accordingly.  els.marginLeft.appendChild / els.marginRight.appendChild
+#     update ._side so the geometry automatically reflects the live position.
+#
+#   - connectorChildren is a persistent ordered list that mirrors the live DOM
+#     children of connectorLayer.  doLayout clears it via the innerHTML=""
+#     setter; drawConnectors appends new SVG path objects; deleteAnnotation's
+#     conn.remove() splices individual entries.  Seeding a stale entry and
+#     then asserting it is gone after repositionAnnotation proves that the
+#     innerHTML="" clear actually fires.
+#
+#   - No function in the doLayout call tree is stubbed.  bindHover is included
+#     verbatim; its event handlers only register (never fire) under the stub,
+#     so their references to state.hoveredId / state.lockedIds are inert.
+#
+#   - a1El replaces bare {} for the a1 annotation element: real doLayout
+#     iterates unanchored items and sets el.style.top / reads el.offsetHeight,
+#     so a plain object would TypeError.
 # ---------------------------------------------------------------------------
 
 _DOM_STUB = """\
 "use strict";
+
+// === tracked side-effects ===
 var removedNodes = [];
 var bookTextHTML = '<mark data-ann-id="a0">Crush text</mark> rest';
-var connectorEl = { remove: function() { removedNodes.push("connector:a0"); } };
 var noteTextEl = { textContent: "Crush, do not cut.", style: {}, _display: "" };
+
+// === geometry constants (see module docstring for derivation) ===
+// note left : getBoundingClientRect() → { left: 10,  right: 90,  top: 100, height: 30 }
+// note right: getBoundingClientRect() → { left: 910, right: 990, top: 100, height: 30 }
+// mark      :                         → { left: 300, right: 500, top: 100, height: 20 }
+// frame     :                         → { left: 100, top: 0 }
+//
+// Right-side connector expected values:
+//   fromX = noteRect.left  - frame.left = 910 - 100 = 810
+//   toX   = markRect.right - frame.left = 500 - 100 = 400
+//   bow   = +8  → midY > avg(fromY, toY)
+// Left-side connector:
+//   fromX = noteRect.right - frame.left =  90 - 100 = -10
+//   toX   = markRect.left  - frame.left = 300 - 100 = 200
+//   bow   = -8  → midY < avg(fromY, toY)
+
+// === connectorChildren: mirrors connectorLayer DOM children ===
+// doLayout sets connectorLayer.innerHTML = "" → setter calls connectorChildren.length = 0.
+// drawConnectors calls connectorLayer.appendChild(path) → push to list.
+// deleteAnnotation calls conn.remove() → splice from list.
+var connectorChildren = [];
+
+// === noteEl: element for annotation a0 ===
 var noteEl = {
   _removed: false, _movedToLeft: false, _movedToRight: false,
+  _side: "right",      // current margin — drives getBoundingClientRect
+  offsetHeight: 30,
+  style: { top: "", display: "" },
   remove: function() { this._removed = true; removedNodes.push("note:a0"); },
   querySelector: function(sel) { return (sel === ".note-text") ? noteTextEl : null; },
   appendChild: function() {},
   removeChild: function() {},
+  getBoundingClientRect: function() {
+    return this._side === "left"
+      ? { left: 10,  right: 90,  top: 100, bottom: 130, height: 30 }
+      : { left: 910, right: 990, top: 100, bottom: 130, height: 30 };
+  },
+  classList: {
+    contains: function() { return false; },
+    toggle: function() {},
+    add: function() {},
+    remove: function() {},
+  },
+  addEventListener: function() {},
 };
+
+// === a1El: minimal element for annotation a1 (unmatched, always left) ===
+// doLayout iterates unanchored items and accesses el.style.top / el.offsetHeight.
+var a1El = {
+  style: { top: "" },
+  offsetHeight: 30,
+  getBoundingClientRect: function() {
+    return { left: 10, right: 90, top: 200, bottom: 230, height: 30 };
+  },
+  classList: {
+    contains: function() { return false; },
+    toggle: function() {},
+    add: function() {},
+    remove: function() {},
+  },
+  addEventListener: function() {},
+};
+
+// === markEl: <mark> element for a0 in bookText ===
 var markEl = {
   _replaced: false,
   textContent: "Crush text",
+  getBoundingClientRect: function() {
+    return { left: 300, right: 500, top: 100, bottom: 120, height: 20 };
+  },
   replaceWith: function(node) {
     this._replaced = true;
     bookTextHTML = node.textContent || "";
   },
 };
+
+// Seed the initial connector for a0 so deleteAnnotation("a0") can remove it.
+// Its remove() pushes "connector:a0" to removedNodes for the existing assertion.
+var initialConnectorA0 = {
+  dataset: { annId: "a0" },
+  remove: function() {
+    removedNodes.push("connector:a0");
+    var i = connectorChildren.indexOf(this);
+    if (i !== -1) connectorChildren.splice(i, 1);
+  },
+};
+connectorChildren.push(initialConnectorA0);
+
+// === document ===
 var createdElements = [];
 global.document = {
   querySelector: function(sel) {
@@ -193,6 +291,25 @@ global.document = {
     return el;
   },
   createTextNode: function(t) { return { textContent: t }; },
+  createElementNS: function(ns, tag) {
+    // Creates a trackable SVG path element.
+    var attrs = {};
+    var path = {
+      _attrs: attrs,
+      dataset: {},
+      style: {},
+      setAttribute: function(name, val) { attrs[name] = val; },
+      getAttribute: function(name) { return attrs[name]; },
+      // getTotalLength() is not supported in the stub; drawConnectors catches the throw.
+      getTotalLength: function() { throw new Error("not supported in DOM stub"); },
+      addEventListener: function() {},
+      remove: function() {
+        var i = connectorChildren.indexOf(this);
+        if (i !== -1) connectorChildren.splice(i, 1);
+      },
+    };
+    return path;
+  },
   execCommand: function() { return false; },
   body: { appendChild: function(){}, removeChild: function(){} },
 };
@@ -214,8 +331,9 @@ var DATA = {
   totals: { annotations: 2, matched: 1 },
 };
 var state = {
-  idx: 0, editingId: null,
-  leftItems: [{ ann: DATA.pages[0].annotations[1], el: {} }],
+  idx: 0, editingId: null, query: null,
+  hiddenTypes: new Set(), hoveredId: null, lockedIds: new Set(),
+  leftItems:  [{ ann: DATA.pages[0].annotations[1], el: a1El  }],
   rightItems: [{ ann: DATA.pages[0].annotations[0], el: noteEl }],
 };
 var els = {
@@ -226,19 +344,40 @@ var els = {
       return (sel.indexOf("a0") !== -1) ? markEl : null;
     },
   },
-  marginLeft:  { appendChild: function(el) { el._movedToLeft  = true; } },
-  marginRight: { appendChild: function(el) { el._movedToRight = true; } },
-  connectorLayer: {
-    innerHTML: "",
-    querySelector: function(sel) {
-      return (sel.indexOf("a0") !== -1) ? connectorEl : null;
+  marginLeft: {
+    getBoundingClientRect: function() { return { left: 0, top: 0 }; },
+    appendChild: function(el) {
+      el._movedToLeft = true;
+      if (el === noteEl) noteEl._side = "left";
     },
+  },
+  marginRight: {
+    getBoundingClientRect: function() { return { left: 800, top: 0 }; },
+    appendChild: function(el) {
+      el._movedToRight = true;
+      if (el === noteEl) noteEl._side = "right";
+    },
+  },
+  pageFrame: {
+    getBoundingClientRect: function() { return { left: 100, top: 0 }; },
+  },
+  connectorLayer: {
+    get innerHTML() { return ""; },
+    // Clearing innerHTML empties the connector list — mirrors real DOM behaviour.
+    set innerHTML(v) { if (v === "") connectorChildren.length = 0; },
+    querySelector: function(sel) {
+      var m = sel.match(/data-ann-id="([^"]+)"/);
+      if (!m) return null;
+      var id = m[1];
+      for (var i = 0; i < connectorChildren.length; i++) {
+        if (connectorChildren[i].dataset.annId === id) return connectorChildren[i];
+      }
+      return null;
+    },
+    appendChild: function(p) { connectorChildren.push(p); },
   },
   indicator: { textContent: "" },
 };
-
-// Stub doLayout so we don't need layoutMargin/drawConnectors in scope.
-function doLayout() {}
 """
 
 _ASSERTIONS = """\
@@ -348,7 +487,7 @@ DATA.pages[0].annotations = [
     type: "shortcut", matched: false },
 ];
 DATA.totals = { annotations: 2, matched: 1 };
-state.leftItems = [{ ann: DATA.pages[0].annotations[1], el: {} }];
+state.leftItems  = [{ ann: DATA.pages[0].annotations[1], el: a1El  }];
 state.rightItems = [{ ann: DATA.pages[0].annotations[0], el: noteEl }];
 noteEl._removed = false;
 markEl._replaced = false;
@@ -385,7 +524,7 @@ DATA.pages[0].annotations = [
     type: "shortcut", matched: false },
 ];
 DATA.totals = { annotations: 2, matched: 1 };
-state.leftItems = [{ ann: DATA.pages[0].annotations[1], el: {} }];
+state.leftItems  = [{ ann: DATA.pages[0].annotations[1], el: a1El  }];
 state.rightItems = [{ ann: DATA.pages[0].annotations[0], el: noteEl }];
 noteEl._removed = false; markEl._replaced = false;
 
@@ -401,11 +540,154 @@ DATA.pages[0].annotations = [
     type: "shortcut", matched: false },
 ];
 DATA.totals = { annotations: 1, matched: 0 };
-state.leftItems = [{ ann: DATA.pages[0].annotations[0], el: {} }];
+state.leftItems  = [{ ann: DATA.pages[0].annotations[0], el: a1El }];
 state.rightItems = [];
 deleteAnnotation("a1");
 assert("unmatched-delete: totals.matched stays 0",
   DATA.totals.matched === 0);
+
+// ====================================================================
+// --- connector geometry: repositioning draws on the correct side ---
+//
+// This section verifies that the REAL doLayout → layoutMargin →
+// drawConnectors pipeline runs after repositionAnnotation and produces
+// a connector SVG path with geometrically correct fromX / toX / bow.
+//
+// Expected values are derived from the stub geometry constants at the
+// top of _DOM_STUB; see comments there for the derivation.
+// ====================================================================
+
+// Clean re-arm.
+connectorChildren.length = 0;
+noteEl._removed     = false;
+noteEl._movedToLeft = false;
+noteEl._movedToRight = false;
+noteEl._side = "left";
+markEl._replaced = false;
+DATA.pages[0].annotations = [
+  { id: "a0", content: "Crush, do not cut.", position: "margin_left",
+    type: "correction", matched: true },
+];
+DATA.totals = { annotations: 1, matched: 1 };
+state.leftItems  = [{ ann: DATA.pages[0].annotations[0], el: noteEl }];
+state.rightItems = [];
+state.editingId  = null;
+
+// Seed a stale left-side connector entry.
+// If innerHTML="" does NOT fire inside doLayout, this entry survives and
+// connectorChildren.length > 1 after repositionAnnotation — test goes RED.
+var staleLeftConnector = {
+  _isStale: true,
+  dataset: { annId: "a0" },
+  remove: function() {
+    var idx = connectorChildren.indexOf(this);
+    if (idx !== -1) connectorChildren.splice(idx, 1);
+  },
+};
+connectorChildren.push(staleLeftConnector);
+assert("geo setup: stale connector seeded",
+  connectorChildren.length === 1 && connectorChildren[0]._isStale);
+
+repositionAnnotation("a0");
+// requestAnimationFrame(doLayout) fires synchronously:
+//   (1) connectorLayer.innerHTML = "" → connectorChildren.length = 0  (stale gone)
+//   (2) layoutMargin(state.rightItems, "right") → drawConnectors → new path pushed
+
+assert("geo: stale connector cleared (innerHTML= fires after reposition-right)",
+  connectorChildren.length === 1 && !connectorChildren[0]._isStale);
+assert("geo: new connector is for a0",
+  connectorChildren.length > 0 && connectorChildren[0].dataset.annId === "a0");
+
+var d_right = connectorChildren[0]._attrs && connectorChildren[0]._attrs.d;
+assert("geo: path d attribute exists after reposition-right", typeof d_right === "string");
+
+// Parse "M fromX fromY Q midX midY toX toY" — six numbers.
+var nums_r = typeof d_right === "string"
+  ? d_right.match(/[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)/g).map(Number)
+  : [];
+assert("geo: d has 6 numbers (right-side)", nums_r.length === 6);
+var fromX_r = nums_r[0], fromY_r = nums_r[1];
+var midX_r  = nums_r[2], midY_r  = nums_r[3];
+var toX_r   = nums_r[4], toY_r   = nums_r[5];
+// Right-side: fromX = noteRect.left - frame.left = 910 - 100 = 810
+assert("geo: right-side fromX = 810 (noteEl.right-margin left edge)",
+  Math.abs(fromX_r - 810) < 0.01);
+// Right-side: toX = markRect.right - frame.left = 500 - 100 = 400
+assert("geo: right-side toX = 400 (markEl right edge)",
+  Math.abs(toX_r - 400) < 0.01);
+// Right-side bow = +8 → midY must be above the straight midpoint
+assert("geo: right-side bow is positive (midY > avg of fromY,toY)",
+  midY_r > (fromY_r + toY_r) / 2);
+
+// ---- toggle back to left: geometry must flip ----
+// Mark the right-side path stale so we can confirm it is replaced.
+var staleRightConnector = connectorChildren[0];
+staleRightConnector._isStale = true;
+
+repositionAnnotation("a0");
+// doLayout clears (stale gone) and redraws for left side.
+
+assert("geo: 1 connector after reposition back to left", connectorChildren.length === 1);
+assert("geo: stale right connector cleared", connectorChildren.length > 0 && !connectorChildren[0]._isStale);
+
+var d_left = connectorChildren[0]._attrs && connectorChildren[0]._attrs.d;
+assert("geo: path d attribute exists after reposition-left", typeof d_left === "string");
+
+var nums_l = typeof d_left === "string"
+  ? d_left.match(/[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)/g).map(Number)
+  : [];
+assert("geo: d has 6 numbers (left-side)", nums_l.length === 6);
+var fromX_l = nums_l[0], fromY_l = nums_l[1];
+var midX_l  = nums_l[2], midY_l  = nums_l[3];
+var toX_l   = nums_l[4], toY_l   = nums_l[5];
+// Left-side: fromX = noteRect.right - frame.left = 90 - 100 = -10
+assert("geo: left-side fromX = -10 (noteEl.left-margin right edge)",
+  Math.abs(fromX_l - (-10)) < 0.01);
+// Left-side: toX = markRect.left - frame.left = 300 - 100 = 200
+assert("geo: left-side toX = 200 (markEl left edge)",
+  Math.abs(toX_l - 200) < 0.01);
+// Left-side bow = -8 → midY must be below the straight midpoint
+assert("geo: left-side bow is negative (midY < avg of fromY,toY)",
+  midY_l < (fromY_l + toY_l) / 2);
+
+// ====================================================================
+// --- connector geometry: delete removes connector from layout ----
+//
+// deleteAnnotation directly removes the connector (conn.remove()) AND
+// triggers doLayout, which clears and rebuilds from state.  After both
+// steps the connector layer must be empty.
+// ====================================================================
+
+// Current state: a0 on left margin, connectorChildren = [left_path].
+// Re-use that path as the seeded connector for the delete test.
+var seededConnForDelete = connectorChildren[0];
+seededConnForDelete._markedForDelete = true;
+DATA.pages[0].annotations = [
+  { id: "a0", content: "Crush.", position: "margin_left",
+    type: "correction", matched: true },
+];
+DATA.totals = { annotations: 1, matched: 1 };
+state.leftItems  = [{ ann: DATA.pages[0].annotations[0], el: noteEl }];
+state.rightItems = [];
+noteEl._removed = false;
+markEl._replaced = false;
+
+deleteAnnotation("a0");
+// Steps that fire:
+//   (1) a0 spliced from annotations
+//   (2) els.connectorLayer.querySelector('[data-ann-id="a0"]') → seededConnForDelete
+//       seededConnForDelete.remove() → spliced from connectorChildren
+//   (3) requestAnimationFrame(doLayout):
+//       connectorLayer.innerHTML = "" → connectorChildren.length = 0 (idempotent)
+//       layoutMargin([], "left"), layoutMargin([], "right") → both return early
+//       → no new connector appended
+
+assert("delete-geo: seeded connector directly removed by deleteAnnotation",
+  !connectorChildren.some(function(p) { return p._markedForDelete; }));
+assert("delete-geo: no connector remains after doLayout",
+  connectorChildren.length === 0);
+assert("delete-geo: connectorLayer.querySelector returns null after delete",
+  els.connectorLayer.querySelector('[data-ann-id="a0"]') === null);
 
 console.log("Results:", PASS, "passed,", FAIL, "failed");
 if (FAIL > 0) process.exit(1);
@@ -414,21 +696,49 @@ if (FAIL > 0) process.exit(1);
 
 class TestEditingHandlers:
     def test_all_handlers_execute_correctly(self, node: str, script: str) -> None:
-        """Run edit / delete / reposition / export under a DOM stub."""
-        fn_cssEscape = _extract_function(script, "cssEscape")
-        fn_delete = _extract_function(script, "deleteAnnotation")
-        fn_repos = _extract_function(script, "repositionAnnotation")
-        fn_edit = _extract_function(script, "startEdit")
+        """Run edit / delete / reposition / export under a DOM stub.
 
-        assert fn_cssEscape, "cssEscape function not found in generated script"
-        assert fn_delete, "deleteAnnotation function not found in generated script"
-        assert fn_repos, "repositionAnnotation function not found in generated script"
-        assert fn_edit, "startEdit function not found in generated script"
+        Exercises the REAL doLayout → layoutMargin → drawConnectors call chain
+        and asserts on connector path geometry, not just that doLayout was called.
+        """
+        fn_cssEscape    = _extract_function(script, "cssEscape")
+        fn_refreshActive = _extract_function(script, "refreshActive")
+        fn_bindHover    = _extract_function(script, "bindHover")
+        fn_applyFilters = _extract_function(script, "applyFilters")
+        fn_drawConn     = _extract_function(script, "drawConnectors")
+        fn_layoutMargin = _extract_function(script, "layoutMargin")
+        fn_doLayout     = _extract_function(script, "doLayout")
+        fn_delete       = _extract_function(script, "deleteAnnotation")
+        fn_repos        = _extract_function(script, "repositionAnnotation")
+        fn_edit         = _extract_function(script, "startEdit")
+
+        assert fn_cssEscape,    "cssEscape not found in generated script"
+        assert fn_refreshActive,"refreshActive not found in generated script"
+        assert fn_bindHover,    "bindHover not found in generated script"
+        assert fn_applyFilters, "applyFilters not found in generated script"
+        assert fn_drawConn,     "drawConnectors not found in generated script"
+        assert fn_layoutMargin, "layoutMargin not found in generated script"
+        assert fn_doLayout,     "doLayout not found in generated script"
+        assert fn_delete,       "deleteAnnotation not found in generated script"
+        assert fn_repos,        "repositionAnnotation not found in generated script"
+        assert fn_edit,         "startEdit not found in generated script"
 
         harness = (
             _DOM_STUB
             + "\n"
             + fn_cssEscape
+            + "\n"
+            + fn_refreshActive
+            + "\n"
+            + fn_bindHover
+            + "\n"
+            + fn_applyFilters
+            + "\n"
+            + fn_drawConn
+            + "\n"
+            + fn_layoutMargin
+            + "\n"
+            + fn_doLayout
             + "\n"
             + fn_delete
             + "\n"
@@ -451,3 +761,49 @@ class TestEditingHandlers:
         for line in result.stdout.splitlines():
             if line.startswith("FAIL:"):
                 pytest.fail(f"Harness assertion failed: {line}")
+
+
+# ---------------------------------------------------------------------------
+# Template invariant: JS function bodies must be plan-independent
+# ---------------------------------------------------------------------------
+
+
+class TestTemplateInvariant:
+    def test_function_bodies_identical_across_plans(self, node: str) -> None:
+        """The Jinja template must not embed plan data inside function bodies.
+
+        Render two plans with completely different content and verify that
+        doLayout / layoutMargin / drawConnectors / applyFilters are byte-identical.
+        If they differ the template has accidentally made the logic plan-specific.
+        """
+        plan_a = _plan()
+        plan_b = AnnotationPlan(
+            title="A Completely Different Book",
+            prince_persona="Dumbledore",
+            pages=[
+                AnnotatedPage(
+                    page_number=1,
+                    original_text="Just one sentence.",
+                    annotations=[],
+                )
+            ],
+        )
+
+        checked_fns = (
+            "doLayout", "layoutMargin", "drawConnectors", "applyFilters"
+        )
+
+        def get_bodies(plan: AnnotationPlan) -> dict[str, str]:
+            html_text, _ = _render(plan, None)
+            matches = list(re.finditer(r"<script>(.*?)</script>", html_text, re.DOTALL))
+            src = matches[-1].group(1)
+            return {name: _extract_function(src, name) for name in checked_fns}
+
+        bodies_a = get_bodies(plan_a)
+        bodies_b = get_bodies(plan_b)
+
+        for name in checked_fns:
+            assert bodies_a[name] == bodies_b[name], (
+                f"JS function '{name}' differs between plans — "
+                "the template must not embed plan data inside function bodies."
+            )
