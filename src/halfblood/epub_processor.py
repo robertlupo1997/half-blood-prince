@@ -56,7 +56,7 @@ from halfblood.documents import (
     locate_across_nodes,
     normalize,
 )
-from halfblood.documents.epub import _MATCH_LADDER, _scan_with_tolerance
+from halfblood.documents.epub import _MATCH_LADDER, _scan_prefix_tiers, _scan_with_tolerance
 from halfblood.models import Annotation, AnnotationPlan, AnnotationType
 from halfblood.models.annotations import Annotation as V2Annotation
 from halfblood.models.annotations import MarkIntent, TargetSelector
@@ -455,11 +455,20 @@ class EpubProcessor:
     def _epub_miss_reason(root: Tag, selector: TargetSelector) -> SkipReason:
         """Classify a ``locate_across_nodes`` miss as ambiguous or missing.
 
-        Walks the same tolerance ladder as ``locate_across_nodes`` so the
-        classification is always consistent with the locator's decision: a
-        target that ``locate_across_nodes`` would resolve under a looser rung
-        is classified MISSING rather than AMBIGUOUS, and a target that is
-        ambiguous at any rung halts the ladder immediately.
+        Walks the same two-phase ladder as ``locate_across_nodes`` so the
+        classification is always consistent with the locator's decision.
+
+        Phase 1 — complete-quote tolerance ladder (EXACT → CASE_INSENSITIVE →
+        PUNCTUATION_ELASTIC): a rung that is ambiguous or has multiple hits
+        returns AMBIGUOUS_TARGET; a rung with exactly one hit (that
+        ``locate_across_nodes`` then rejected, e.g. empty segments) returns
+        MISSING_TARGET; a clean zero advances to the next rung.
+
+        Phase 2 — prefix tiers: only reached when all tier-0 rungs were clean
+        zeros, mirroring the locator.  Ambiguity or multiple hits at the prefix
+        level returns AMBIGUOUS_TARGET; a single prefix hit that produced empty
+        segments returns MISSING_TARGET; no prefix hit at all returns
+        MISSING_TARGET.
         """
         for tolerance in _MATCH_LADDER:
             ambiguous, hits = _scan_with_tolerance(root, selector, tolerance)
@@ -471,6 +480,13 @@ class EpubProcessor:
                 # That is a technical rendering miss, not an ambiguity.
                 return SkipReason.MISSING_TARGET
             # clean zero: advance to the next rung
+
+        # Phase 2: prefix tiers — mirror locate_across_nodes exactly.
+        ambiguous, hits = _scan_prefix_tiers(root, selector)
+        if ambiguous or len(hits) > 1:
+            return SkipReason.AMBIGUOUS_TARGET
+        if len(hits) == 1:
+            return SkipReason.MISSING_TARGET
         return SkipReason.MISSING_TARGET
 
     @staticmethod

@@ -14,6 +14,8 @@ from halfblood.documents.matching import (
     NoMatchResult,
     NormalizedText,
     RawSpan,
+    _exactness_tiers,
+    normalize,
     score_candidates,
 )
 
@@ -236,18 +238,131 @@ def _scan_with_tolerance(
     return ambiguous, hits
 
 
-def locate_across_nodes(root: Tag, selector: TargetSelector) -> CrossNodeMatch | None:
-    """Locate one unambiguous full quote within a single inline DOM run.
+def _scan_prefix_tiers(
+    root: Tag,
+    selector: TargetSelector,
+) -> tuple[bool, _HitList]:
+    """Scan for multi-word prefix-tier matches after all tier-0 rungs have failed.
 
-    Walks a strictest-first tolerance ladder: EXACT → CASE_INSENSITIVE →
-    PUNCTUATION_ELASTIC.  Each rung is scanned independently across all inline
-    runs; hits from different rungs are never pooled.  The ladder advances only
-    on a clean zero (no hits, no ambiguity at the current rung); ambiguity at
-    any rung halts immediately and returns ``None``.
+    The tier ladder is **global**: each tier is exhausted across *all* inline
+    runs before descending to a shorter prefix.  This mirrors Phase 1's
+    tolerance ladder — EXACT is finished across every run before CI is tried.
+    Hits from different tiers are never pooled.
 
-    Only tier-0 (complete-quote) candidates are accepted so returned segments
-    always represent the selector's full normalized exact quote.
+    Tier progression (identical to the exactness-tier ladder inside
+    ``score_candidates``):
+
+      * Tier 0 (full quote) — skipped; Phase 1 already exhausted it.
+      * Tiers 1, 2, 3 (8-word, 5-word, 3-word prefixes) — each tried globally.
+      * Lone-word tier — always rejected (``len(needle.split()) < 2``), ending
+        the search.
+
+    Overlapping-occurrence guard: each tier needle is searched with an
+    advance-by-1 scan so self-overlapping needles (e.g. ``alpha alpha alpha``
+    in ``alpha alpha alpha alpha``) are detected rather than silently reported
+    as a unique occurrence.  If any run yields more than one start position,
+    the result is ambiguous and the scan halts immediately.
+
+    Acceptance rule mirrors ``document_processor._is_lone_word_anchor``:
+    fewer than two whitespace-delimited tokens in the needle means lone-word.
     """
+    tiers = _exactness_tiers(selector.normalized_exact)
+
+    # Pre-collect runs with their owner maps once — avoids re-walking the
+    # DOM for each tier in the ladder.
+    run_triples: list[tuple[list[NavigableString], str, list[tuple[int, int]]]] = []
+    for run in iter_inline_runs(root):
+        concat_raw, owner = _owner_map(run)
+        run_triples.append((run, concat_raw, owner))
+
+    for tier_idx, needle in enumerate(tiers):
+        if tier_idx == 0:
+            continue  # Phase 1 already handled tier-0
+
+        # Reject the lone-word tier (and any degenerate tier shorter than 2 words).
+        if len(needle.split()) < 2:
+            break
+
+        normed_needle = normalize(needle)
+        hits: _HitList = []
+        ambiguous = False
+
+        for run, concat_raw, owner in run_triples:
+            normalized = NormalizedText(concat_raw)
+            text = normalized.text
+
+            # Overlapping scan: advance by 1 (not by len(normed_needle)) so that
+            # self-overlapping needles like "alpha alpha alpha" in "alpha alpha
+            # alpha alpha" are detected rather than silently treated as unique.
+            positions: list[int] = []
+            search_from = 0
+            while True:
+                idx = text.find(normed_needle, search_from)
+                if idx < 0:
+                    break
+                positions.append(idx)
+                search_from = idx + 1
+
+            if len(positions) > 1:
+                # Multiple starts in one run — ambiguous regardless of overlap.
+                ambiguous = True
+                break
+
+            if len(positions) == 1:
+                raw_span = normalized.raw_span(
+                    positions[0], positions[0] + len(normed_needle)
+                )
+                hits.append(
+                    (
+                        run,
+                        owner,
+                        raw_span,
+                        f"tier={tier_idx} prefix pos={raw_span.start}",
+                    )
+                )
+
+        if ambiguous:
+            return True, []
+
+        if len(hits) > 1:
+            # Multiple distinct runs matched this tier — ambiguous across runs.
+            return False, hits  # caller checks len(hits) > 1
+
+        if len(hits) == 1:
+            return False, hits
+
+        # Zero hits at this tier — descend to the next shorter prefix.
+
+    return False, []
+
+
+def locate_across_nodes(root: Tag, selector: TargetSelector) -> CrossNodeMatch | None:
+    """Locate one unambiguous quote within a single inline DOM run.
+
+    **Phase 1 — complete-quote (tier 0).**  Walks a strictest-first tolerance
+    ladder: EXACT → CASE_INSENSITIVE → PUNCTUATION_ELASTIC.  Each rung is
+    scanned independently across all inline runs; hits from different rungs are
+    never pooled.  The ladder advances only on a clean zero (no hits, no
+    ambiguity at the current rung); ambiguity at any rung halts immediately and
+    returns ``None``.
+
+    **Phase 2 — prefix tiers.**  Runs only when *all* tier-0 rungs produced a
+    clean zero.  Uses ``MatchTolerance.EXACT`` to search the shortened exactness
+    tiers (8-word → 5-word → 3-word prefix).  The lone-word tier is always
+    rejected because it can land anywhere inside the passage, which the reader
+    cannot interpret.  A prefix anchor starts exactly where the passage starts,
+    so the underline is shorter than the note's quote but still points at the
+    right words.
+
+    The two phases are ordered, never pooled: a PUNCTUATION_ELASTIC full-quote
+    match always beats an EXACT prefix match.  Ambiguity at the prefix stage also
+    halts immediately.
+
+    Returned segments still represent a contiguous excerpt from the source text,
+    but that excerpt may be a prefix of the selector's full quote rather than the
+    full quote itself.
+    """
+    # Phase 1: complete-quote (tier 0), strictest-first tolerance.
     for tolerance in _MATCH_LADDER:
         ambiguous, hits = _scan_with_tolerance(root, selector, tolerance)
         if ambiguous or len(hits) > 1:
@@ -261,6 +376,20 @@ def locate_across_nodes(root: Tag, selector: TargetSelector) -> CrossNodeMatch |
                 segments=segments, reason=f"match: {scorer_reason}"
             )
         # clean zero at this rung → advance to the next
+
+    # Phase 2: prefix tiers — only reached when every tier-0 rung was a clean zero.
+    ambiguous, hits = _scan_prefix_tiers(root, selector)
+    if ambiguous or len(hits) > 1:
+        return None
+    if len(hits) == 1:
+        run, owner, raw_span, scorer_reason = hits[0]
+        segments = _segments_for_span(run, owner, raw_span)
+        if not segments:
+            return None
+        return CrossNodeMatch(
+            segments=segments, reason=f"prefix-match: {scorer_reason}"
+        )
+
     return None
 
 

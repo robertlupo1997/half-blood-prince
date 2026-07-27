@@ -463,7 +463,10 @@ def test_locate_across_nodes_spans_inline_tags() -> None:
 
 
 def test_locate_across_nodes_never_crosses_a_block_boundary() -> None:
-    # A phrase that would only exist by spanning the two <p> blocks must not match.
+    # The full phrase spans two <p> blocks, so no single run contains it.
+    # The prefix "the sopophorous bean must be" (5 words, tier 1) exists
+    # entirely within the first block, so the locator returns a prefix match
+    # rather than crossing the boundary.  All segments must be in the same run.
     xhtml = (
         '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
         '<p>the sopophorous bean must be</p>'
@@ -471,7 +474,21 @@ def test_locate_across_nodes_never_crosses_a_block_boundary() -> None:
         '</body></html>'
     )
     match = locate_across_nodes(_soup(xhtml).body, selector_for(_CROSS_TARGET))
-    assert match is None
+    assert isinstance(match, CrossNodeMatch)
+    # All segments belong to the same single text node (no cross-block assembly).
+    node_ids = {id(seg.node) for seg in match.segments}
+    assert len(node_ids) == 1, "prefix anchor must not assemble from multiple nodes"
+
+    # Verify the true cross-block case (no usable prefix in any block) returns None.
+    # Block 1 has only 2 words; block 2 starts differently. No 3-word prefix exists
+    # in either block. The lone single word ("crushed") is correctly rejected.
+    xhtml_no_prefix = (
+        '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+        '<p>must be</p>'
+        '<p>crushed without delay elsewhere</p>'
+        '</body></html>'
+    )
+    assert locate_across_nodes(_soup(xhtml_no_prefix).body, selector_for(_CROSS_TARGET)) is None
 
 
 def test_repeated_cross_node_quote_across_blocks_is_rejected_as_ambiguous() -> None:
