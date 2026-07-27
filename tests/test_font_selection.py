@@ -27,10 +27,11 @@ class _RecordingPdfProcessor:
     def annotations_from_plan(self, plan: AnnotationPlan) -> list[object]:
         return []
 
-    def render_annotations(
-        self, input_path: str, annotations: list[object], output_path: str
-    ) -> None:
+    def render_plan(self, input_path: str, plan: object, output_path: str) -> object:
+        from halfblood.models.rendering import RenderReport
+
         Path(output_path).write_bytes(b"pdf")
+        return RenderReport(rendered=("ann-1",))
 
 
 class _RecordingEpubProcessor:
@@ -42,10 +43,11 @@ class _RecordingEpubProcessor:
     def load(self, path: str) -> list[PageContent]:
         return [PageContent(page_number=1, text="chapter", width=600.0, height=800.0)]
 
-    def render_annotations(
-        self, input_path: str, annotations: list[object], output_path: str
-    ) -> None:
+    def render_plan(self, input_path: str, plan: object, output_path: str) -> object:
+        from halfblood.models.rendering import RenderReport
+
         Path(output_path).write_bytes(b"epub")
+        return RenderReport(rendered=("ann-1",))
 
 
 class _FakeGenerator:

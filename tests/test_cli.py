@@ -101,9 +101,12 @@ class _FakePdfProcessor:
         type(self).load_calls.append(path)
         return [PageContent(page_number=1, text="some page text", width=612.0, height=792.0)]
 
-    def render_annotations(self, input_path: str, annotations: list, output_path: str) -> None:
+    def render_plan(self, input_path: str, plan: object, output_path: str) -> object:
+        from halfblood.models.rendering import RenderReport
+
         type(self).render_calls.append(output_path)
         Path(output_path).write_text("rendered-pdf", encoding="utf-8")
+        return RenderReport(rendered=("ann-1",))
 
     def annotations_from_plan(self, plan: AnnotationPlan) -> list:
         return [a for page in plan.pages for a in page.annotations]
@@ -117,9 +120,12 @@ class _FakeEpubProcessor:
         type(self).load_calls.append(path)
         return [PageContent(page_number=1, text="chapter text", width=600.0, height=800.0)]
 
-    def render_annotations(self, input_path: str, annotations: list, output_path: str) -> None:
+    def render_plan(self, input_path: str, plan: object, output_path: str) -> object:
+        from halfblood.models.rendering import RenderReport
+
         type(self).render_calls.append(output_path)
         Path(output_path).write_text("rendered-epub", encoding="utf-8")
+        return RenderReport(rendered=("ann-1",))
 
 
 class _FakeGenerator:
