@@ -1,4 +1,11 @@
-"""Every composition degradation code must reach the RenderReport.
+"""Every CONNECTOR degradation code must reach the RenderReport.
+
+Scope note: this enumerates ``ConnectorDegradation`` only. The composer emits
+other codes too (an AST sweep counted 11, of which 8 -- e.g.
+``caret_interline_gap_unavailable``, ``ink_geometry_invalid`` -- are still
+unmapped and take the warning-and-drop branch). Mapping those exhaustively wants
+a finite composer-code enum and is recorded as open work; do not read this
+module as proving it.
 
 `document_processor.render_plan` translates composer degradation codes into
 `DegradationFlag`s through a dict lookup. A code missing from that dict is

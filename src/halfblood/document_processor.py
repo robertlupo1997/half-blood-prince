@@ -39,6 +39,7 @@ import os
 import random
 import re
 import tempfile
+import unicodedata
 from collections.abc import Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -211,6 +212,25 @@ def _is_lone_word_anchor(matched: str) -> bool:
 _MIN_WRAP_TAIL_CHARS = 2
 
 
+def _grapheme_clusters(text: str) -> list[str]:
+    """Split text into clusters that must never be broken across lines.
+
+    A base character plus any following combining marks (Unicode categories Mn,
+    Mc, Me) is one visual glyph. Splitting between them detaches the accent from
+    its letter -- "áb" written as U+0061 U+0301 U+0062 wrapped as "a" / "\u0301b".
+    This is not full UAX-29 segmentation (no ZWJ emoji sequences, no regional
+    indicators); it covers the combining-mark case that actually appears in the
+    Latin/Greek/Cyrillic prose this tool annotates, without a new dependency.
+    """
+    clusters: list[str] = []
+    for char in text:
+        if clusters and unicodedata.category(char) in ("Mn", "Mc", "Me"):
+            clusters[-1] += char
+        else:
+            clusters.append(char)
+    return clusters
+
+
 def _wrap_text_with_font(
     text: str,
     max_width: float,
@@ -235,32 +255,35 @@ def _wrap_text_with_font(
         fault rather than a wrap, so the tail borrows characters back from the
         previous chunk while that keeps the tail fitting.
         """
-        chunks: list[str] = []
-        current_chunk = ""
-        for char in word:
-            candidate = current_chunk + char
-            if current_chunk and font.text_length(candidate, fontsize=fontsize) > max_width:
-                chunks.append(current_chunk)
-                current_chunk = char
+        clusters = _grapheme_clusters(word)
+        chunks: list[list[str]] = []
+        current: list[str] = []
+        for cluster in clusters:
+            candidate = "".join(current) + cluster
+            if current and font.text_length(candidate, fontsize=fontsize) > max_width:
+                chunks.append(current)
+                current = [cluster]
             else:
-                current_chunk = candidate
-        if current_chunk:
-            chunks.append(current_chunk)
+                current.append(cluster)
+        if current:
+            chunks.append(current)
 
         # Rebalance an orphaned tail. Bounded by the loop condition: every pass
-        # shortens chunks[-2], and it stops as soon as the tail is long enough,
-        # the donor would empty, or the tail would no longer fit -- so a margin
-        # so narrow that only one character fits per line simply keeps its
+        # moves one cluster off chunks[-2], and it stops as soon as the tail is
+        # long enough, the donor would empty, or the tail would no longer fit --
+        # so a margin so narrow that only one cluster fits per line keeps its
         # greedy result rather than looping.
+        #
+        # Clusters, not code points: moving a bare code point detached combining
+        # marks from their base letter ("áb" at width 5 split as "a" / "́b").
         while (
             len(chunks) >= 2
             and len(chunks[-1]) < _MIN_WRAP_TAIL_CHARS
             and len(chunks[-2]) > 1
-            and fits(chunks[-2][-1] + chunks[-1])
+            and fits(chunks[-2][-1] + "".join(chunks[-1]))
         ):
-            chunks[-1] = chunks[-2][-1] + chunks[-1]
-            chunks[-2] = chunks[-2][:-1]
-        return chunks
+            chunks[-1].insert(0, chunks[-2].pop())
+        return ["".join(chunk) for chunk in chunks]
 
     def split_word(word: str) -> list[str]:
         """Break a word too wide for the margin, at a hyphen where one exists.

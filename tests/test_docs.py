@@ -179,3 +179,38 @@ def test_readme_does_not_present_the_tool_as_claude_only(readme: str) -> None:
 def test_readme_does_not_claim_the_judge_is_anthropic_only(readme: str) -> None:
     """The eval judge moved onto the shared provider seam."""
     assert "transport still supports only Anthropic" not in readme
+
+
+def test_every_font_key_the_readme_advertises_actually_resolves(readme: str) -> None:
+    """Documented commands must work.
+
+    The README briefly recommended `--font "Caveat Brush"` -- the display name,
+    not the registry key -- which the CLI rejects with "Unknown font". A doc
+    test that only checks strings are present cannot catch a documented command
+    being wrong, so this one executes what the README tells the user to run.
+    """
+    import re
+
+    from halfblood.cli import _resolve_font_option
+
+    keys = set(re.findall(r"`--font ([a-z][a-z0-9-]+)`", readme))
+    assert keys, "README should document at least one --font registry key"
+    for key in keys:
+        resolved = _resolve_font_option(key)
+        assert resolved, f"README advertises --font {key}, which does not resolve"
+
+
+def test_readme_does_not_reference_models_py_as_a_file_path(readme: str) -> None:
+    """`models` is a package; the type lives in models/annotations.py.
+
+    An earlier fix only forbade the bold spelling ``**`models.py`**``, so a
+    second plain-text reference survived in the extension instructions.
+    """
+    import re
+
+    stray = [
+        line.strip()
+        for line in readme.splitlines()
+        if re.search(r"`models\.py`", line) and "not a single" not in line
+    ]
+    assert not stray, f"stale models.py reference(s): {stray}"

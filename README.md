@@ -62,8 +62,10 @@ Annotations render in a handwriting font, and **four are bundled inside the pack
 Caveat Brush (the default), Homemade Apple, Just Me Again Down Here, and Mrs Saint
 Delafield — under the OFL/Apache-2.0 licences shipped alongside them. Nothing to download.
 
-Pick one with `--font "Caveat Brush"` (or the `font` config key), or point `--font` at any
-TTF/OTF path of your own.
+Pick one by its registry key — `--font caveat-brush`, `homemade-apple`,
+`just-me-again-down-here`, or `mrs-saint-delafield` (or the `font` config key) — or point
+`--font` at any TTF/OTF path of your own. The keys are hyphenated slugs, not display names:
+`--font "Caveat Brush"` is rejected.
 
 To override the bundled default without passing a flag, drop a file at
 `fonts/CaveatBrush-Regular.ttf` in the project root — a project-root font wins over the
@@ -237,9 +239,8 @@ python eval/eval_harness.py --list
 Generator and judge configuration resolve independently. By default they resolve to the
 same Anthropic preset and the harness exits with an error; choose a distinct generator with
 `--provider`/`--model` or a distinct judge with `--judge-provider`/`--judge-model`.
-`--allow-self-judge` permits identical settings for development only. In Phase 1 the judge
-transport now runs over the same provider seam as generation (this was completed; the note that it
-planned for Phase 5.
+`--allow-self-judge` permits identical settings for development only. The judge runs over the
+same httpx provider seam as generation, so no vendor SDK is involved on either path.
 
 `HALFBLOOD_EVAL_MODEL` is deprecated but remains supported for one minor release as a
 generator-only model setting. An explicit `--model` takes precedence, and the variable never
@@ -251,7 +252,7 @@ The harness prints a per-test-case table of scores and justifications, then a su
 
 **Adding a new annotation type**
 
-1. Add the value to `AnnotationType` in `models.py`.
+1. Add the value to `AnnotationType` in `models/annotations.py`.
 2. Give it an ink color in `_INK_PALETTE` and a font size in `_FONT_SIZE_BY_TYPE` in `document_processor.py`.
 3. Decide how it should mark the target passage in `DocumentProcessor._mark_target` (underline / highlight / circle / strikeout).
 4. Describe it in `DEFAULT_PERSONA`'s "WHAT YOUR ANNOTATIONS DO" list (and in any custom personas you maintain) so the model actually knows when to use it.

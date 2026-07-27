@@ -134,3 +134,28 @@ class TestOverWideWordTailIsNotOrphaned:
         for width in (12.0, 16.0, 24.0, 30.0):
             lines = _wrap_text_with_font(word, width, 9.0, font)
             assert "".join(lines) == word, f"width {width}: {lines}"
+
+    def test_combining_marks_stay_with_their_base_character(
+        self, font: fitz.Font
+    ) -> None:
+        """A base letter plus its combining mark is one glyph; never split it.
+
+        "áb" written as U+0061 U+0301 U+0062 was wrapped as "a" / "́b",
+        detaching the accent from the letter it belongs to.
+        """
+        text = "áb"
+        for width in (5.0, 8.0, 12.0):
+            lines = _wrap_text_with_font(text, width, 9.0, font)
+            assert "".join(lines) == text
+            for line in lines:
+                assert not line.startswith("́"), (
+                    f"width {width}: combining mark orphaned in {lines}"
+                )
+
+    def test_cjk_characters_are_not_corrupted_by_splitting(
+        self, font: fitz.Font
+    ) -> None:
+        text = "猫犬鳥"
+        for width in (8.0, 16.0, 32.0):
+            lines = _wrap_text_with_font(text, width, 9.0, font)
+            assert "".join(lines) == text
