@@ -12,11 +12,13 @@ ModuleNotFoundError on openai_compat / registry (not yet built) does not break t
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 import httpx
 import pytest
 
+from halfblood.generation.errors import StructuredOutputError
 from halfblood.generation.providers.anthropic import AnthropicProvider
 from halfblood.generation.providers.base import (
     GenerationRequest,
@@ -183,3 +185,84 @@ def test_capabilities_returns_provider_capabilities() -> None:
             or caps.supports_json_schema
             or caps.supports_prompt_fallback
         )
+
+
+# ---------------------------------------------------------------------------
+# Shared contract: HTTP 200 with a non-JSON body (e.g., an HTML error page
+# from a proxy or gateway) must not leak implementation-internal exceptions
+# such as json.JSONDecodeError.  Both providers must:
+#   1. Raise the project's own StructuredOutputError (not JSONDecodeError).
+#   2. Exhaust the full retry budget — max_retries=2 means 3 total calls.
+# ---------------------------------------------------------------------------
+
+
+def _make_anthropic_with_handler(
+    handler: Callable[[httpx.Request], httpx.Response],
+    max_retries: int = 2,
+) -> LLMProvider:
+    return AnthropicProvider(
+        api_key="sk-ant-shared-fake",
+        transport=httpx.MockTransport(handler),
+        max_retries=max_retries,
+        sleep_fn=lambda _: None,
+        rand_fn=lambda: 0.5,
+    )
+
+
+def _make_openai_compat_with_handler(
+    handler: Callable[[httpx.Request], httpx.Response],
+    max_retries: int = 2,
+) -> LLMProvider:
+    return OpenAICompatibleProvider(
+        api_key="sk-openai-shared-fake",
+        base_url="https://api.example.com/v1",
+        capabilities=ProviderCapabilities(
+            supports_tool_calling=True,
+            supports_json_schema=False,
+            supports_strict_json_schema=False,
+            supports_prompt_fallback=True,
+        ),
+        structured_output="tool",
+        transport=httpx.MockTransport(handler),
+        max_retries=max_retries,
+        sleep_fn=lambda _: None,
+        rand_fn=lambda: 0.5,
+    )
+
+
+@pytest.mark.parametrize(
+    "make_provider",
+    [_make_anthropic_with_handler, _make_openai_compat_with_handler],
+    ids=["anthropic", "openai_compat"],
+)
+def test_non_json_200_raises_structured_output_error_not_json_decode_error(
+    make_provider: Callable[..., LLMProvider],
+) -> None:
+    """A 200 response with a non-JSON body (e.g., an HTML gateway error page)
+    must not leak json.JSONDecodeError through the provider seam.  Both
+    providers must raise the project's own StructuredOutputError and must
+    exhaust the full retry budget (3 total calls at max_retries=2).
+
+    This is a shared contract: if either provider regresses, the drift itself
+    becomes a bug because callers rely on a uniform error taxonomy.
+    """
+    calls: list[int] = []
+
+    def non_json_handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(200, text="<html>502 Bad Gateway</html>")
+
+    provider = make_provider(non_json_handler, max_retries=2)
+    with pytest.raises(StructuredOutputError) as exc_info:
+        provider.complete(_sample_request())
+
+    # The raw JSONDecodeError must NOT escape — the seam must normalize it.
+    import json as _json
+    assert not isinstance(exc_info.value, _json.JSONDecodeError), (
+        "JSONDecodeError leaked through the provider seam"
+    )
+
+    # Full retry budget must be consumed: 1 initial + 2 retries = 3 calls.
+    assert len(calls) == 3, (
+        f"expected 3 HTTP calls (1 initial + 2 retries) at max_retries=2, got {len(calls)}"
+    )

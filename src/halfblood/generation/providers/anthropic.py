@@ -228,7 +228,10 @@ class AnthropicProvider:
     def _parse_success(
         self, response: httpx.Response, *, request: GenerationRequest, max_tokens: int
     ) -> GenerationResult:
-        body = response.json()
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise StructuredOutputError("Provider returned invalid JSON") from exc
         stop_reason = body.get("stop_reason")
         content = body.get("content") or []
         usage_raw = body.get("usage") or {}
