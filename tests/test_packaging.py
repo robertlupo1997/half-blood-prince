@@ -63,6 +63,30 @@ def test_anthropic_is_absent_from_every_dependency_group(pyproject: dict) -> Non
     )
 
 
+def test_dev_lock_declares_no_llm_vendor_sdk() -> None:
+    """The lock must honour the no-vendor-SDK policy too, not just pyproject.
+
+    This gap was real: the policy above was pinned against ``pyproject.toml``
+    only, so ``requirements-dev.lock`` kept ``anthropic==0.116.0`` long after the
+    judge migrated to the shared httpx seam and nothing imported it. README
+    instructs developers to ``pip install -r requirements-dev.lock``, so the
+    documented setup installed a vendor SDK the project claims not to depend on.
+    """
+    lock = _ROOT / "requirements-dev.lock"
+    pins = [
+        line.strip().lower()
+        for line in lock.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    vendors = ("anthropic", "openai", "cohere", "mistralai", "google-generativeai")
+    offenders = [pin for pin in pins if pin.split("==")[0].strip() in vendors]
+    assert not offenders, (
+        f"LLM vendor SDK pinned in requirements-dev.lock: {offenders}. "
+        "Generation and the eval judge both run over the shared httpx provider "
+        "seam; no vendor package should be installed by the documented dev setup."
+    )
+
+
 def test_eval_extra_is_present_and_bounded(pyproject: dict) -> None:
     extras = pyproject["project"]["optional-dependencies"]
     assert "eval" in extras

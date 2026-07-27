@@ -21,9 +21,9 @@ the direct-call production dependency (`CLAUDE.md:42-54`), but the production An
 states that it uses `httpx` without a vendor SDK and posts directly to `/v1/messages`
 (`src/halfblood/generation/providers/anthropic.py:1-12`,
 `src/halfblood/generation/providers/anthropic.py:44-45`,
-`src/halfblood/generation/providers/anthropic.py:99-107`). The Anthropic package is now declared
-only in the optional `eval` extra (`pyproject.toml:43`) and imported by the eval harness
-(`eval/eval_harness.py:41`). Therefore the `CLAUDE.md` “Direct Anthropic SDK” row, its SDK retry
+`src/halfblood/generation/providers/anthropic.py:99-107`). The Anthropic package is no longer declared anywhere: the `eval` extra dropped it once the
+judge migrated to the shared provider seam, and as of 2026-07-27 it is gone from
+`requirements-dev.lock` too. Nothing in `src/`, `eval/`, `tests/` or `scripts/` imports it. Therefore the `CLAUDE.md` “Direct Anthropic SDK” row, its SDK retry
 discussion, and its `anthropic.AsyncAnthropic` suggestion are stale descriptions of the main
 generation path (`CLAUDE.md:49`, `CLAUDE.md:86-88`).
 
@@ -362,4 +362,4 @@ construction, and SDK-style judging calls, not either production provider
 | ebooklib | Revisit when EbookLib reaches 1.0 with a stable API and the TOC UID round-trip defect is fixed, or whenever moving beyond the tested minor removes the current workaround and write-time behavior dependency (`pyproject.toml:26-29`, `src/halfblood/epub_processor.py:718-745`). |
 | beautifulsoup4 | Revisit if EPUB inputs become strictly valid XHTML or DOM mutation is redesigned around a renderer-neutral tree API (`src/halfblood/epub_processor.py:75-81`, `src/halfblood/epub_processor.py:820-920`). |
 | lxml | Revisit if deployment constraints make its backend unacceptable, or parser-compatibility tests show that another Beautiful Soup backend preserves the three current parse paths (`src/halfblood/epub_processor.py:310`, `src/halfblood/epub_processor.py:548`, `src/halfblood/epub_processor.py:679`). |
-| anthropic | Revisit if the eval judge moves behind `LLMProvider`, or if an SDK breaking change (including a hypothetical 1.0 that the `<2` bound currently admits) makes its eval-only maintenance cost exceed the value of the dedicated judge client (`eval/eval_harness.py:525-530`, `eval/eval_harness.py:801-809`, `src/halfblood/generation/providers/anthropic.py:36-41`). |
+| ~~anthropic~~ (removed) | **Resolved 2026-07-27.** The eval judge did move behind `LLMProvider`, so the SDK was dropped from `pyproject.toml` — but it survived in `requirements-dev.lock` as `anthropic==0.116.0`, and README instructs developers to `pip install -r requirements-dev.lock`, so the documented dev setup still installed a vendor package nothing imports. Now removed from the lock, with `tests/test_packaging.py::test_dev_lock_declares_no_llm_vendor_sdk` pinning the lock as well as `pyproject.toml` — the original policy test checked only the latter, which is how this survived. |
