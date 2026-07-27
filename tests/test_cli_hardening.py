@@ -511,3 +511,227 @@ def test_both_real_processors_define_render_plan() -> None:
     assert not hasattr(DocumentProcessor, "_hasattr_guard_present"), (
         "unexpected guard attribute — this test needs updating"
     )
+
+
+# ===========================================================================
+# DEFECT 1 (follow-up) — web-preview overwrites its own inputs
+# ===========================================================================
+
+
+def test_web_preview_refuses_when_output_is_plan_file(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """web-preview PLAN -o PLAN --force: the plan file must be unchanged."""
+    from halfblood.models import AnnotationPlan
+
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(
+        AnnotationPlan(title="t", prince_persona="p", pages=[]).model_dump_json(),
+        encoding="utf-8",
+    )
+    original_bytes = plan_file.read_bytes()
+
+    # Do NOT patch generate_preview — if the guard fires before the renderer is
+    # called, the original bytes are unchanged; if it fails to fire, the renderer
+    # overwrites and the assertion below catches the data loss.
+    monkeypatch.setattr(
+        cli_module,
+        "generate_preview",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("renderer must not be called")),
+    )
+
+    result = runner.invoke(cli_main, ["web-preview", str(plan_file), "-o", str(plan_file), "--force"])
+    assert result.exit_code == 1, (
+        f"expected exit 1 when output=plan, got {result.exit_code}.\n{result.output}"
+    )
+    assert _no_traceback(result), f"raw exception leaked: {result.exception!r}"
+    assert plan_file.read_bytes() == original_bytes, "plan file bytes were modified"
+
+
+def test_web_preview_refuses_when_output_is_book_file(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """web-preview PLAN --book BOOK -o BOOK --force: the book text must be unchanged."""
+    from halfblood.models import AnnotationPlan
+
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(
+        AnnotationPlan(title="t", prince_persona="p", pages=[]).model_dump_json(),
+        encoding="utf-8",
+    )
+    book_file = tmp_path / "book.txt"
+    book_file.write_text("Chapter One. It was a dark and stormy night.", encoding="utf-8")
+    original_bytes = book_file.read_bytes()
+
+    monkeypatch.setattr(
+        cli_module,
+        "generate_preview",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("renderer must not be called")),
+    )
+
+    result = runner.invoke(
+        cli_main,
+        ["web-preview", str(plan_file), "--book", str(book_file), "-o", str(book_file), "--force"],
+    )
+    assert result.exit_code == 1, (
+        f"expected exit 1 when output=book, got {result.exit_code}.\n{result.output}"
+    )
+    assert _no_traceback(result), f"raw exception leaked: {result.exception!r}"
+    assert book_file.read_bytes() == original_bytes, "book file bytes were modified"
+
+
+def test_web_preview_force_overwrites_different_output(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """web-preview must still succeed with --force when output is a different file."""
+    from halfblood.models import AnnotationPlan
+    from halfblood.web_preview import PreviewResult
+
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(
+        AnnotationPlan(title="t", prince_persona="p", pages=[]).model_dump_json(),
+        encoding="utf-8",
+    )
+    out = tmp_path / "preview.html"
+    out.write_bytes(b"old html")
+
+    monkeypatch.setattr(
+        cli_module,
+        "generate_preview",
+        lambda plan, output_path, book_text=None: (
+            Path(output_path).write_text("new html", encoding="utf-8"),
+            PreviewResult(Path(output_path), 0, 0, 0),
+        )[1],
+    )
+
+    result = runner.invoke(
+        cli_main, ["web-preview", str(plan_file), "-o", str(out), "--force"]
+    )
+    assert result.exit_code == 0, result.output
+    assert out.read_text(encoding="utf-8") == "new html"
+
+
+def test_refuse_existing_output_takes_collection_not_single_path() -> None:
+    """_refuse_existing_output takes source_paths (plural, a tuple) not source_path
+    (singular).  This is the structural guarantee that a future command with multiple
+    inputs cannot accidentally guard only one of them via a single-valued kwarg.
+
+    Verify the API at the call level so a refactor that reverts to a single optional
+    kwarg fails here.
+    """
+    import inspect
+    import tempfile
+
+    from halfblood.cli import _refuse_existing_output
+
+    sig = inspect.signature(_refuse_existing_output)
+    assert "source_paths" in sig.parameters, (
+        "_refuse_existing_output must accept source_paths= (plural) not source_path="
+    )
+    assert "source_path" not in sig.parameters, (
+        "_refuse_existing_output must not accept the singular source_path= kwarg; "
+        "a single-valued optional is how web-preview's second input got missed"
+    )
+    # Verify it accepts a tuple and accepts an empty tuple (web-preview default)
+    from pathlib import Path as _Path
+
+    with tempfile.TemporaryDirectory() as d:
+        out = _Path(d) / "out.txt"
+        # Should not raise when no sources provided and file absent
+        _refuse_existing_output(out, force=False, source_paths=())
+
+
+# ===========================================================================
+# DEFECT 2 (follow-up) — additional --pages holes
+# ===========================================================================
+
+
+def test_pages_reversed_range_exits_2(
+    runner: CliRunner, fakes: None, tmp_path: Path
+) -> None:
+    """'5-1' (reversed range) must exit 2 with BadParameter, not annotate the whole book."""
+    src = tmp_path / "book.pdf"
+    src.write_bytes(_PDF_BYTES)
+
+    result = runner.invoke(
+        cli_main,
+        ["annotate", str(src), "-o", str(tmp_path / "out.pdf"), "--pages", "5-1"],
+    )
+    assert result.exit_code == 2, (
+        f"expected exit 2 for reversed range '5-1', got {result.exit_code}.\n{result.output}"
+    )
+    assert _no_traceback(result), f"raw exception leaked: {result.exception!r}"
+    assert _FakeGenerator.calls == 0, "generator must not run on a reversed range"
+
+
+def test_pages_zero_exits_2(
+    runner: CliRunner, fakes: None, tmp_path: Path
+) -> None:
+    """'0' must exit 2 — pages are 1-based, so 0 is an invalid page number."""
+    src = tmp_path / "book.pdf"
+    src.write_bytes(_PDF_BYTES)
+
+    result = runner.invoke(
+        cli_main,
+        ["annotate", str(src), "-o", str(tmp_path / "out.pdf"), "--pages", "0"],
+    )
+    assert result.exit_code == 2, (
+        f"expected exit 2 for page '0', got {result.exit_code}.\n{result.output}"
+    )
+    assert _no_traceback(result), f"raw exception leaked: {result.exception!r}"
+    assert _FakeGenerator.calls == 0
+
+
+def test_pages_zero_range_exits_2(
+    runner: CliRunner, fakes: None, tmp_path: Path
+) -> None:
+    """'0-3' must also exit 2 (consistent with '0' being rejected, not silently clamped)."""
+    src = tmp_path / "book.pdf"
+    src.write_bytes(_PDF_BYTES)
+
+    result = runner.invoke(
+        cli_main,
+        ["annotate", str(src), "-o", str(tmp_path / "out.pdf"), "--pages", "0-3"],
+    )
+    assert result.exit_code == 2, (
+        f"expected exit 2 for range '0-3', got {result.exit_code}.\n{result.output}"
+    )
+    assert _no_traceback(result), f"raw exception leaked: {result.exception!r}"
+
+
+def test_pages_unicode_digits_rejected(
+    runner: CliRunner, fakes: None, tmp_path: Path
+) -> None:
+    """Unicode decimal digits (e.g. Arabic-Indic '١٢٣') must be rejected with BadParameter.
+
+    re.compile(r'\\d+') accepts them; re.compile(r'[0-9]+') does not.  The
+    validator must use ASCII-only digit matching so the accepted set is consistent
+    with what int() would parse for a valid ASCII spec.
+    """
+    src = tmp_path / "book.pdf"
+    src.write_bytes(_PDF_BYTES)
+
+    result = runner.invoke(
+        cli_main,
+        ["annotate", str(src), "-o", str(tmp_path / "out.pdf"), "--pages", "١٢٣"],  # ١٢٣
+    )
+    assert result.exit_code == 2, (
+        f"expected exit 2 for Arabic-Indic '١٢٣', got {result.exit_code}.\n{result.output}"
+    )
+    assert _no_traceback(result), f"raw exception leaked: {result.exception!r}"
+
+
+def test_pages_superscript_digits_still_rejected(
+    runner: CliRunner, fakes: None, tmp_path: Path
+) -> None:
+    """'²' must still be rejected (it was already rejected before — verifying no regression)."""
+    src = tmp_path / "book.pdf"
+    src.write_bytes(_PDF_BYTES)
+
+    result = runner.invoke(
+        cli_main,
+        ["annotate", str(src), "-o", str(tmp_path / "out.pdf"), "--pages", "²"],  # ²
+    )
+    assert result.exit_code == 2, (
+        f"expected exit 2 for superscript '²', got {result.exit_code}.\n{result.output}"
+    )

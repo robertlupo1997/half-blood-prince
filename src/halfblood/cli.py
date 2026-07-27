@@ -283,23 +283,41 @@ def _resolve_persona(
 def _parse_page_range(spec: str | None, total_pages: int) -> list[int]:
     """Parse ``"1-5,8,10-12"`` into a sorted list of 1-indexed page numbers.
 
+    Rules:
+    - Page numbers are 1-based; ``0`` is rejected as ``BadParameter``.
+    - Reversed ranges (e.g. ``'5-1'``) are rejected as ``BadParameter``.
+    - Leading/trailing whitespace and empty comma-separated slots are ignored.
+    - Page numbers beyond ``total_pages`` are silently filtered out; the
+      caller's "no pages matched" guard handles the resulting empty list.
+
     Raises:
-        click.BadParameter: if any token is not a valid positive integer or
-            range (e.g. ``'foo'``, ``'3-'``, ``'-3'``, ``'1-3-5'``).
+        click.BadParameter: if any token is not an ASCII positive integer or a
+            valid ascending range (e.g. ``'foo'``, ``'3-'``, ``'-3'``,
+            ``'1-3-5'``, ``'5-1'``, ``'0'``).
     """
     if not spec:
         return list(range(1, total_pages + 1))
 
-    _INT_RE = re.compile(r"^\d+$")
+    # ASCII-only to exclude Unicode decimal digits (e.g. Arabic-Indic '١٢٣'
+    # which re.match(r'\d+') would accept but whose intent is unclear).
+    _INT_RE = re.compile(r"^[0-9]+$")
 
-    def _parse_int(token: str, context: str) -> int:
-        """Parse a non-negative decimal integer token, raising BadParameter on failure."""
+    def _parse_positive_int(token: str, context: str) -> int:
+        """Parse an ASCII decimal integer >= 1, raising BadParameter on failure."""
         if not _INT_RE.match(token):
             raise click.BadParameter(
-                f"invalid page number {token!r} in {context!r}; expected a positive integer",
+                f"invalid page number {token!r} in {context!r}; "
+                "expected a positive integer (e.g. '3' or '1-5')",
                 param_hint="--pages",
             )
-        return int(token)
+        n = int(token)
+        if n < 1:
+            raise click.BadParameter(
+                f"page number {n} in {context!r} is invalid; "
+                "pages are 1-based so the minimum is 1",
+                param_hint="--pages",
+            )
+        return n
 
     pages: set[int] = set()
     for chunk in spec.split(","):
@@ -314,13 +332,17 @@ def _parse_page_range(spec: str | None, total_pages: int) -> list[int]:
                     f"invalid range {chunk!r}; expected 'START-END' with both integers present",
                     param_hint="--pages",
                 )
-            start = _parse_int(start_s, chunk)
-            end = _parse_int(end_s, chunk)
+            start = _parse_positive_int(start_s, chunk)
+            end = _parse_positive_int(end_s, chunk)
             if start > end:
-                start, end = end, start
+                raise click.BadParameter(
+                    f"invalid range {chunk!r}: start ({start}) must be <= end ({end}); "
+                    "reversed ranges are not supported",
+                    param_hint="--pages",
+                )
             pages.update(range(start, end + 1))
         else:
-            pages.add(_parse_int(chunk, chunk))
+            pages.add(_parse_positive_int(chunk, chunk))
 
     return sorted(p for p in pages if 1 <= p <= total_pages)
 
@@ -456,23 +478,30 @@ def _is_same_file(a: Path, b: Path) -> bool:
 
 
 def _refuse_existing_output(
-    path: Path, force: bool, *, source_path: Path | None = None
+    path: Path,
+    force: bool,
+    *,
+    source_paths: tuple[Path, ...] = (),
 ) -> None:
     """Require an explicit opt-in before replacing an output file.
 
     Args:
         path: The proposed output path.
         force: When True, allow overwriting *a different* file.
-        source_path: When given, refuse if *path* resolves to the same file as
-            *source_path*, even with ``--force``.  ``--force`` means "overwrite
-            the output", never "destroy my source".
+        source_paths: Zero or more input paths that must never be overwritten.
+            If *path* resolves to the same file as any of them the command
+            refuses unconditionally — even with ``--force``.  ``--force``
+            means "overwrite the output", never "destroy my source(s)".
+            Pass all inputs (plan, book text, …) here so a future command with
+            multiple inputs cannot accidentally omit one.
     """
-    if source_path is not None and _is_same_file(path, source_path):
-        raise click.ClickException(
-            f"Output file {path} is the same file as the input {source_path}. "
-            "Writing to the same path would overwrite your source. "
-            "Choose a different output path."
-        )
+    for src in source_paths:
+        if _is_same_file(path, src):
+            raise click.ClickException(
+                f"Output file {path} is the same file as the input {src}. "
+                "Writing to the same path would overwrite your source. "
+                "Choose a different output path."
+            )
     if path.exists() and not force:
         raise click.ClickException(
             f"Output file {path} already exists; use --force to overwrite it."
@@ -652,7 +681,7 @@ def annotate(
     console.rule("[bold magenta]Half-Blood Prince -- Annotate[/bold magenta]")
 
     _validate_input_signature(input_file)
-    _refuse_existing_output(output_file, force, source_path=input_file)
+    _refuse_existing_output(output_file, force, source_paths=(input_file,))
     if handwriting_engine == "procedural":
         unavailable = HandwritingUnavailable()
         raise click.ClickException(f"{unavailable.code}: {unavailable.detail}")
@@ -991,7 +1020,8 @@ def web_preview(
     interactive HTML book preview with animated, hand-written margin notes."""
     console.rule("[bold magenta]Half-Blood Prince -- Web Preview[/bold magenta]")
 
-    _refuse_existing_output(output_path, force)
+    _sources = (plan_path,) if book_text_path is None else (plan_path, book_text_path)
+    _refuse_existing_output(output_path, force, source_paths=_sources)
     book_text = book_text_path.read_text(encoding="utf-8") if book_text_path else None
 
     with console.status("[bold]Rendering interactive preview...[/bold]"):
