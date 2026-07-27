@@ -18,6 +18,7 @@ import importlib.resources as resources
 import inspect
 import logging
 import os
+import re
 import subprocess
 import sys
 import webbrowser
@@ -280,9 +281,25 @@ def _resolve_persona(
 
 
 def _parse_page_range(spec: str | None, total_pages: int) -> list[int]:
-    """Parse ``"1-5,8,10-12"`` into a sorted list of 1-indexed page numbers."""
+    """Parse ``"1-5,8,10-12"`` into a sorted list of 1-indexed page numbers.
+
+    Raises:
+        click.BadParameter: if any token is not a valid positive integer or
+            range (e.g. ``'foo'``, ``'3-'``, ``'-3'``, ``'1-3-5'``).
+    """
     if not spec:
         return list(range(1, total_pages + 1))
+
+    _INT_RE = re.compile(r"^\d+$")
+
+    def _parse_int(token: str, context: str) -> int:
+        """Parse a non-negative decimal integer token, raising BadParameter on failure."""
+        if not _INT_RE.match(token):
+            raise click.BadParameter(
+                f"invalid page number {token!r} in {context!r}; expected a positive integer",
+                param_hint="--pages",
+            )
+        return int(token)
 
     pages: set[int] = set()
     for chunk in spec.split(","):
@@ -290,13 +307,20 @@ def _parse_page_range(spec: str | None, total_pages: int) -> list[int]:
         if not chunk:
             continue
         if "-" in chunk:
-            start_s, end_s = chunk.split("-", 1)
-            start, end = int(start_s), int(end_s)
+            parts = chunk.split("-", 1)
+            start_s, end_s = parts[0], parts[1]
+            if not start_s or not end_s:
+                raise click.BadParameter(
+                    f"invalid range {chunk!r}; expected 'START-END' with both integers present",
+                    param_hint="--pages",
+                )
+            start = _parse_int(start_s, chunk)
+            end = _parse_int(end_s, chunk)
             if start > end:
                 start, end = end, start
             pages.update(range(start, end + 1))
         else:
-            pages.add(int(chunk))
+            pages.add(_parse_int(chunk, chunk))
 
     return sorted(p for p in pages if 1 <= p <= total_pages)
 
@@ -417,8 +441,38 @@ def _validate_input_signature(path: Path) -> None:
         )
 
 
-def _refuse_existing_output(path: Path, force: bool) -> None:
-    """Require an explicit opt-in before replacing an output file."""
+def _is_same_file(a: Path, b: Path) -> bool:
+    """Return True when *a* and *b* refer to the same filesystem object.
+
+    Uses :func:`os.path.samefile` when both paths exist (handles symlinks and
+    hard-links correctly), and falls back to comparing resolved paths when the
+    output does not yet exist (covers ``./book.pdf`` vs ``book.pdf`` etc.).
+    """
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        # One or both paths do not exist yet; resolved comparison is best-effort.
+        return a.resolve() == b.resolve()
+
+
+def _refuse_existing_output(
+    path: Path, force: bool, *, source_path: Path | None = None
+) -> None:
+    """Require an explicit opt-in before replacing an output file.
+
+    Args:
+        path: The proposed output path.
+        force: When True, allow overwriting *a different* file.
+        source_path: When given, refuse if *path* resolves to the same file as
+            *source_path*, even with ``--force``.  ``--force`` means "overwrite
+            the output", never "destroy my source".
+    """
+    if source_path is not None and _is_same_file(path, source_path):
+        raise click.ClickException(
+            f"Output file {path} is the same file as the input {source_path}. "
+            "Writing to the same path would overwrite your source. "
+            "Choose a different output path."
+        )
     if path.exists() and not force:
         raise click.ClickException(
             f"Output file {path} already exists; use --force to overwrite it."
@@ -598,7 +652,7 @@ def annotate(
     console.rule("[bold magenta]Half-Blood Prince -- Annotate[/bold magenta]")
 
     _validate_input_signature(input_file)
-    _refuse_existing_output(output_file, force)
+    _refuse_existing_output(output_file, force, source_path=input_file)
     if handwriting_engine == "procedural":
         unavailable = HandwritingUnavailable()
         raise click.ClickException(f"{unavailable.code}: {unavailable.detail}")
@@ -668,6 +722,11 @@ def annotate(
         # Filter pages
         page_numbers = _parse_page_range(pages, len(all_pages))
         selected = _filter_pages(all_pages, page_numbers)
+
+        if not selected:
+            console.print("[yellow]No pages matched.[/yellow]")
+            raise SystemExit(1)
+
         _require_text_layer(selected)
 
         # Filter boilerplate sections (unless overridden)
@@ -715,17 +774,15 @@ def annotate(
             )
             return
 
-        # Render
+        # Render — both DocumentProcessor and EpubProcessor define render_plan.
+        # The hasattr guard and render_annotations fallback existed only for
+        # test-double compatibility and are no longer needed now that all
+        # processor fakes have been updated to define render_plan.
         render_task = progress.add_task("Rendering annotated file...", total=1)
-        if hasattr(processor, "render_plan"):
-            from halfblood.models.documents import migrate_v1_to_v2
+        from halfblood.models.documents import migrate_v1_to_v2
 
-            v2_plan = migrate_v1_to_v2(plan.model_dump())
-            report = processor.render_plan(str(input_file), v2_plan, str(output_file))
-        else:
-            flat_annotations = [a for ap in plan.pages for a in ap.annotations]
-            processor.render_annotations(str(input_file), flat_annotations, str(output_file))
-            report = None
+        v2_plan = migrate_v1_to_v2(plan.model_dump())
+        report = processor.render_plan(str(input_file), v2_plan, str(output_file))
         progress.update(render_task, completed=1)
 
     if report is not None:
@@ -950,18 +1007,34 @@ def web_preview(
         webbrowser.open(result.output_path.resolve().as_uri())
 
 
+#: Override for tests — monkeypatch this to a directory that looks like a source
+#: checkout (contains ``pyproject.toml`` and ``eval/eval_harness.py``).
+#: When None the command derives the root from ``__file__`` as usual.
+_EVAL_REPO_ROOT: Path | None = None
+
+
 @main.command(name="eval")
 @click.option("--model", default=None, help="Override model for eval harness.")
 @click.option("--json-out", type=click.Path(dir_okay=False, path_type=Path), default=None)
 @click.option("--list", "list_only", is_flag=True, help="List test cases and exit.")
 def eval_cmd(model: str | None, json_out: Path | None, list_only: bool) -> None:
     """Run the annotation-quality evaluation harness."""
-    repo_root = Path(__file__).resolve().parents[2]
+    import halfblood.cli as _self  # noqa: PLC0415 — avoids a module-level self-import
+
+    repo_root = _self._EVAL_REPO_ROOT or Path(__file__).resolve().parents[2]
     harness = repo_root / "eval" / "eval_harness.py"
 
     if not harness.exists():
-        console.print(f"[bold red]Eval harness not found at {harness}[/bold red]")
-        raise SystemExit(1)
+        # Distinguish a broken source checkout from a wheel install.
+        if not (repo_root / "pyproject.toml").exists():
+            raise click.ClickException(
+                "halfblood eval requires a source checkout of the half-blood-prince "
+                "repository — install with 'pip install -e .' from the repo root and "
+                "run again. The eval harness is not included in the installed package."
+            )
+        raise click.ClickException(
+            f"Eval harness not found at {harness}; is the repository intact?"
+        )
 
     cmd = [sys.executable, str(harness)]
     if model:
