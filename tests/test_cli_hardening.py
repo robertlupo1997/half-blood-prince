@@ -735,3 +735,157 @@ def test_pages_superscript_digits_still_rejected(
     assert result.exit_code == 2, (
         f"expected exit 2 for superscript '²', got {result.exit_code}.\n{result.output}"
     )
+
+
+# ===========================================================================
+# DEFECT 1 (follow-up 2) — annotate must refuse overwriting ANY file it reads
+#
+# Table-driven: for each file input the annotate command consumes, feeding
+# that file as -o ... --force must refuse with bytes provably unchanged and
+# the generator never invoked.
+#
+# This is the structural guarantee: the table documents what is protected and
+# what isn't.  Adding a new CLI file input without adding it to the guard code
+# AND adding a row here will leave the new row failing — making the omission
+# visible at review time.
+# ===========================================================================
+
+# Each row: (id, source_content_bytes, cli_extra_args_template)
+# ``cli_extra_args_template`` is a callable that takes the source file Path
+# and returns the extra CLI args to pass alongside the book input and -o flag.
+_ANNOTATE_FILE_INPUTS: list[tuple[str, bytes, Any]] = [
+    # The input book itself — the original defect case
+    (
+        "input-book",
+        _PDF_BYTES,
+        lambda _src: [],  # no extra args; the source IS input_file
+    ),
+    # --persona-file: the persona text file
+    (
+        "persona-file",
+        b"You are a sardonic potions master.\n",
+        lambda src: ["--persona-file", str(src)],
+    ),
+    # --config: an explicit user-supplied config file
+    (
+        "config-file",
+        b"[generation]\nmax_per_page = 3\n",
+        lambda src: ["--config", str(src)],
+    ),
+    # --font: an explicit font file path (not a registry key)
+    (
+        "font-file",
+        b"TTF\x00fake-font-bytes",
+        lambda src: ["--font", str(src)],
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "input_id,source_bytes,extra_args_fn",
+    [pytest.param(*row, id=row[0]) for row in _ANNOTATE_FILE_INPUTS],
+)
+def test_annotate_refuses_to_overwrite_file_input(
+    runner: CliRunner,
+    fakes: None,
+    tmp_path: Path,
+    input_id: str,
+    source_bytes: bytes,
+    extra_args_fn: Any,
+) -> None:
+    """annotate must refuse -o <any-file-it-reads> --force with bytes unchanged.
+
+    A separate valid PDF is used as the book input in the non-book cases so
+    the only shared path is the one being tested as output.
+    """
+    # Write the source file (what we are trying to protect)
+    source_ext = {
+        "input-book": ".pdf",
+        "persona-file": ".txt",
+        "config-file": ".toml",
+        "font-file": ".ttf",
+    }[input_id]
+    source_file = tmp_path / f"source{source_ext}"
+    source_file.write_bytes(source_bytes)
+    original_bytes = source_file.read_bytes()
+
+    if input_id == "input-book":
+        # The source IS the book; use it as the input.
+        book_file = source_file
+    else:
+        # A separate valid book; only the source is being targeted as output.
+        book_file = tmp_path / "book.pdf"
+        book_file.write_bytes(_PDF_BYTES)
+
+    extra_args = extra_args_fn(source_file)
+    cmd = (
+        ["annotate", str(book_file), "-o", str(source_file), "--force"]
+        + extra_args
+    )
+    result = runner.invoke(cli_main, cmd)
+
+    assert result.exit_code == 1, (
+        f"[{input_id}] expected exit 1 when output==source, "
+        f"got {result.exit_code}.\n{result.output}"
+    )
+    assert _no_traceback(result), (
+        f"[{input_id}] raw exception leaked: {result.exception!r}"
+    )
+    assert source_file.read_bytes() == original_bytes, (
+        f"[{input_id}] source file bytes were modified despite the guard"
+    )
+    assert _FakeGenerator.calls == 0, (
+        f"[{input_id}] generator was invoked before refusal"
+    )
+
+
+@pytest.mark.parametrize(
+    "input_id,source_bytes,extra_args_fn",
+    [pytest.param(*row, id=row[0]) for row in _ANNOTATE_FILE_INPUTS],
+)
+def test_annotate_dry_run_also_refuses_file_input_as_output(
+    runner: CliRunner,
+    fakes: None,
+    tmp_path: Path,
+    input_id: str,
+    source_bytes: bytes,
+    extra_args_fn: Any,
+) -> None:
+    """--dry-run must NOT bypass the same-file guard.
+
+    --dry-run writes the annotation plan JSON to the output path; that would
+    still destroy the source if the guard did not fire first.
+    """
+    source_ext = {
+        "input-book": ".pdf",
+        "persona-file": ".txt",
+        "config-file": ".toml",
+        "font-file": ".ttf",
+    }[input_id]
+    source_file = tmp_path / f"source{source_ext}"
+    source_file.write_bytes(source_bytes)
+    original_bytes = source_file.read_bytes()
+
+    if input_id == "input-book":
+        book_file = source_file
+    else:
+        book_file = tmp_path / "book.pdf"
+        book_file.write_bytes(_PDF_BYTES)
+
+    extra_args = extra_args_fn(source_file)
+    cmd = (
+        ["annotate", str(book_file), "-o", str(source_file), "--force", "--dry-run"]
+        + extra_args
+    )
+    result = runner.invoke(cli_main, cmd)
+
+    assert result.exit_code == 1, (
+        f"[{input_id}] dry-run: expected exit 1 when output==source, "
+        f"got {result.exit_code}.\n{result.output}"
+    )
+    assert _no_traceback(result), (
+        f"[{input_id}] dry-run: raw exception leaked: {result.exception!r}"
+    )
+    assert source_file.read_bytes() == original_bytes, (
+        f"[{input_id}] dry-run: source file bytes were modified despite the guard"
+    )
