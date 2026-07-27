@@ -14,6 +14,8 @@ from halfblood.documents.matching import (
     NoMatchResult,
     NormalizedText,
     RawSpan,
+    _exactness_tiers,
+    normalize,
     score_candidates,
 )
 
@@ -242,53 +244,96 @@ def _scan_prefix_tiers(
 ) -> tuple[bool, _HitList]:
     """Scan for multi-word prefix-tier matches after all tier-0 rungs have failed.
 
-    Calls ``score_candidates`` with ``MatchTolerance.EXACT`` so the scorer's own
-    exactness-tier ladder (8-word → 5-word → 3-word prefix → lone word) finds the
-    best non-zero tier with hits across each inline run.
+    The tier ladder is **global**: each tier is exhausted across *all* inline
+    runs before descending to a shorter prefix.  This mirrors Phase 1's
+    tolerance ladder — EXACT is finished across every run before CI is tried.
+    Hits from different tiers are never pooled.
 
-    Acceptance rule — mirrors ``document_processor._is_lone_word_anchor``:
-      * Tiers 1, 2, 3 (8-, 5-, 3-word prefixes) are accepted: every multi-word
-        tier is a *prefix* that starts exactly where the passage starts, so the
-        underline is shorter than the note's quote but still points the reader at
-        the right words.
-      * The lone-word tier (last entry in the exactness ladder) is rejected: it
-        can land anywhere inside a passage, producing an anchor the reader cannot
-        interpret.
+    Tier progression (identical to the exactness-tier ladder inside
+    ``score_candidates``):
 
-    The test is on the *raw matched text* (``concat_raw[span.start:span.end]``),
-    exactly as the PDF path tests its matched string: fewer than two
-    whitespace-delimited tokens means lone-word.
+      * Tier 0 (full quote) — skipped; Phase 1 already exhausted it.
+      * Tiers 1, 2, 3 (8-word, 5-word, 3-word prefixes) — each tried globally.
+      * Lone-word tier — always rejected (``len(needle.split()) < 2``), ending
+        the search.
 
-    Ambiguity semantics are identical to ``_scan_with_tolerance``: an
-    ``AmbiguousResult`` from the scorer or more than one hit across all runs halts
-    the caller immediately.  Hits from different runs are never pooled.
+    Overlapping-occurrence guard: each tier needle is searched with an
+    advance-by-1 scan so self-overlapping needles (e.g. ``alpha alpha alpha``
+    in ``alpha alpha alpha alpha``) are detected rather than silently reported
+    as a unique occurrence.  If any run yields more than one start position,
+    the result is ambiguous and the scan halts immediately.
+
+    Acceptance rule mirrors ``document_processor._is_lone_word_anchor``:
+    fewer than two whitespace-delimited tokens in the needle means lone-word.
     """
-    hits: _HitList = []
-    ambiguous = False
+    tiers = _exactness_tiers(selector.normalized_exact)
+
+    # Pre-collect runs with their owner maps once — avoids re-walking the
+    # DOM for each tier in the ladder.
+    run_triples: list[tuple[list[NavigableString], str, list[tuple[int, int]]]] = []
     for run in iter_inline_runs(root):
         concat_raw, owner = _owner_map(run)
-        normalized = NormalizedText(concat_raw)
-        outcome = score_candidates(selector, normalized, tolerance=MatchTolerance.EXACT)
-        if isinstance(outcome, NoMatchResult):
-            continue
-        if isinstance(outcome, AmbiguousResult):
-            # Ambiguity at any prefix tier halts — never loosen past it.
-            ambiguous = True
-            continue
-        if not isinstance(outcome, MatchResult):
-            continue
-        tier = outcome.candidate.exactness_tier
-        if tier == 0:
-            # tier-0 was already exhausted by the main tolerance loop; skip here.
-            continue
-        # Reject the lone-word tier: it can anchor anywhere in the passage.
-        matched_raw = concat_raw[outcome.candidate.raw_span.start : outcome.candidate.raw_span.end]
-        if len(matched_raw.split()) < 2:
-            continue
-        hits.append(
-            (run, owner, outcome.candidate.raw_span, outcome.candidate.reason)
-        )
-    return ambiguous, hits
+        run_triples.append((run, concat_raw, owner))
+
+    for tier_idx, needle in enumerate(tiers):
+        if tier_idx == 0:
+            continue  # Phase 1 already handled tier-0
+
+        # Reject the lone-word tier (and any degenerate tier shorter than 2 words).
+        if len(needle.split()) < 2:
+            break
+
+        normed_needle = normalize(needle)
+        hits: _HitList = []
+        ambiguous = False
+
+        for run, concat_raw, owner in run_triples:
+            normalized = NormalizedText(concat_raw)
+            text = normalized.text
+
+            # Overlapping scan: advance by 1 (not by len(normed_needle)) so that
+            # self-overlapping needles like "alpha alpha alpha" in "alpha alpha
+            # alpha alpha" are detected rather than silently treated as unique.
+            positions: list[int] = []
+            search_from = 0
+            while True:
+                idx = text.find(normed_needle, search_from)
+                if idx < 0:
+                    break
+                positions.append(idx)
+                search_from = idx + 1
+
+            if len(positions) > 1:
+                # Multiple starts in one run — ambiguous regardless of overlap.
+                ambiguous = True
+                break
+
+            if len(positions) == 1:
+                raw_span = normalized.raw_span(
+                    positions[0], positions[0] + len(normed_needle)
+                )
+                hits.append(
+                    (
+                        run,
+                        owner,
+                        raw_span,
+                        f"tier={tier_idx} prefix pos={raw_span.start}",
+                    )
+                )
+
+        if ambiguous:
+            return True, []
+
+        if len(hits) > 1:
+            # Multiple distinct runs matched this tier — ambiguous across runs.
+            return False, hits  # caller checks len(hits) > 1
+
+        if len(hits) == 1:
+            return False, hits
+
+        # Zero hits at this tier — descend to the next shorter prefix.
+
+    return False, []
 
 
 def locate_across_nodes(root: Tag, selector: TargetSelector) -> CrossNodeMatch | None:

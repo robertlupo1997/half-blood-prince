@@ -161,20 +161,21 @@ class TestLoneWordRejected:
         )
 
     def test_lone_word_rejected_via_public_api_when_guard_fires(self) -> None:
-        """The ``len(matched_raw.split()) < 2`` guard fires via ``locate_across_nodes``.
+        """The lone-word guard fires through ``locate_across_nodes``.
 
         Source: ``A remarkable day indeed.`` — only the longest word
-        ``remarkable`` (tier 2 in the exactness ladder) is present; all
+        ``remarkable`` (last tier in the exactness ladder) is present; all
         multi-word prefix tiers (``the remarkable stone``, etc.) are absent.
 
-        The guard is the only line between this case and an accepted lone-word
-        anchor.  Removing it would make the function return a ``CrossNodeMatch``
-        for ``remarkable``; with it in place the result is ``None``.
+        In ``_scan_prefix_tiers`` the tier loop checks ``len(needle.split()) < 2``
+        before searching.  When the needle is ``remarkable`` (1 word) the loop
+        breaks without ever doing an overlapping scan.  Removing that guard would
+        allow the lone-word search to run: one occurrence of ``remarkable`` would
+        be found and a ``CrossNodeMatch`` would be returned.  With the guard the
+        result is ``None``.
 
-        Unlike ``test_lone_word_is_rejected_when_no_prefix_matches``, where
-        ``score_candidates`` returns ``NoMatchResult`` (no tier ever fires), here
-        ``score_candidates`` returns a ``MatchResult`` at the lone-word tier —
-        the guard is the rejection, not the miss.
+        Mutation test: comment out ``if len(needle.split()) < 2: break`` in
+        ``_scan_prefix_tiers`` — this test fails.
         """
         body = _body("<p>A remarkable day indeed.</p>")
         # Selector: prefix tiers ("the remarkable stone", etc.) are all absent
@@ -185,13 +186,22 @@ class TestLoneWordRejected:
         )
         assert match is None
 
-    def test_lone_word_is_rejected_when_present_multiple_times(self) -> None:
-        """Lone word appearing multiple times is still rejected, not ambiguous-halted."""
+    def test_returns_none_when_only_lone_word_remains_in_source(self) -> None:
+        """When no multi-word prefix exists in source the result is None.
+
+        Source: ``The bezoar helped. Later the bezoar saved him.``
+        Selector: ``the bezoar stone works well every time you try it``
+
+        Multi-word prefix tiers (``the bezoar stone works well``,
+        ``the bezoar stone``) are absent (source has ``the bezoar``, not
+        ``the bezoar stone``).  The lone-word tier (``bezoar``) is then
+        structurally rejected before it is ever searched — the ``break`` in the
+        tier loop fires.  The fact that ``bezoar`` appears twice in the source
+        is irrelevant; the code never reaches an overlapping scan for it.
+        """
         body = _body(
             "<p>The bezoar helped. Later the bezoar saved him.</p>"
         )
-        # Only "bezoar" matches; it appears twice → if accepted, would be ambiguous.
-        # But it should be rejected at the lone-word check before ambiguity fires.
         assert (
             locate_across_nodes(
                 body,
@@ -356,3 +366,66 @@ class TestPrefixAmbiguityHalts:
         )
         # Second paragraph has no prefix hit; only the first does → unambiguous.
         assert isinstance(match, CrossNodeMatch)
+
+    def test_overlapping_prefix_positions_are_ambiguous(self) -> None:
+        """A prefix that starts at overlapping positions in one run is ambiguous.
+
+        Source: ``alpha alpha alpha alpha elsewhere.``
+        Selector prefix (3-word tier): ``alpha alpha alpha``
+
+        Non-overlapping search (``search_from = end``) reports only one
+        occurrence starting at position 0 and would wrongly accept it.  The
+        overlapping scan (``search_from = start + 1``) finds a second start at
+        position 6 and halts: the anchor is ambiguous.
+
+        Regression for BLOCKING 1: the old implementation called
+        ``score_candidates`` which uses non-overlapping search internally, so it
+        returned the first occurrence as a unique hit and produced a
+        ``CrossNodeMatch`` for the wrong position.
+        """
+        body = _body("<p>alpha alpha alpha alpha elsewhere.</p>")
+        match = locate_across_nodes(
+            body,
+            selector_for("alpha alpha alpha beta gamma delta"),
+        )
+        assert match is None
+
+    def test_global_tier_unique_tier1_not_discarded_by_tier3_in_other_run(self) -> None:
+        """A unique tier-1 hit must not be discarded by a tier-3 hit in a different run.
+
+        Source structure:
+          * Run A (first ``<p>``): contains the 8-word prefix of the selector.
+          * Run B (second ``<p>``): contains only the 3-word prefix.
+
+        Old pooled-tier code: Run A produced a tier-1 hit; Run B produced a
+        tier-3 hit.  Both were added to ``hits``.  ``len(hits) > 1`` → ``None``.
+        The valid tier-1 anchor was silently discarded.
+
+        New global-tier code: tier-1 is tried first across ALL runs.  Run A has
+        one hit; Run B has zero.  The tier-1 anchor is returned without ever
+        looking at tier 3.
+
+        Regression for BLOCKING 2: any code that collects hits per-run (letting
+        each run pick its own best tier) will return ``None`` here; the global
+        ladder returns the correct ``CrossNodeMatch`` containing ``four`` (word 4,
+        present in the 8-word prefix but not in the 3-word prefix).
+        """
+        # Run A: 8-word prefix is a unique substring.
+        # Run B: only the first 3 words of the selector appear.
+        body = _body(
+            "<p>one two three four five six seven eight ends here.</p>"
+            "<p>one two three irrelevant words follow.</p>"
+        )
+        match = locate_across_nodes(
+            body,
+            selector_for("one two three four five six seven eight then more words follow"),
+        )
+        assert isinstance(match, CrossNodeMatch), (
+            "Expected CrossNodeMatch — global tier ladder should find unique tier-1 hit "
+            "in first paragraph, but pooled-tier code would return None"
+        )
+        matched = _text_of(match)
+        assert "four" in matched, (
+            f"Expected tier-1 match (8 words, contains 'four') but got {matched!r}; "
+            "tier-3 hit from second paragraph may be interfering"
+        )

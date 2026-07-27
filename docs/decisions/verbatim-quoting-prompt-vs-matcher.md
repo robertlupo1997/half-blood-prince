@@ -164,15 +164,19 @@ book. A tuned constant trades; this one does not, which is the sign it is the ri
 Caveat: the tier-0 rates above come from one generation run on one free-tier model. The
 policy comparison does not depend on them, because the ranking holds at any rate.
 
-### Former divergence hypothesis — corrected
+### Former divergence — resolved (with a correction)
 
 An earlier version of this section claimed that ``locate_across_nodes`` accepting
 **tier 0 only** explained why EPUB rendered 48/50 while PDF rendered 49/50.  That
-explanation is wrong: after adding prefix tiers, EPUB still renders **48/50** on the
-clean corpus (see the addendum below).  The 48-vs-49 gap predates tier-0-only and
-survives the fix; it is caused by something else — most likely a difference in how the
-PDF path's ``search_for`` and the EPUB path's tolerance ladder handle whichever
-annotation occupies the 49th slot, though this has not been verified.
+explanation was partly wrong: the EPUB baseline with prefix tiers naively added
+(but with a pooling bug — each DOM run picking its own best tier independently)
+still rendered only 48/50.  After correcting the pooling bug to a **global tier
+ladder** (the same tier tried across all runs before descending), EPUB now renders
+**49/50**, closing the divergence entirely.  The 49th annotation turned out to be a
+case where one block had an 8-word prefix (tier 1) and another had a 3-word prefix
+(tier 3); the pooled code collected two hits from different tiers and discarded them
+as ambiguous.  The global ladder tries tier 1 across all blocks first, finds exactly
+one hit, and accepts it.
 
 ---
 
@@ -192,6 +196,18 @@ wins over an EXACT prefix match.  Ambiguity at the prefix level halts immediatel
 
 ### Measurement
 
+> **Reproducibility note:** these numbers were measured externally on session-local
+> corpora that are not committed to the repo (large EPUB files).  They cannot be
+> reproduced from the repository alone.  To reproduce: obtain the Internet Archive
+> OCR'd scan of *The Strange Case of Dr. Jekyll and Mr. Hyde* (the multi-page PDF
+> version used as input to the scanned EPUB; one chapter per PDF page), run the
+> EPUB extraction step to produce ``scanned_jekyll.epub``, then replay
+> ``scratchpad/scanned_plan.json`` through ``EpubProcessor().render_plan``.  For the
+> clean corpus: obtain a clean Gutenberg EPUB of the same book, replay
+> ``scratchpad/jekyll_full_plan.json``.  Nav spine ordinal 1 is the navigation
+> document — chapter *n* lands at ordinal *n+1* — so off-by-one in the spine
+> silently yields ``rendered=0``.
+
 The scanned corpus (88 annotations, 20 pages, Internet Archive Jekyll & Hyde OCR scan)
 was measured with the frozen plan used for the PDF addendum above:
 
@@ -207,16 +223,12 @@ The 4 remaining skips are all `MISSING_TARGET` — genuine paraphrase where even
 3-word prefix is absent from the source.
 
 The clean corpus (50 annotations, *The Strange Case of Dr. Jekyll and Mr. Hyde*,
-clean EPUB) did not change: **48 / 50** before and after.  Both skips are correctly
-retained — one `MISSING_TARGET` (genuine paraphrase, no prefix match) and one
-`AMBIGUOUS_TARGET` (quote appears multiple times; no matcher can resolve that).
-
-The PDF path gets 49/50 on the clean corpus; the EPUB path gets 48/50 both before and
-after this change.  The 48-vs-49 gap is not caused by the tier-0 limitation — it
-persists after adding prefix tiers.  Which annotation the PDF path renders but EPUB
-does not was not verified; the most likely candidates are a quote that appears multiple
-times in the chapter (AMBIGUOUS_TARGET in EPUB, but anchored to the first occurrence by
-``search_for`` in PDF) or surface drift that the PDF text layer normalises differently.
+clean EPUB) improved with the global-tier fix: **49 / 50**, matching the PDF path.
+The one remaining skip is correctly retained — `MISSING_TARGET` (genuine paraphrase,
+no prefix match at any tier).  The `AMBIGUOUS_TARGET` case previously skipped (a
+quote appearing in two paragraphs with different-length prefixes) is now rendered:
+the global ladder finds the 8-word prefix uniquely in one block before the 3-word
+prefix appears in the other.
 
 ### Why it is safe
 
