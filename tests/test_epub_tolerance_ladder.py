@@ -21,12 +21,22 @@ The rules these tests pin, in order of how badly a naive build gets them wrong:
    every inline run on its own; one exact hit plus one elastic hit is one answer (the
    exact one), not two candidates.
 
-4. **The DOM contract is unchanged.** Only tier-0 (complete-quote) candidates are
-   accepted, and returned segments still concatenate to the source text.
+4. **Complete-quote (tier 0) always beats a prefix tier.**  The locator runs a
+   complete-quote phase (EXACT → CASE_INSENSITIVE → PUNCTUATION_ELASTIC) before
+   falling back to prefix tiers.  A PUNCTUATION_ELASTIC full-quote match therefore
+   always wins over an EXACT prefix match — the phases are never pooled.
 
-Real-book grounding: with the ladder on, the measured Jekyll & Hyde run goes from
-44 rendered / 6 skipped to 48 / 2 — see ``tests/test_match_tolerance.py`` for the raw
-diff attribution of all six.
+5. **Multi-word prefix tiers are accepted; the lone-word tier is rejected.**  When
+   every tier-0 rung finds nothing, the locator tries shortened prefix tiers
+   (8-word → 5-word → 3-word) under EXACT matching.  The lone-word tier (which
+   can land anywhere inside the passage) is always rejected.  A prefix anchor
+   underlines less than the note's full quote but starts at the right position, so
+   the reader is still directed to the correct words.
+
+Real-book grounding: with the tolerance ladder plus prefix tiers, the scanned
+Jekyll & Hyde run goes from 53 rendered / 35 skipped (baseline) to 84 / 4.  The
+clean corpus goes from 44 / 6 (tolerance ladder only) to 48 / 2 — see
+``tests/test_match_tolerance.py`` for the raw diff attribution of those six.
 """
 
 from __future__ import annotations
@@ -116,30 +126,86 @@ class TestLadderStaysFailClosed:
             is None
         )
 
-    def test_paraphrase_is_not_recovered(self) -> None:
-        """Real ch7 skip: the model dropped a dialogue attribution."""
+    def test_dropped_interior_words_without_a_prefix_match_are_not_recovered(self) -> None:
+        """When the model dropped a word from the interior AND the prefix also fails, skip.
+
+        Old test name: ``test_paraphrase_is_not_recovered``.  The former fixture
+        (Utterson / cried the doctor) is now recovered via prefix tier, because
+        the first five words of the model's quote appear verbatim at the start of the
+        source passage.  That IS a correct anchor.  This test uses a case where even
+        the 3-word prefix is absent from the source: the model wrote "radiance" but
+        the source has "mere radiance", so no prefix tier matches.
+        """
         body = _body(
-            '<p>Utterson, I swear to God," cried the doctor, "I swear to God I '
-            "will never set eyes on him again.</p>"
+            "<p>or is it the mere radiance of a foul soul that thus transpires?</p>"
         )
         assert (
             locate_across_nodes(
                 body,
-                selector_for(
-                    "Utterson, I swear to God, I swear to God I will never set "
-                    "eyes on him again."
-                ),
+                selector_for("the radiance of a foul soul that thus transpires"),
             )
             is None
         )
 
-    def test_still_never_crosses_a_block_boundary(self) -> None:
+    def test_partial_prefix_recovered_even_when_full_quote_drops_interior_words(self) -> None:
+        """Real ch7 case: model dropped attribution mid-quote; prefix still anchors.
+
+        The model wrote ``Utterson, I swear to God, I swear to God…`` while the
+        source has ``Utterson, I swear to God," cried the doctor, "I swear to God…``.
+        The first five words of the model's quote appear verbatim at position 0 of the
+        source paragraph, so the 5-word prefix is a valid anchor: it points the reader
+        to the right words even though the underline is shorter than the note's quote.
+
+        This test was previously ``test_paraphrase_is_not_recovered``; the old
+        assertion of ``None`` pinned the tier-0-only policy.  That policy changed.
+        """
         body = _body(
+            '<p>Utterson, I swear to God," cried the doctor, "I swear to God I '
+            "will never set eyes on him again.</p>"
+        )
+        match = locate_across_nodes(
+            body,
+            selector_for(
+                "Utterson, I swear to God, I swear to God I will never set "
+                "eyes on him again."
+            ),
+        )
+        assert isinstance(match, CrossNodeMatch)
+        # The anchor must start where the passage starts (position 0 in the node).
+        assert match.segments[0].start == 0
+        # The anchor must be a multi-word prefix, not a lone word.
+        anchor_text = _text_of(match)
+        assert len(anchor_text.split()) >= 2
+
+    def test_still_never_crosses_a_block_boundary(self) -> None:
+        """Block-boundary rule: the locator can find a prefix *within* a block but
+        never assembles a match by collecting text from two separate block elements.
+
+        When the full quote spans two blocks, the locator falls to the prefix phase
+        and finds the prefix within the *first* block — which is correct and is NOT
+        crossing a boundary.  A test case where no prefix exists in any single block
+        confirms the true cross-boundary case still returns None.
+        """
+        # Case 1: prefix exists in the first block → prefix is found (no crossing).
+        body_with_prefix = _body(
             "<p>the sopophorous bean must be</p><p>crushed without delay</p>"
+        )
+        match = locate_across_nodes(
+            body_with_prefix, selector_for("the sopophorous bean must be crushed")
+        )
+        assert isinstance(match, CrossNodeMatch)
+        assert match.segments[0].start == 0  # anchored at passage start
+
+        # Case 2: quote spans two blocks AND no prefix exists in any single block.
+        # "must be" alone never completes to a 3-word prefix; "crushed not cut…"
+        # in the second block doesn't start the quote. The longest single word
+        # ("crushed") is rejected by the lone-word rule. Result: None.
+        body_no_prefix = _body(
+            "<p>must be</p><p>crushed not cut without delay</p>"
         )
         assert (
             locate_across_nodes(
-                body, selector_for("the sopophorous bean must be crushed")
+                body_no_prefix, selector_for("must be crushed not cut without delay")
             )
             is None
         )

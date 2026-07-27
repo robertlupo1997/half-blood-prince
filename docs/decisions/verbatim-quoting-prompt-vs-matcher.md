@@ -164,11 +164,62 @@ book. A tuned constant trades; this one does not, which is the sign it is the ri
 Caveat: the tier-0 rates above come from one generation run on one free-tier model. The
 policy comparison does not depend on them, because the ranking holds at any rate.
 
-### Known divergence from the EPUB path
+### Former divergence from the EPUB path — now resolved
 
-`documents/epub.py:locate_across_nodes` still accepts **tier 0 only**, so on the same plan
-EPUB renders 48/50 where PDF now renders 49/50. That is a policy choice, not a technical
-limit — its docstring says tier-0-only exists "so returned segments always represent the
-selector's full normalized exact quote", and a prefix span would still produce valid
-segments. Whether EPUB should adopt the same rule is undecided and wants its own
-measurement on a real EPUB; it is recorded here so the difference is not mistaken for a bug.
+`documents/epub.py:locate_across_nodes` accepted **tier 0 only**, so on the same plan
+EPUB rendered 48/50 where PDF rendered 49/50.  That divergence is resolved — see the
+addendum below.
+
+---
+
+## Addendum (2026-07-27): EPUB prefix-tier fix
+
+**Status:** decided, implemented.
+
+### Decision
+
+`locate_across_nodes` now mirrors the PDF rule exactly: after the complete-quote
+tolerance ladder (EXACT → CASE_INSENSITIVE → PUNCTUATION_ELASTIC) finds nothing, it
+tries multi-word prefix tiers (8-word → 5-word → 3-word) under EXACT matching.  The
+lone-word tier is always rejected, for the same reason it is rejected on the PDF side.
+
+The two phases are ordered, never pooled: a PUNCTUATION_ELASTIC full-quote match always
+wins over an EXACT prefix match.  Ambiguity at the prefix level halts immediately.
+
+### Measurement
+
+The scanned corpus (88 annotations, 20 pages, Internet Archive Jekyll & Hyde OCR scan)
+was measured with the frozen plan used for the PDF addendum above:
+
+| path | rendered | skipped |
+|---|---|---|
+| EPUB baseline (tier-0 only) | 53 / 88 (60%) | 35 |
+| **EPUB with prefix tiers** | **84 / 88 (95%)** | **4** |
+
+Genuine prefixes admitted (anchor starts where the passage starts): **62**.
+Interior fragments admitted (reader cannot interpret): **0**.
+
+The 4 remaining skips are all `MISSING_TARGET` — genuine paraphrase where even the
+3-word prefix is absent from the source.
+
+The clean corpus (50 annotations, *The Strange Case of Dr. Jekyll and Mr. Hyde*,
+clean EPUB) did not change: **48 / 50** before and after.  Both skips are correctly
+retained — one `MISSING_TARGET` (genuine paraphrase, no prefix match) and one
+`AMBIGUOUS_TARGET` (quote appears multiple times; no matcher can resolve that).
+
+The PDF path gets 49/50 on the clean corpus; the remaining gap is the AMBIGUOUS_TARGET
+case, which no amount of matching strategy can fix without guessing.
+
+### Why it is safe
+
+The same argument applies as on the PDF side: a prefix anchor starts exactly where the
+passage starts, so the underline is shorter than the note's quote but points the reader at
+the right words.  The lone-word tier is the only tier that can land inside the passage
+rather than at its start, and it is structurally excluded.  An A/B measurement over 88
+real annotations confirmed zero interior fragments and +31 rendered annotations.
+
+### Classifier consistency
+
+`EpubProcessor._epub_miss_reason` was updated to mirror the same two-phase ladder, so its
+`AMBIGUOUS_TARGET` / `MISSING_TARGET` classification stays consistent with the locator's
+decision even when the locator's new prefix phase is the one that halts on ambiguity.

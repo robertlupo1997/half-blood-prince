@@ -236,18 +236,88 @@ def _scan_with_tolerance(
     return ambiguous, hits
 
 
-def locate_across_nodes(root: Tag, selector: TargetSelector) -> CrossNodeMatch | None:
-    """Locate one unambiguous full quote within a single inline DOM run.
+def _scan_prefix_tiers(
+    root: Tag,
+    selector: TargetSelector,
+) -> tuple[bool, _HitList]:
+    """Scan for multi-word prefix-tier matches after all tier-0 rungs have failed.
 
-    Walks a strictest-first tolerance ladder: EXACT → CASE_INSENSITIVE →
-    PUNCTUATION_ELASTIC.  Each rung is scanned independently across all inline
-    runs; hits from different rungs are never pooled.  The ladder advances only
-    on a clean zero (no hits, no ambiguity at the current rung); ambiguity at
-    any rung halts immediately and returns ``None``.
+    Calls ``score_candidates`` with ``MatchTolerance.EXACT`` so the scorer's own
+    exactness-tier ladder (8-word → 5-word → 3-word prefix → lone word) finds the
+    best non-zero tier with hits across each inline run.
 
-    Only tier-0 (complete-quote) candidates are accepted so returned segments
-    always represent the selector's full normalized exact quote.
+    Acceptance rule — mirrors ``document_processor._is_lone_word_anchor``:
+      * Tiers 1, 2, 3 (8-, 5-, 3-word prefixes) are accepted: every multi-word
+        tier is a *prefix* that starts exactly where the passage starts, so the
+        underline is shorter than the note's quote but still points the reader at
+        the right words.
+      * The lone-word tier (last entry in the exactness ladder) is rejected: it
+        can land anywhere inside a passage, producing an anchor the reader cannot
+        interpret.
+
+    The test is on the *raw matched text* (``concat_raw[span.start:span.end]``),
+    exactly as the PDF path tests its matched string: fewer than two
+    whitespace-delimited tokens means lone-word.
+
+    Ambiguity semantics are identical to ``_scan_with_tolerance``: an
+    ``AmbiguousResult`` from the scorer or more than one hit across all runs halts
+    the caller immediately.  Hits from different runs are never pooled.
     """
+    hits: _HitList = []
+    ambiguous = False
+    for run in iter_inline_runs(root):
+        concat_raw, owner = _owner_map(run)
+        normalized = NormalizedText(concat_raw)
+        outcome = score_candidates(selector, normalized, tolerance=MatchTolerance.EXACT)
+        if isinstance(outcome, NoMatchResult):
+            continue
+        if isinstance(outcome, AmbiguousResult):
+            # Ambiguity at any prefix tier halts — never loosen past it.
+            ambiguous = True
+            continue
+        if not isinstance(outcome, MatchResult):
+            continue
+        tier = outcome.candidate.exactness_tier
+        if tier == 0:
+            # tier-0 was already exhausted by the main tolerance loop; skip here.
+            continue
+        # Reject the lone-word tier: it can anchor anywhere in the passage.
+        matched_raw = concat_raw[outcome.candidate.raw_span.start : outcome.candidate.raw_span.end]
+        if len(matched_raw.split()) < 2:
+            continue
+        hits.append(
+            (run, owner, outcome.candidate.raw_span, outcome.candidate.reason)
+        )
+    return ambiguous, hits
+
+
+def locate_across_nodes(root: Tag, selector: TargetSelector) -> CrossNodeMatch | None:
+    """Locate one unambiguous quote within a single inline DOM run.
+
+    **Phase 1 — complete-quote (tier 0).**  Walks a strictest-first tolerance
+    ladder: EXACT → CASE_INSENSITIVE → PUNCTUATION_ELASTIC.  Each rung is
+    scanned independently across all inline runs; hits from different rungs are
+    never pooled.  The ladder advances only on a clean zero (no hits, no
+    ambiguity at the current rung); ambiguity at any rung halts immediately and
+    returns ``None``.
+
+    **Phase 2 — prefix tiers.**  Runs only when *all* tier-0 rungs produced a
+    clean zero.  Uses ``MatchTolerance.EXACT`` to search the shortened exactness
+    tiers (8-word → 5-word → 3-word prefix).  The lone-word tier is always
+    rejected because it can land anywhere inside the passage, which the reader
+    cannot interpret.  A prefix anchor starts exactly where the passage starts,
+    so the underline is shorter than the note's quote but still points at the
+    right words.
+
+    The two phases are ordered, never pooled: a PUNCTUATION_ELASTIC full-quote
+    match always beats an EXACT prefix match.  Ambiguity at the prefix stage also
+    halts immediately.
+
+    Returned segments still represent a contiguous excerpt from the source text,
+    but that excerpt may be a prefix of the selector's full quote rather than the
+    full quote itself.
+    """
+    # Phase 1: complete-quote (tier 0), strictest-first tolerance.
     for tolerance in _MATCH_LADDER:
         ambiguous, hits = _scan_with_tolerance(root, selector, tolerance)
         if ambiguous or len(hits) > 1:
@@ -261,6 +331,20 @@ def locate_across_nodes(root: Tag, selector: TargetSelector) -> CrossNodeMatch |
                 segments=segments, reason=f"match: {scorer_reason}"
             )
         # clean zero at this rung → advance to the next
+
+    # Phase 2: prefix tiers — only reached when every tier-0 rung was a clean zero.
+    ambiguous, hits = _scan_prefix_tiers(root, selector)
+    if ambiguous or len(hits) > 1:
+        return None
+    if len(hits) == 1:
+        run, owner, raw_span, scorer_reason = hits[0]
+        segments = _segments_for_span(run, owner, raw_span)
+        if not segments:
+            return None
+        return CrossNodeMatch(
+            segments=segments, reason=f"prefix-match: {scorer_reason}"
+        )
+
     return None
 
 
