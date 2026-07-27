@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import random
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 
 import httpx
@@ -207,9 +207,14 @@ class AnthropicProvider:
     def _classify_error_response(self, response: httpx.Response) -> ProviderError:
         try:
             body = response.json()
-            message = str(body.get("error", {}).get("message", response.text))
-        except ValueError:
+        except (ValueError, RecursionError):
             message = response.text
+        else:
+            error = body.get("error") if isinstance(body, Mapping) else None
+            if isinstance(error, Mapping):
+                message = str(error.get("message", response.text))
+            else:
+                message = response.text
         message = redact_secrets(message)
 
         if response.status_code == 429:
@@ -228,10 +233,23 @@ class AnthropicProvider:
     def _parse_success(
         self, response: httpx.Response, *, request: GenerationRequest, max_tokens: int
     ) -> GenerationResult:
-        body = response.json()
+        try:
+            body = response.json()
+        except (ValueError, RecursionError) as exc:
+            raise StructuredOutputError("Provider returned invalid JSON") from exc
+        if not isinstance(body, Mapping):
+            raise StructuredOutputError(
+                f"Provider response root was not a JSON object (got {type(body).__name__})"
+            )
         stop_reason = body.get("stop_reason")
-        content = body.get("content") or []
-        usage_raw = body.get("usage") or {}
+        _content = body.get("content")
+        if not isinstance(_content, list):
+            raise StructuredOutputError(
+                f"Provider response content was not a list (got {type(_content).__name__})"
+            )
+        content = _content
+        _usage = body.get("usage")
+        usage_raw = _usage if isinstance(_usage, Mapping) else {}
         request_id = response.headers.get("request-id")
 
         if stop_reason == "refusal":
