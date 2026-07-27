@@ -681,17 +681,26 @@ def annotate(
     console.rule("[bold magenta]Half-Blood Prince -- Annotate[/bold magenta]")
 
     _validate_input_signature(input_file)
-    _refuse_existing_output(output_file, force, source_paths=(input_file,))
     if handwriting_engine == "procedural":
         unavailable = HandwritingUnavailable()
         raise click.ClickException(f"{unavailable.code}: {unavailable.detail}")
-    output_file.parent.mkdir(parents=True, exist_ok=True)
     if not dry_run and output_file.suffix.lower() != input_file.suffix.lower():
         console.print(
             f"[yellow]Warning:[/yellow] output extension {output_file.suffix!r} doesn't "
             f"match input extension {input_file.suffix!r}; writing "
             f"{input_file.suffix.lower()}-formatted content to {output_file} regardless."
         )
+
+    # ------------------------------------------------------------------
+    # Resolve ALL file inputs before guarding the output.
+    #
+    # The guard must see every path this run will read so that
+    # ``-o <any-input-file> --force`` is always refused.  Each new CLI
+    # option that reads a file MUST be registered here.
+    #
+    # Persona errors surface before provider/config errors (existing
+    # precedence preserved) because persona is resolved first.
+    # ------------------------------------------------------------------
 
     # Resolve persona before provider setup so that pure usage errors
     # (mutual exclusion, bad name, missing file) surface with the correct
@@ -721,6 +730,30 @@ def annotate(
         font_path = None
     else:
         font_path = _resolve_font_option(effective_font) if effective_font is not None else None
+
+    # Detect a font supplied as an explicit CLI path even when the config
+    # resolver is replaced (e.g. in tests).  ``font_path`` covers the
+    # config-file-derived case; this catches the CLI-explicit case.
+    _cli_font_source: Path | None = None
+    if font is not None:
+        _cand = Path(font).expanduser()
+        if _cand.is_file():
+            _cli_font_source = _cand
+
+    # Collect every file this command will read, then refuse writing the
+    # output over any of them — even with --force.
+    _all_sources: list[Path] = [input_file]
+    if persona_file is not None:
+        _all_sources.append(persona_file)
+    if config_path is not None:
+        _all_sources.append(config_path)
+    if _cli_font_source is not None:
+        _all_sources.append(_cli_font_source)
+    if font_path is not None:
+        _all_sources.append(font_path)
+    _refuse_existing_output(output_file, force, source_paths=tuple(_all_sources))
+
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     processor = _processor_for(input_file, font_path, handwriting_engine)
     # If no persona flag was given, fall back to the config-layer persona.
     effective_persona = early_persona if early_persona is not None else config.persona
