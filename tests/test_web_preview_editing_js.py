@@ -179,20 +179,22 @@ var removedNodes = [];
 var bookTextHTML = '<mark data-ann-id="a0">Crush text</mark> rest';
 var noteTextEl = { textContent: "Crush, do not cut.", style: {}, _display: "" };
 
-// === geometry constants (see module docstring for derivation) ===
-// note left : getBoundingClientRect() → { left: 10,  right: 90,  top: 100, height: 30 }
-// note right: getBoundingClientRect() → { left: 910, right: 990, top: 100, height: 30 }
-// mark      :                         → { left: 300, right: 500, top: 100, height: 20 }
-// frame     :                         → { left: 100, top: 0 }
+// === geometry constants ===
+// mark      : getBoundingClientRect() → { left: 300, right: 500, top: 100, height: 20 }
+// frame     : getBoundingClientRect() → { left: 100, top: 0 }
+// marginLeft: getBoundingClientRect() → { left: 0, top: 0 }
+// marginRight:getBoundingClientRect() → { left: 800, top: 0 }
 //
-// Right-side connector expected values:
-//   fromX = noteRect.left  - frame.left = 910 - 100 = 810
-//   toX   = markRect.right - frame.left = 500 - 100 = 400
-//   bow   = +8  → midY > avg(fromY, toY)
-// Left-side connector:
-//   fromX = noteRect.right - frame.left =  90 - 100 = -10
-//   toX   = markRect.left  - frame.left = 300 - 100 = 200
-//   bow   = -8  → midY < avg(fromY, toY)
+// noteEl.getBoundingClientRect() is STYLE-DRIVEN:
+//   The top is derived from noteEl.style.top so layoutMargin's position
+//   computation is observable.  (If layoutMargin never sets style.top the
+//   top falls back to 0, producing wrong fromY — test goes RED.)
+// note left : { left: 10,  right: 90,  top: parseFloat(style.top)||0, height: 30 }
+// note right: { left: 910, right: 990, top: parseFloat(style.top)||0, height: 30 }
+//
+// layoutMargin sets style.top = (markTop - marginTop + markH/2 - noteH/2)
+//   = 100 - 0 + 10 - 15 = 95 px  (for our anchored/matched note)
+// Derived connector coordinates — see geometry section in _ASSERTIONS.
 
 // === connectorChildren: mirrors connectorLayer DOM children ===
 // doLayout sets connectorLayer.innerHTML = "" → setter calls connectorChildren.length = 0.
@@ -211,9 +213,13 @@ var noteEl = {
   appendChild: function() {},
   removeChild: function() {},
   getBoundingClientRect: function() {
+    // Derive top from style.top so layoutMargin's output is observable.
+    // Both margins have getBoundingClientRect().top = 0, so margin-relative
+    // top equals absolute top in the stub's coordinate system.
+    var absTop = parseFloat(this.style.top) || 0;
     return this._side === "left"
-      ? { left: 10,  right: 90,  top: 100, bottom: 130, height: 30 }
-      : { left: 910, right: 990, top: 100, bottom: 130, height: 30 };
+      ? { left: 10,  right: 90,  top: absTop, bottom: absTop + 30, height: 30 }
+      : { left: 910, right: 990, top: absTop, bottom: absTop + 30, height: 30 };
   },
   classList: {
     contains: function() { return false; },
@@ -226,11 +232,14 @@ var noteEl = {
 
 // === a1El: minimal element for annotation a1 (unmatched, always left) ===
 // doLayout iterates unanchored items and accesses el.style.top / el.offsetHeight.
+// getBoundingClientRect is style-driven for consistency (a1 is never anchored so
+// no connector geometry depends on it, but the derivation stays honest).
 var a1El = {
   style: { top: "" },
   offsetHeight: 30,
   getBoundingClientRect: function() {
-    return { left: 10, right: 90, top: 200, bottom: 230, height: 30 };
+    var absTop = parseFloat(this.style.top) || 0;
+    return { left: 10, right: 90, top: absTop, bottom: absTop + 30, height: 30 };
   },
   classList: {
     contains: function() { return false; },
@@ -549,21 +558,83 @@ assert("unmatched-delete: totals.matched stays 0",
 // ====================================================================
 // --- connector geometry: repositioning draws on the correct side ---
 //
-// This section verifies that the REAL doLayout → layoutMargin →
-// drawConnectors pipeline runs after repositionAnnotation and produces
-// a connector SVG path with geometrically correct fromX / toX / bow.
+// Expected coordinates are DERIVED from the stub's declared geometry
+// constants below — not copied from a passing run — so the assertion
+// has an independent basis.  If production changes a formula, at least
+// one of these assertions will go RED.
 //
-// Expected values are derived from the stub geometry constants at the
-// top of _DOM_STUB; see comments there for the derivation.
+// Sabotages that must all go RED:
+//   (A) skip requestAnimationFrame(doLayout) in repositionAnnotation
+//   (B) swap "left"/"right" side args in doLayout
+//   (C) replace " Q " with " X " in the path setAttribute call
+//   (D) replace midX with 99999 in drawConnectors
+//   (E) remove the style.top writes from layoutMargin
 // ====================================================================
 
-// Clean re-arm.
+// ---- geometry constants ----
+// These match the values hard-wired in _DOM_STUB.
+var MARK_TOP   = 100, MARK_H = 20, MARK_LEFT = 300, MARK_RIGHT = 500;
+var FRAME_L    = 100, FRAME_T = 0;
+var NOTE_H     = 30,  NOTE_CLAMP = Math.min(30, 22);  // min(height, 22) used in drawConnectors
+var L_NOTE_R   = 90;          // noteEl.right when side = "left"
+var R_NOTE_L   = 910;         // noteEl.left  when side = "right"
+var BOW_R      = 8, BOW_L = -8;
+var MARGIN_TOP = 0;           // both margins have getBoundingClientRect().top = 0
+
+// layoutMargin: top = markTop - marginTop + markH/2 - noteH/2
+var NOTE_TOP_EXP = MARK_TOP - MARGIN_TOP + MARK_H / 2 - NOTE_H / 2;
+// = 100 - 0 + 10 - 15 = 95
+
+// drawConnectors: fromY = noteRect.top - frameTop + NOTE_CLAMP/2
+//   noteRect.top is style-driven: parseFloat(style.top)||0 = NOTE_TOP_EXP
+var FROM_Y_EXP = NOTE_TOP_EXP - FRAME_T + NOTE_CLAMP / 2;
+// = 95 - 0 + 11 = 106
+
+// toY = markTop - frameTop + markH/2  (same for both sides)
+var TO_Y_EXP = MARK_TOP - FRAME_T + MARK_H / 2;
+// = 100 - 0 + 10 = 110
+
+// Right-side:
+var R_FROM_X = R_NOTE_L - FRAME_L;                        // 910 - 100 = 810
+var R_TO_X   = MARK_RIGHT - FRAME_L;                      // 500 - 100 = 400
+var R_MID_X  = (R_FROM_X + R_TO_X) / 2;                   // (810+400)/2 = 605
+var R_MID_Y  = (FROM_Y_EXP + TO_Y_EXP) / 2 + BOW_R;      // (106+110)/2 + 8 = 116
+
+// Left-side:
+var L_FROM_X = L_NOTE_R - FRAME_L;                        // 90 - 100 = -10
+var L_TO_X   = MARK_LEFT - FRAME_L;                       // 300 - 100 = 200
+var L_MID_X  = (L_FROM_X + L_TO_X) / 2;                   // (-10+200)/2 = 95
+var L_MID_Y  = (FROM_Y_EXP + TO_Y_EXP) / 2 + BOW_L;      // (106+110)/2 - 8 = 100
+
+// PATH_RE validates the full "M fromX fromY Q midX midY toX toY" structure.
+// If " Q " is mutated to " X " (or anything else), the regex fails to match
+// and the structure assertion goes RED.  If any coordinate is wrong the
+// per-value assertions go RED.
+var PATH_RE = /^M\\s+([-\\d.]+)\\s+([-\\d.]+)\\s+Q\\s+([-\\d.]+)\\s+([-\\d.]+)\\s+([-\\d.]+)\\s+([-\\d.]+)$/;
+
+function assertPath(d, label, expFromX, expFromY, expMidX, expMidY, expToX, expToY) {
+  var m = d && d.match(PATH_RE);
+  // !!m: false for null (no regex match), undefined (d was absent), falsy.
+  // m !== null would be a false positive when d is undefined — don't use it.
+  assert(label + ": M...Q... structure", !!m);
+  if (!m) return;
+  assert(label + ": fromX", Math.abs(parseFloat(m[1]) - expFromX) < 0.01);
+  assert(label + ": fromY (layout-driven via style.top)", Math.abs(parseFloat(m[2]) - expFromY) < 0.01);
+  assert(label + ": midX",  Math.abs(parseFloat(m[3]) - expMidX)  < 0.01);
+  assert(label + ": midY",  Math.abs(parseFloat(m[4]) - expMidY)  < 0.01);
+  assert(label + ": toX",   Math.abs(parseFloat(m[5]) - expToX)   < 0.01);
+  assert(label + ": toY",   Math.abs(parseFloat(m[6]) - expToY)   < 0.01);
+}
+
+// ---- clean re-arm ----
 connectorChildren.length = 0;
-noteEl._removed     = false;
-noteEl._movedToLeft = false;
+noteEl._removed      = false;
+noteEl._movedToLeft  = false;
 noteEl._movedToRight = false;
-noteEl._side = "left";
-markEl._replaced = false;
+noteEl._side         = "left";
+noteEl.style.top     = "";      // reset so style-driven rect starts at 0 before layoutMargin runs
+noteEl.style.display = "";
+markEl._replaced     = false;
 DATA.pages[0].annotations = [
   { id: "a0", content: "Crush, do not cut.", position: "margin_left",
     type: "correction", matched: true },
@@ -573,9 +644,9 @@ state.leftItems  = [{ ann: DATA.pages[0].annotations[0], el: noteEl }];
 state.rightItems = [];
 state.editingId  = null;
 
-// Seed a stale left-side connector entry.
-// If innerHTML="" does NOT fire inside doLayout, this entry survives and
-// connectorChildren.length > 1 after repositionAnnotation — test goes RED.
+// Seed a stale left-side connector.
+// If connectorLayer.innerHTML="" does NOT fire, this entry survives and
+// connectorChildren.length > 1 after reposition — test goes RED (sabotage A).
 var staleLeftConnector = {
   _isStale: true,
   dataset: { annId: "a0" },
@@ -590,8 +661,9 @@ assert("geo setup: stale connector seeded",
 
 repositionAnnotation("a0");
 // requestAnimationFrame(doLayout) fires synchronously:
-//   (1) connectorLayer.innerHTML = "" → connectorChildren.length = 0  (stale gone)
-//   (2) layoutMargin(state.rightItems, "right") → drawConnectors → new path pushed
+//   (1) connectorLayer.innerHTML="" → connectorChildren.length = 0  (stale gone)
+//   (2) layoutMargin(rightItems,"right") → sets noteEl.style.top = NOTE_TOP_EXP + "px"
+//   (3) drawConnectors(anchored,"right") → creates path, appends to connectorChildren
 
 assert("geo: stale connector cleared (innerHTML= fires after reposition-right)",
   connectorChildren.length === 1 && !connectorChildren[0]._isStale);
@@ -601,26 +673,10 @@ assert("geo: new connector is for a0",
 var d_right = connectorChildren[0]._attrs && connectorChildren[0]._attrs.d;
 assert("geo: path d attribute exists after reposition-right", typeof d_right === "string");
 
-// Parse "M fromX fromY Q midX midY toX toY" — six numbers.
-var nums_r = typeof d_right === "string"
-  ? d_right.match(/[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)/g).map(Number)
-  : [];
-assert("geo: d has 6 numbers (right-side)", nums_r.length === 6);
-var fromX_r = nums_r[0], fromY_r = nums_r[1];
-var midX_r  = nums_r[2], midY_r  = nums_r[3];
-var toX_r   = nums_r[4], toY_r   = nums_r[5];
-// Right-side: fromX = noteRect.left - frame.left = 910 - 100 = 810
-assert("geo: right-side fromX = 810 (noteEl.right-margin left edge)",
-  Math.abs(fromX_r - 810) < 0.01);
-// Right-side: toX = markRect.right - frame.left = 500 - 100 = 400
-assert("geo: right-side toX = 400 (markEl right edge)",
-  Math.abs(toX_r - 400) < 0.01);
-// Right-side bow = +8 → midY must be above the straight midpoint
-assert("geo: right-side bow is positive (midY > avg of fromY,toY)",
-  midY_r > (fromY_r + toY_r) / 2);
+assertPath(d_right, "geo right",
+  R_FROM_X, FROM_Y_EXP, R_MID_X, R_MID_Y, R_TO_X, TO_Y_EXP);
 
-// ---- toggle back to left: geometry must flip ----
-// Mark the right-side path stale so we can confirm it is replaced.
+// ---- toggle back to left: every coordinate must flip ----
 var staleRightConnector = connectorChildren[0];
 staleRightConnector._isStale = true;
 
@@ -628,27 +684,14 @@ repositionAnnotation("a0");
 // doLayout clears (stale gone) and redraws for left side.
 
 assert("geo: 1 connector after reposition back to left", connectorChildren.length === 1);
-assert("geo: stale right connector cleared", connectorChildren.length > 0 && !connectorChildren[0]._isStale);
+assert("geo: stale right connector cleared",
+  connectorChildren.length > 0 && !connectorChildren[0]._isStale);
 
 var d_left = connectorChildren[0]._attrs && connectorChildren[0]._attrs.d;
 assert("geo: path d attribute exists after reposition-left", typeof d_left === "string");
 
-var nums_l = typeof d_left === "string"
-  ? d_left.match(/[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)/g).map(Number)
-  : [];
-assert("geo: d has 6 numbers (left-side)", nums_l.length === 6);
-var fromX_l = nums_l[0], fromY_l = nums_l[1];
-var midX_l  = nums_l[2], midY_l  = nums_l[3];
-var toX_l   = nums_l[4], toY_l   = nums_l[5];
-// Left-side: fromX = noteRect.right - frame.left = 90 - 100 = -10
-assert("geo: left-side fromX = -10 (noteEl.left-margin right edge)",
-  Math.abs(fromX_l - (-10)) < 0.01);
-// Left-side: toX = markRect.left - frame.left = 300 - 100 = 200
-assert("geo: left-side toX = 200 (markEl left edge)",
-  Math.abs(toX_l - 200) < 0.01);
-// Left-side bow = -8 → midY must be below the straight midpoint
-assert("geo: left-side bow is negative (midY < avg of fromY,toY)",
-  midY_l < (fromY_l + toY_l) / 2);
+assertPath(d_left, "geo left",
+  L_FROM_X, FROM_Y_EXP, L_MID_X, L_MID_Y, L_TO_X, TO_Y_EXP);
 
 // ====================================================================
 // --- connector geometry: delete removes connector from layout ----
@@ -659,7 +702,7 @@ assert("geo: left-side bow is negative (midY < avg of fromY,toY)",
 // ====================================================================
 
 // Current state: a0 on left margin, connectorChildren = [left_path].
-// Re-use that path as the seeded connector for the delete test.
+// Re-use that path as the tracked connector for the delete test.
 var seededConnForDelete = connectorChildren[0];
 seededConnForDelete._markedForDelete = true;
 DATA.pages[0].annotations = [
@@ -678,9 +721,8 @@ deleteAnnotation("a0");
 //   (2) els.connectorLayer.querySelector('[data-ann-id="a0"]') → seededConnForDelete
 //       seededConnForDelete.remove() → spliced from connectorChildren
 //   (3) requestAnimationFrame(doLayout):
-//       connectorLayer.innerHTML = "" → connectorChildren.length = 0 (idempotent)
-//       layoutMargin([], "left"), layoutMargin([], "right") → both return early
-//       → no new connector appended
+//       connectorLayer.innerHTML="" → connectorChildren.length = 0 (idempotent)
+//       layoutMargin([],…) both return early → no new connector appended
 
 assert("delete-geo: seeded connector directly removed by deleteAnnotation",
   !connectorChildren.some(function(p) { return p._markedForDelete; }));
