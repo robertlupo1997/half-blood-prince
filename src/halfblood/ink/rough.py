@@ -361,14 +361,24 @@ def _pinched_midpoint(
     return bool(above and below and min(below) - max(above) <= 2.0 * clearance)
 
 
-#: Maximum obstacles the connector router processes per ``make_connector`` call.
+#: Maximum obstacles used to GENERATE bypass-Y waypoint candidates per
+#: ``make_connector`` call.
 #:
-#: Bounds the O(n) cost of ``_segment_hits`` (21 samples × up to 4 segments ×
-#: ``connector_max_route_attempts`` iterations). At the default style of 8 attempts
-#: the worst-case work is 21 × 4 × 8 × 100 ≈ 67 200 float comparisons — fast enough
-#: that latency is dominated by PDF rendering, not routing.  Pages with more obstacles
-#: (e.g. densely-typeset Internet Archive scans) are handled by geographic pruning
-#: first; this constant is the final safety cap after pruning.
+#: It bounds candidate generation only. It does NOT bound hit-testing: every
+#: ``_segment_hits`` / ``_inside`` / ``_pinched_midpoint`` call validates against
+#: ``full_expanded``, the complete unpruned obstacle list. That separation is
+#: deliberate and load-bearing — an earlier version validated against the pruned
+#: set and drew connectors straight through text on a two-obstacle page, because
+#: detour waypoints leave the direct-segment corridor the pruning was computed
+#: from. Correctness must never depend on the pruned set.
+#:
+#: (This comment previously claimed the constant bounded ``_segment_hits``. That
+#: was true when written and stopped being true when validation moved to the full
+#: set; measured cost is ~0.083s median at 10 000 obstacles, so the O(n)
+#: validation is affordable and the bound is not needed there.)
+#:
+#: Pages with more obstacles (e.g. densely-typeset Internet Archive scans) are
+#: reduced by corridor pruning first; this is the final safety cap after pruning.
 _CONNECTOR_OBSTACLE_LIMIT: int = 100
 
 

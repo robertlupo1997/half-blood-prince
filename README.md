@@ -6,7 +6,7 @@ Turn any PDF or EPUB into a book someone brilliant, impatient, and a little bit 
 
 ## What it does
 
-Half-Blood Prince takes a PDF or EPUB and hands it to Claude, page by page or spine item by spine item, in the voice of a specific persona — by default, a young Severus Snape scribbling corrections into his Potions textbook. The result is a new PDF or EPUB with handwritten-style annotations: corrections, shortcuts, warnings, and the occasional invented spell, rendered in ink color and connected to the exact passage they're reacting to.
+Half-Blood Prince takes a PDF or EPUB and hands it to an LLM, page by page or spine item by spine item, in the voice of a specific persona — by default, a young Severus Snape scribbling corrections into his Potions textbook. The result is a new PDF or EPUB with handwritten-style annotations: corrections, shortcuts, warnings, and the occasional invented spell, rendered in ink color and connected to the exact passage they're reacting to.
 
 It's the "Advanced Potion-Making" gag from *Harry Potter and the Half-Blood Prince*, generalized: any textbook, novel, or manual can get its own Prince in the margins — yours doesn't have to be a genius at potions, it can be a sardonic chemistry professor, a blunt line cook, or an impatient physicist.
 
@@ -32,7 +32,7 @@ halfblood annotate cookbook.pdf -o annotated.pdf \
 `annotate` produces a PDF that looks like someone read the book with a pen in hand:
 
 - A slightly rotated, handwritten-style note in the margin next to the passage it reacts to, in dark iron-gall-blue or rust-red ink depending on the kind of note (a warning reads redder and bolder than a dry aside).
-- The target passage itself marked with a native PDF annotation — underlined for a correction, circled for an insight, highlighted for a warning, or struck through and replaced for something flat-out wrong.
+- The target passage itself marked with hand-drawn vector ink — underlined for a correction, circled for an insight, highlighted for a warning, or struck through and replaced for something flat-out wrong. (Verified on a real render: the shipped `render_plan` path emits 230 vector drawings and 0 native PDF annotation objects. `_mark_target`'s native-annotation calls belong to the older `render_annotations` path, which the CLI no longer reaches.)
 - A small hand-drawn connector arrow linking the note to the marked passage when it sits in the margin.
 - Notes that vary in confidence: a certain aside is bold and opaque, a speculative one is fainter, as if dashed off less certainly.
 
@@ -58,21 +58,46 @@ intentional dependency change with `pip freeze --exclude-editable`.
 
 ### Font setup (optional but recommended)
 
-Annotations render in a handwriting font. It isn't bundled (font licensing), so download it yourself:
+Annotations render in a handwriting font, and **four are bundled inside the package** —
+Caveat Brush (the default), Homemade Apple, Just Me Again Down Here, and Mrs Saint
+Delafield — under the OFL/Apache-2.0 licences shipped alongside them. Nothing to download.
 
-1. Go to <https://fonts.google.com/specimen/Caveat+Brush> (or [Caveat](https://fonts.google.com/specimen/Caveat))
-2. Download the family and extract `CaveatBrush-Regular.ttf`
-3. Drop it at `fonts/CaveatBrush-Regular.ttf` in the project root
+Pick one with `--font "Caveat Brush"` (or the `font` config key), or point `--font` at any
+TTF/OTF path of your own.
 
-The resolver also auto-discovers any `*aveat*` TTF/OTF variant in `fonts/`, so another Caveat family file can be used without configuration. No font? The pipeline still runs — it silently falls back to `Helvetica-Oblique`, just less magical-looking. See `fonts/README.md` for details.
+To override the bundled default without passing a flag, drop a file at
+`fonts/CaveatBrush-Regular.ttf` in the project root — a project-root font wins over the
+bundled one. The resolver also auto-discovers any `*aveat*` TTF/TTC variant in that
+directory, so any Caveat-family file works without configuration. Failing all of that it
+tries common system font locations, and finally falls back to `Helvetica-Oblique` — the
+pipeline still runs, just less magical-looking. See `fonts/README.md` for details.
 
-### API key
+Fonts resolve through `importlib.resources`, so they work identically from a source checkout
+and from a pip-installed wheel. That distinction was once a real bug: `--font <name>` resolved
+via repo-relative path arithmetic and failed in every installed wheel, telling users to
+download a font that ships inside the package. `scripts/wheel_smoke.py` now guards it.
 
-Half-Blood Prince calls Claude to write the annotations, so it needs an Anthropic API key:
+### Provider and API key
+
+Half-Blood Prince calls an LLM to write the annotations. It talks to providers directly over
+`httpx` through a thin seam (`src/halfblood/generation/providers/`) — **no vendor SDK is a
+dependency of this project at all**, for generation or for the eval judge.
+
+Five providers are supported: `anthropic` (default), `openai`, `openrouter`, `ollama`, and
+`lmstudio`. The default needs an Anthropic key:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+Any OpenAI-compatible endpoint works too, including local models that need no key at all:
+
+```bash
+halfblood annotate book.pdf -o annotated.pdf --provider ollama --model llama3
+```
+
+`halfblood providers doctor --offline` prints the resolved configuration (with the key
+redacted) without making a network call.
 
 ## Usage
 
@@ -87,7 +112,7 @@ Options:
   -o, --output PATH      Path to write the annotated PDF or EPUB. [required]
   --persona TEXT         Annotator personality description.
   --pages TEXT           Page range, e.g. '1-5,8'. Default: all pages.
-  --model TEXT           Claude model to use. [default: claude-sonnet-5]
+  --model TEXT           Model to use. [default: claude-sonnet-5]
   --max-per-page INT     Max annotations kept per page. [default: 5]
   --force                Overwrite an existing output file.
 ```
@@ -110,7 +135,7 @@ halfblood preview INPUT_FILE [OPTIONS]
 Options:
   --pages TEXT           Page range to preview. [default: 1-3]
   --persona TEXT         Annotator personality description.
-  --model TEXT           Claude model to use.
+  --model TEXT           Model to use.
   --max-per-page INT     Max annotations kept per page. [default: 5]
 ```
 
@@ -178,14 +203,14 @@ See `DEFAULT_PERSONA` in `src/halfblood/annotation_generator.py` for the full Sn
 PDF in  --> DocumentProcessor.load()        (extract: PDF -> per-page plain text)
 EPUB in --> EpubProcessor.load()            (extract: spine XHTML -> per-item plain text)
        --> AnnotationGenerator.generate_for_document()
-                                            (generate: text -> AnnotationPlan via Claude tool-use)
-       --> DocumentProcessor/EpubProcessor.render_annotations()
+                                            (generate: text -> AnnotationPlan via provider structured output)
+       --> DocumentProcessor/EpubProcessor.render_plan()
                                             (render: AnnotationPlan -> annotated PDF or EPUB out)
 ```
 
-- **`models.py`** — the shared Pydantic vocabulary (`Annotation`, `AnnotatedPage`, `AnnotationPlan`, `AnnotationType`) that every other module speaks.
+- **`models/`** — the shared Pydantic vocabulary (`Annotation`, `AnnotatedPage`, `AnnotationPlan`, `AnnotationType`, plus the v2 rendering models) that every other module speaks. It is a package, not a single `models.py`.
 - **`document_processor.py`** — everything that touches PDF bytes: text extraction (PyMuPDF), locating target passages on the page, and drawing the handwritten margin notes back on.
-- **`annotation_generator.py`** — everything that talks to Claude: persona/system prompt construction, per-page and whole-document generation, forced tool-use structured output, and response validation.
+- **`annotation_generator.py`** — everything that talks to the model: persona/system prompt construction, per-page and whole-document generation, structured output, and response validation. Transport itself lives behind `generation/providers/`.
 - **`epub_processor.py`** — EPUB extraction and XHTML/CSS annotation rendering, with the same load/render interface as the PDF processor.
 - **`web_preview.py`** — renders an annotation plan into one self-contained offline HTML viewer.
 - **`cli.py`** — the `halfblood` command (`annotate`, `preview`, `web-preview`, `eval`), wiring the processors and generator together with a Rich progress UI.
@@ -213,7 +238,7 @@ Generator and judge configuration resolve independently. By default they resolve
 same Anthropic preset and the harness exits with an error; choose a distinct generator with
 `--provider`/`--model` or a distinct judge with `--judge-provider`/`--judge-model`.
 `--allow-self-judge` permits identical settings for development only. In Phase 1 the judge
-transport still supports only Anthropic; moving judge transport onto the provider layer is
+transport now runs over the same provider seam as generation (this was completed; the note that it
 planned for Phase 5.
 
 `HALFBLOOD_EVAL_MODEL` is deprecated but remains supported for one minor release as a

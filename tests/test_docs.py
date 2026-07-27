@@ -129,3 +129,53 @@ def test_claude_md_states_the_true_retry_story(claude_md: str) -> None:
 def test_documented_cli_commands_exist(command: str) -> None:
     result = CliRunner().invoke(cli_main, [command, "--help"])
     assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# README claims that were FALSE at HEAD until 2026-07-27.
+#
+# The tests above assert that keywords are PRESENT, which is why the README
+# drifted for so long: it kept describing Claude-only generation, native PDF
+# annotation marks, an unbundled font, `models.py`, and `render_annotations()`
+# long after every one of those stopped being true, and the suite stayed green
+# throughout. These assert the ABSENCE of specific refuted claims, which is the
+# direction that actually catches drift.
+# ---------------------------------------------------------------------------
+
+
+def test_readme_does_not_claim_the_font_is_unbundled(readme: str) -> None:
+    """Four fonts ship inside the package (`git ls-files src/halfblood/fonts/`)."""
+    assert "isn't bundled" not in readme
+    assert "is not bundled" not in readme
+
+
+def test_readme_does_not_claim_native_pdf_annotation_marks(readme: str) -> None:
+    """The shipped render_plan path emits vector ink, not native annotations.
+
+    Measured on a real render: 230 vector drawings, 0 native annotation objects.
+    `_mark_target`'s add_*_annot calls belong to the legacy render_annotations
+    path, which the CLI no longer reaches.
+    """
+    assert "marked with a native PDF annotation" not in readme
+
+
+def test_readme_does_not_describe_models_as_a_single_module(readme: str) -> None:
+    """`src/halfblood/models/` is a package, not `models.py`."""
+    assert "**`models.py`**" not in readme
+
+
+def test_readme_pipeline_diagram_names_the_live_render_entry_point(readme: str) -> None:
+    """The CLI calls render_plan; render_annotations is the legacy v1 path."""
+    assert "render_plan()" in readme
+
+
+def test_readme_does_not_present_the_tool_as_claude_only(readme: str) -> None:
+    """Five providers are registered: anthropic, openai, openrouter, ollama, lmstudio."""
+    assert "hands it to Claude" not in readme
+    for provider in ("openai", "openrouter", "ollama", "lmstudio"):
+        assert provider in readme, f"README never mentions the {provider} provider"
+
+
+def test_readme_does_not_claim_the_judge_is_anthropic_only(readme: str) -> None:
+    """The eval judge moved onto the shared provider seam."""
+    assert "transport still supports only Anthropic" not in readme
