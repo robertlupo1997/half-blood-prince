@@ -164,11 +164,15 @@ book. A tuned constant trades; this one does not, which is the sign it is the ri
 Caveat: the tier-0 rates above come from one generation run on one free-tier model. The
 policy comparison does not depend on them, because the ranking holds at any rate.
 
-### Former divergence from the EPUB path — now resolved
+### Former divergence hypothesis — corrected
 
-`documents/epub.py:locate_across_nodes` accepted **tier 0 only**, so on the same plan
-EPUB rendered 48/50 where PDF rendered 49/50.  That divergence is resolved — see the
-addendum below.
+An earlier version of this section claimed that ``locate_across_nodes`` accepting
+**tier 0 only** explained why EPUB rendered 48/50 while PDF rendered 49/50.  That
+explanation is wrong: after adding prefix tiers, EPUB still renders **48/50** on the
+clean corpus (see the addendum below).  The 48-vs-49 gap predates tier-0-only and
+survives the fix; it is caused by something else — most likely a difference in how the
+PDF path's ``search_for`` and the EPUB path's tolerance ladder handle whichever
+annotation occupies the 49th slot, though this has not been verified.
 
 ---
 
@@ -196,7 +200,7 @@ was measured with the frozen plan used for the PDF addendum above:
 | EPUB baseline (tier-0 only) | 53 / 88 (60%) | 35 |
 | **EPUB with prefix tiers** | **84 / 88 (95%)** | **4** |
 
-Genuine prefixes admitted (anchor starts where the passage starts): **62**.
+Genuine prefix annotations admitted (anchor starts where the passage starts): **31**.
 Interior fragments admitted (reader cannot interpret): **0**.
 
 The 4 remaining skips are all `MISSING_TARGET` — genuine paraphrase where even the
@@ -207,8 +211,12 @@ clean EPUB) did not change: **48 / 50** before and after.  Both skips are correc
 retained — one `MISSING_TARGET` (genuine paraphrase, no prefix match) and one
 `AMBIGUOUS_TARGET` (quote appears multiple times; no matcher can resolve that).
 
-The PDF path gets 49/50 on the clean corpus; the remaining gap is the AMBIGUOUS_TARGET
-case, which no amount of matching strategy can fix without guessing.
+The PDF path gets 49/50 on the clean corpus; the EPUB path gets 48/50 both before and
+after this change.  The 48-vs-49 gap is not caused by the tier-0 limitation — it
+persists after adding prefix tiers.  Which annotation the PDF path renders but EPUB
+does not was not verified; the most likely candidates are a quote that appears multiple
+times in the chapter (AMBIGUOUS_TARGET in EPUB, but anchored to the first occurrence by
+``search_for`` in PDF) or surface drift that the PDF text layer normalises differently.
 
 ### Why it is safe
 

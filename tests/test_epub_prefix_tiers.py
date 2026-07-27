@@ -160,6 +160,31 @@ class TestLoneWordRejected:
             is None
         )
 
+    def test_lone_word_rejected_via_public_api_when_guard_fires(self) -> None:
+        """The ``len(matched_raw.split()) < 2`` guard fires via ``locate_across_nodes``.
+
+        Source: ``A remarkable day indeed.`` — only the longest word
+        ``remarkable`` (tier 2 in the exactness ladder) is present; all
+        multi-word prefix tiers (``the remarkable stone``, etc.) are absent.
+
+        The guard is the only line between this case and an accepted lone-word
+        anchor.  Removing it would make the function return a ``CrossNodeMatch``
+        for ``remarkable``; with it in place the result is ``None``.
+
+        Unlike ``test_lone_word_is_rejected_when_no_prefix_matches``, where
+        ``score_candidates`` returns ``NoMatchResult`` (no tier ever fires), here
+        ``score_candidates`` returns a ``MatchResult`` at the lone-word tier —
+        the guard is the rejection, not the miss.
+        """
+        body = _body("<p>A remarkable day indeed.</p>")
+        # Selector: prefix tiers ("the remarkable stone", etc.) are all absent
+        # from the source ("A remarkable"), so only "remarkable" (lone word) fires.
+        match = locate_across_nodes(
+            body,
+            selector_for("the remarkable stone works perfectly"),
+        )
+        assert match is None
+
     def test_lone_word_is_rejected_when_present_multiple_times(self) -> None:
         """Lone word appearing multiple times is still rejected, not ambiguous-halted."""
         body = _body(
@@ -229,6 +254,38 @@ class TestCompleteQuoteBeatPrefix:
         assert isinstance(match, CrossNodeMatch)
         # The CI full-quote match covers all 4 words (tier 0), not just a prefix.
         assert len(_text_of(match).split()) == 4
+
+    def test_ci_full_quote_beats_exact_prefix_discriminating(self) -> None:
+        """CI full-quote must win even when an EXACT prefix hit is also present.
+
+        Source:   ``the bezoar stone works Perfectly well.``  (capital P)
+        Selector: ``the bezoar stone works perfectly``        (lowercase p)
+
+        What each phase sees:
+
+        *   Phase 1, EXACT — ``score_candidates(EXACT)`` finds ``the bezoar
+            stone`` (tier 1, 3-word prefix) but ``_scan_with_tolerance`` discards
+            it because ``exactness_tier != 0``.  Clean zero.
+        *   Phase 1, CI — ``score_candidates(CI)`` finds ``the bezoar stone works
+            Perfectly`` (tier 0, full quote, 5 words).  This match is recorded and
+            returned.
+
+        A wrong nesting that scans all tiers under EXACT tolerance would find the
+        3-word prefix and return it, never reaching the CI scan.  The assertion
+        checks that the result contains ``works`` (word 4), which is absent in any
+        3-word prefix — so a wrong implementation fails this test.
+        """
+        body = _body("<p>the bezoar stone works Perfectly well.</p>")
+        match = locate_across_nodes(
+            body,
+            selector_for("the bezoar stone works perfectly"),
+        )
+        assert isinstance(match, CrossNodeMatch)
+        matched = _text_of(match)
+        assert "works" in matched, (
+            f"Expected full CI quote (≥4 words including 'works') but got {matched!r}; "
+            "phase ordering may be wrong (EXACT prefix winning over CI full-quote)"
+        )
 
     def test_punctuation_elastic_full_quote_beats_prefix(self) -> None:
         """A PUNCTUATION_ELASTIC full-quote match wins over an EXACT prefix.
