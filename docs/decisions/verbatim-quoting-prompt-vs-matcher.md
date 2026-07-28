@@ -171,12 +171,25 @@ An earlier version of this section claimed that ``locate_across_nodes`` acceptin
 explanation was partly wrong: the EPUB baseline with prefix tiers naively added
 (but with a pooling bug — each DOM run picking its own best tier independently)
 still rendered only 48/50.  After correcting the pooling bug to a **global tier
-ladder** (the same tier tried across all runs before descending), EPUB now renders
-**49/50**, closing the divergence entirely.  The 49th annotation turned out to be a
-case where one block had an 8-word prefix (tier 1) and another had a 3-word prefix
-(tier 3); the pooled code collected two hits from different tiers and discarded them
-as ambiguous.  The global ladder tries tier 1 across all blocks first, finds exactly
-one hit, and accepts it.
+ladder** (the same tier tried across all runs before descending), EPUB temporarily
+showed **49/50**.  The 49th annotation turned out to be a case where one block had
+an 8-word prefix (tier 1) and another had a 3-word prefix (tier 3); the pooled code
+collected two hits from different tiers and discarded them as ambiguous.  The global
+ladder tries tier 1 across all blocks first, finds exactly one hit, and accepts it.
+
+However, after the tolerance-aware overlap guard was added (see the Addendum below),
+EPUB reverted to **48/50**.  The 49th annotation was being *wrongly* anchored: the
+complete-quote tolerance ladder's PUNCTUATION_ELASTIC rung was finding a tier-0 PE
+match in one DOM run, but the elastic regex had overlapping start positions in that
+run — meaning the match was ambiguous under PE semantics.  The old case-sensitive
+guard (``_has_overlapping_exact``) could not see this because it compared a
+case-sensitive substring, not the elastic regex, and the case-sensitive check found
+no overlap.  With the tolerance-aware guard (``_overlapping_starts_under_tolerance``),
+the overlap is correctly detected and the annotation is halted as ``AMBIGUOUS_TARGET``
+rather than silently anchored to a wrong span.  48/50 with no wrong anchors is the
+correct and intended result; 49/50 with one wrong anchor is not.  The divergence with
+the PDF path (49/50) remains, and is genuinely explained by one annotation whose quote
+is a paraphrase that the PDF path's prefix scan recovers but the EPUB path does not.
 
 ---
 
@@ -192,7 +205,11 @@ tries multi-word prefix tiers (8-word → 5-word → 3-word) under EXACT matchin
 lone-word tier is always rejected, for the same reason it is rejected on the PDF side.
 
 The two phases are ordered, never pooled: a PUNCTUATION_ELASTIC full-quote match always
-wins over an EXACT prefix match.  Ambiguity at the prefix level halts immediately.
+wins over an EXACT prefix match.  Ambiguity at any level — complete-quote or prefix —
+halts immediately.  The overlapping-occurrence guard is tolerance-aware: at each rung it
+applies the same comparison semantics the scorer uses (case-fold for
+CASE_INSENSITIVE, elastic regex for PUNCTUATION_ELASTIC) so the guard and the scorer
+cannot disagree about which positions are valid starts.
 
 ### Measurement
 
@@ -223,12 +240,17 @@ The 4 remaining skips are all `MISSING_TARGET` — genuine paraphrase where even
 3-word prefix is absent from the source.
 
 The clean corpus (50 annotations, *The Strange Case of Dr. Jekyll and Mr. Hyde*,
-clean EPUB) improved with the global-tier fix: **49 / 50**, matching the PDF path.
-The one remaining skip is correctly retained — `MISSING_TARGET` (genuine paraphrase,
-no prefix match at any tier).  The `AMBIGUOUS_TARGET` case previously skipped (a
-quote appearing in two paragraphs with different-length prefixes) is now rendered:
-the global ladder finds the 8-word prefix uniquely in one block before the 3-word
-prefix appears in the other.
+clean EPUB) measures **48 / 50** after the tolerance-aware overlap guard is included.
+The two skips are:
+
+- 1 × `MISSING_TARGET` — genuine paraphrase, no prefix match at any tier.
+- 1 × `AMBIGUOUS_TARGET` — the elastic regex built from the selector has overlapping
+  start positions in its source run; the tolerance-aware guard (introduced to close
+  BLOCKING 3) correctly halts rather than accepting a wrong anchor.
+
+A transient 49/50 result appeared after the global-tier pooling fix but before the
+tolerance-aware guard: the 49th annotation was being anchored to a false unique PE
+match.  See the "Former divergence" note above.
 
 ### Why it is safe
 

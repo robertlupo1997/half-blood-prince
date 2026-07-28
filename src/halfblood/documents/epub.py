@@ -14,7 +14,9 @@ from halfblood.documents.matching import (
     NoMatchResult,
     NormalizedText,
     RawSpan,
+    _build_elastic_pattern,
     _exactness_tiers,
+    _fold_case,
     normalize,
     score_candidates,
 )
@@ -193,6 +195,41 @@ def _has_overlapping_exact(text: str, needle: str) -> bool:
     return False
 
 
+def _overlapping_starts_under_tolerance(
+    text: str,
+    needle: str,
+    tolerance: MatchTolerance,
+) -> bool:
+    """Return True if ``needle`` appears at overlapping start positions under ``tolerance``.
+
+    Uses the same comparison semantics as the scorer at each tolerance rung so
+    the guard and the hit-finder cannot disagree about what constitutes a match.
+
+    *   ``EXACT`` — case-sensitive substring search (delegates to
+        ``_has_overlapping_exact``).
+    *   ``CASE_INSENSITIVE`` — folds both sides with ``_fold_case`` (the same
+        length-preserving fold the scorer uses) before the overlapping check.
+    *   ``PUNCTUATION_ELASTIC`` — builds the same elastic regex the scorer uses
+        and searches for a second match starting at ``m1.start() + 1``; overlapping
+        is confirmed when ``m2.start() < m1.end()``.
+    """
+    if tolerance is MatchTolerance.EXACT:
+        return _has_overlapping_exact(text, needle)
+
+    if tolerance is MatchTolerance.CASE_INSENSITIVE:
+        return _has_overlapping_exact(_fold_case(text), _fold_case(needle))
+
+    # PUNCTUATION_ELASTIC
+    pat = _build_elastic_pattern(needle)
+    if pat is None:
+        return False
+    m1 = pat.search(text)
+    if m1 is None:
+        return False
+    m2 = pat.search(text, m1.start() + 1)
+    return m2 is not None and m2.start() < m1.end()
+
+
 # Strictest-first tolerance ladder used by locate_across_nodes and
 # _epub_miss_reason. Both must walk the same sequence so their answers
 # stay consistent.
@@ -213,15 +250,19 @@ def _scan_with_tolerance(
     """Scan all inline runs for tier-0 hits at one tolerance level.
 
     Returns ``(ambiguous, hits)`` where ``ambiguous`` is ``True`` if any run
-    contained overlapping exact occurrences or produced an ``AmbiguousResult``
-    at tier 0.  The caller decides whether to halt or advance based on these.
+    contained overlapping occurrences (checked using the same comparison
+    semantics as the scorer at this tolerance level) or produced an
+    ``AmbiguousResult`` at tier 0.  The caller decides whether to halt or
+    advance based on these.
     """
     hits: _HitList = []
     ambiguous = False
     for run in iter_inline_runs(root):
         concat_raw, owner = _owner_map(run)
         normalized = NormalizedText(concat_raw)
-        if _has_overlapping_exact(normalized.text, selector.normalized_exact):
+        if _overlapping_starts_under_tolerance(
+            normalized.text, selector.normalized_exact, tolerance
+        ):
             ambiguous = True
             continue
         outcome = score_candidates(selector, normalized, tolerance=tolerance)
@@ -344,7 +385,10 @@ def locate_across_nodes(root: Tag, selector: TargetSelector) -> CrossNodeMatch |
     scanned independently across all inline runs; hits from different rungs are
     never pooled.  The ladder advances only on a clean zero (no hits, no
     ambiguity at the current rung); ambiguity at any rung halts immediately and
-    returns ``None``.
+    returns ``None``.  Overlapping-occurrence detection at each rung uses the
+    same comparison semantics as the scorer for that rung (case-folded for
+    CASE_INSENSITIVE, elastic-regex for PUNCTUATION_ELASTIC) so the guard and
+    the hit-finder cannot disagree about what constitutes a match.
 
     **Phase 2 — prefix tiers.**  Runs only when *all* tier-0 rungs produced a
     clean zero.  Uses ``MatchTolerance.EXACT`` to search the shortened exactness

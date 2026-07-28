@@ -429,3 +429,72 @@ class TestPrefixAmbiguityHalts:
             f"Expected tier-1 match (8 words, contains 'four') but got {matched!r}; "
             "tier-3 hit from second paragraph may be interfering"
         )
+
+
+# ---------------------------------------------------------------------------
+# 5. Complete-quote overlapping ambiguity is tolerance-aware
+# ---------------------------------------------------------------------------
+
+
+class TestCompleteQuoteOverlapAware:
+    """The overlapping-occurrence guard must use the same comparison semantics as
+    the scorer at each tolerance rung.
+
+    Prior to the fix, ``_has_overlapping_exact`` was always called with
+    case-sensitive semantics regardless of the active tolerance.  Under
+    CASE_INSENSITIVE or PUNCTUATION_ELASTIC a genuinely ambiguous self-overlapping
+    quote would slip through the guard, and the scorer's non-overlapping search
+    would report a single (wrong) hit.
+    """
+
+    def test_ci_overlapping_complete_quote_is_ambiguous(self) -> None:
+        """CASE_INSENSITIVE overlapping start positions must halt and return None.
+
+        Source:   ``a a a a``
+        Selector: ``A A A``
+
+        The scorer CI-matches ``a a a`` at position 0 (non-overlapping search
+        finds only one occurrence).  But with overlapping advance-by-1 the same
+        CI pattern starts at position 0 AND position 2 (2 < 0+5 → overlapping).
+        The guard must fold both sides with ``_fold_case`` before the check so it
+        detects the second start and halts.
+
+        Without the tolerance-aware guard, the call returns a ``CrossNodeMatch``
+        for position 0 — a wrong anchor the reader cannot distinguish from a
+        correct one (the note discusses some passage, the highlight sits on a
+        different one).
+
+        Regression for BLOCKING 3: any code that always checks overlapping
+        case-sensitively will return a ``CrossNodeMatch`` here.
+        """
+        body = _body("<p>a a a a</p>")
+        match = locate_across_nodes(body, selector_for("A A A"))
+        assert match is None, (
+            f"Expected None (overlapping CI positions are ambiguous) but got {match!r}"
+        )
+
+    def test_pe_overlapping_complete_quote_is_ambiguous(self) -> None:
+        """PUNCTUATION_ELASTIC overlapping start positions must halt and return None.
+
+        Source:   ``foo foo foo.``
+        Selector: ``'foo foo'``  (straight apostrophes; PE makes them optional)
+
+        EXACT fails (no apostrophes in source).  CI fails (folded selector still
+        has apostrophes the source lacks).  PE builds a regex ``['"]?foo['"]?
+        ['"]?foo['"]?`` that matches ``foo foo`` at position 0 (7 chars) AND at
+        position 4 (4 < 0+7=7 → overlapping).
+
+        Without the tolerance-aware guard, ``_has_overlapping_exact`` checks
+        for the literal ``'foo foo'`` in ``foo foo foo.`` (not found → guard
+        passes), and the scorer's ``finditer`` returns the match at position 0
+        as a unique hit.
+
+        Regression for BLOCKING 3: any code that does not apply the elastic
+        regex for the PE overlap check will return a ``CrossNodeMatch`` here.
+        """
+        body = _body("<p>foo foo foo.</p>")
+        # Selector uses ASCII straight apostrophes (PE normalizes curly quotes).
+        match = locate_across_nodes(body, selector_for("'foo foo'"))
+        assert match is None, (
+            f"Expected None (overlapping PE positions are ambiguous) but got {match!r}"
+        )
