@@ -381,6 +381,13 @@ def _pinched_midpoint(
 #: reduced by corridor pruning first; this is the final safety cap after pruning.
 _CONNECTOR_OBSTACLE_LIMIT: int = 100
 
+#: Chord subdivisions per CubicTo command when validating the emitted Bézier
+#: curve against in-transit obstacles.  Matches ``connector_crossing.py``'s
+#: ``flatten`` resolution (16 steps per cubic) so the in-code
+#: ``ROUTING_FALLBACK`` flag fires whenever the measurement rig counts a
+#: crossing.
+_BEZIER_VALIDATION_SAMPLES: int = 16
+
 
 def _rect_min_dist_sq_to_segment(
     rect: LocalRect,
@@ -404,6 +411,87 @@ def _rect_min_dist_sq_to_segment(
         if d2 < min_d2:
             min_d2 = d2
     return min_d2
+
+
+def _seg_hits_rect(
+    p: tuple[float, float],
+    q: tuple[float, float],
+    r: LocalRect,
+) -> bool:
+    """Liang-Barsky parametric slab test: True if segment p→q intersects the closed rect r.
+
+    Identical algorithm to ``connector_crossing.py``'s ``seg_hits_rect`` so the
+    in-code validator and the measurement rig agree on what constitutes a crossing.
+    """
+    dx, dy = q[0] - p[0], q[1] - p[1]
+    t0, t1 = 0.0, 1.0
+    for pp, qq in (
+        (-dx, p[0] - r.x0),
+        (dx, r.x1 - p[0]),
+        (-dy, p[1] - r.y0),
+        (dy, r.y1 - p[1]),
+    ):
+        if pp == 0:
+            if qq < 0:
+                return False
+        else:
+            t = qq / pp
+            if pp < 0:
+                if t > t1:
+                    return False
+                t0 = max(t0, t)
+            else:
+                if t < t0:
+                    return False
+                t1 = min(t1, t)
+    return t0 <= t1
+
+
+def _curve_hits_obstacles(
+    commands: Sequence[MoveTo | LineTo | CubicTo],
+    obstacles: Sequence[LocalRect],
+    n: int,
+) -> bool:
+    """Return True if any stroke command in *commands* clips an obstacle.
+
+    * ``LineTo`` — tested as a single chord segment via :func:`_seg_hits_rect`.
+    * ``CubicTo`` — subdivided at *n* steps (generating *n* chord segments), each
+      tested with :func:`_seg_hits_rect`.
+
+    The subdivision resolution matches ``connector_crossing.py``'s ``flatten``
+    (n=16 per cubic), so the in-code ``ROUTING_FALLBACK`` flag fires whenever the
+    rig would count a crossing.  Point-sampling alone cannot catch corner crossings
+    between samples; chord testing with Liang-Barsky closes that gap.
+
+    Both the body stroke and arrowhead strokes are tested by passing all paths to
+    this function — arrowhead barbs that clip in-transit obstacles are flagged
+    identically to body-stroke crossings.
+    """
+    if not obstacles:
+        return False
+    cur: tuple[float, float] = (0.0, 0.0)
+    for cmd in commands:
+        if isinstance(cmd, MoveTo):
+            cur = (cmd.x, cmd.y)
+        elif isinstance(cmd, LineTo):
+            pt = (cmd.x, cmd.y)
+            if any(_seg_hits_rect(cur, pt, obs) for obs in obstacles):
+                return True
+            cur = pt
+        elif isinstance(cmd, CubicTo):
+            p0 = cur
+            prev_pt = p0
+            for i in range(1, n + 1):
+                t = i / n
+                mt = 1.0 - t
+                x = mt**3 * p0[0] + 3.0 * mt**2 * t * cmd.x1 + 3.0 * mt * t**2 * cmd.x2 + t**3 * cmd.x
+                y = mt**3 * p0[1] + 3.0 * mt**2 * t * cmd.y1 + 3.0 * mt * t**2 * cmd.y2 + t**3 * cmd.y
+                pt = (x, y)
+                if any(_seg_hits_rect(prev_pt, pt, obs) for obs in obstacles):
+                    return True
+                prev_pt = pt
+            cur = (cmd.x, cmd.y)
+    return False
 
 
 def _connector_commands(
@@ -467,13 +555,27 @@ def make_connector(
        minimum squared distance to the direct segment) are kept and
        ``ConnectorDegradation.OBSTACLE_CAP_USED`` is recorded.
 
-    3. **Full-set validation** — every candidate route (waypoints and bypass
-       paths) is checked against the *complete original* obstacle set, not just
-       the pruned/capped subset.  This ensures that obstacles on a detour path
-       but outside the direct corridor are never missed.
+    3. **Interior-set validation** — all routing segment checks use
+       ``interior_obstacles``: the full expanded obstacle set minus any obstacle
+       whose raw rect is within ``max(clearance, 2.0)`` of either connector
+       endpoint.  This exclusion is necessary because the target edge is
+       intentionally placed at the boundary of its text-run obstacle; including
+       that obstacle in segment checks would make ``_segment_hits(candidate,
+       target, …)`` always True and cause every routing attempt to fail.  The
+       exclusion matches ``connector_crossing.py``'s ``ep_pad`` logic.
+
+    4. **Post-routing Bézier validation** — after routing, the actual emitted
+       cubic curve (not just anchor chords) is flattened at
+       ``_BEZIER_VALIDATION_SAMPLES`` steps per cubic and tested against
+       ``interior_obstacles`` with Liang-Barsky segment/rect intersection.  If
+       the curve still crosses an obstacle, ``ROUTING_FALLBACK`` is recorded
+       honestly.  This step adds a flag only — it never changes the drawn
+       geometry (no re-routing).
 
     If routing exhausts all waypoint attempts, ``ConnectorDegradation.ROUTING_FALLBACK``
-    is additionally recorded.  A ``ConnectorResult`` is always returned.
+    is recorded.  The post-routing check may also add it if the emitted curve
+    crosses an in-transit obstacle despite routing.  A ``ConnectorResult`` is
+    always returned.
     """
     # Clamp clearance: non-finite values would produce inf-expanded LocalRects
     # and turn every point into a hit, so treat them as zero clearance.
@@ -520,16 +622,46 @@ def make_connector(
         degradation.append(ConnectorDegradation.OBSTACLE_CAP_USED)
 
     # ---- Full-set validation set -------------------------------------------------
-    # ALL route validation uses full_expanded — the complete original obstacle list
-    # expanded by clearance.  Pruning is only for generating bypass-Y candidates;
-    # correctness must not depend on the pruned set.
+    # full_expanded is the complete original obstacle list expanded by clearance.
+    # It is used conservatively (midpoint pinch detection) and for bypass-Y candidate
+    # generation.  All routing segment/curve checks use interior_obstacles instead —
+    # see below.
     full_expanded = tuple(_expanded(obs, clearance) for obs in obstacles)
+
+    # ---- Interior obstacle set for in-transit validation -------------------------
+    # The target edge is intentionally placed at the boundary of a text-run rect
+    # (the closest point on the target passage to the note box).  That boundary
+    # point is INSIDE the clearance-expanded version of its obstacle, so including
+    # that obstacle in _segment_hits(candidate, target, …) makes the check always
+    # True, causing every routing attempt to fail.  Exclude any raw obstacle whose
+    # raw rect is within ep_pad of either connector endpoint.
+    #
+    # ep_pad = max(clearance, 2.0) matches connector_crossing.py's contains() logic
+    # so the in-code validator and the measurement rig agree on which obstacles are
+    # "endpoint-owned" vs. in-transit.
+    _ep_pad = max(clearance, 2.0)
+    interior_obstacles = tuple(
+        _expanded(obs, clearance)
+        for obs in obstacles
+        if not (
+            obs.x0 - _ep_pad <= start[0] <= obs.x1 + _ep_pad
+            and obs.y0 - _ep_pad <= start[1] <= obs.y1 + _ep_pad
+        )
+        and not (
+            obs.x0 - _ep_pad <= target[0] <= obs.x1 + _ep_pad
+            and obs.y0 - _ep_pad <= target[1] <= obs.y1 + _ep_pad
+        )
+    )
 
     dx = target[0] - start[0]
     dy = target[1] - start[1]
     distance = math.hypot(dx, dy)
     midpoint = ((start[0] + target[0]) / 2.0, (start[1] + target[1]) / 2.0)
-    blocked = any(_inside(midpoint, obs) for obs in full_expanded)
+    # Pre-routing: test the FULL direct segment (not just midpoint) against in-transit
+    # obstacles.  A midpoint-only gate misses obstacles at t≈0.25 or t≈0.75 that the
+    # midpoint clears.  The pinch check uses full_expanded (conservative gap detection
+    # against all expanded obstacles including endpoint-owning ones).
+    blocked = _segment_hits(start, target, interior_obstacles)
     blocked = blocked or _pinched_midpoint(midpoint, full_expanded, clearance)
     anchors: list[tuple[float, float]] = [start, target]
     connector_wobble = style.rough.wobble_amplitude * distance
@@ -547,8 +679,8 @@ def make_connector(
             )
             if (
                 not _inside(candidate, LocalRect(x0=bounds.x0, y0=bounds.y0, x1=bounds.x1, y1=bounds.y1))
-                or _segment_hits(start, candidate, full_expanded)   # validate vs full set
-                or _segment_hits(candidate, target, full_expanded)  # validate vs full set
+                or _segment_hits(start, candidate, interior_obstacles)
+                or _segment_hits(candidate, target, interior_obstacles)
             ):
                 continue
             anchors = [start, candidate, target]
@@ -571,9 +703,9 @@ def make_connector(
                     p1 = _point(start[0], bypass_y, bounds)
                     p2 = _point(target[0], bypass_y, bounds)
                     if (
-                        _segment_hits(start, p1, full_expanded)   # validate vs full set
-                        or _segment_hits(p1, p2, full_expanded)   # validate vs full set
-                        or _segment_hits(p2, target, full_expanded)  # validate vs full set
+                        _segment_hits(start, p1, interior_obstacles)
+                        or _segment_hits(p1, p2, interior_obstacles)
+                        or _segment_hits(p2, target, interior_obstacles)
                     ):
                         continue
                     anchors = [start, p1, p2, target]
@@ -622,6 +754,16 @@ def make_connector(
         )
         paths.append(StrokePath(commands=commands, stroke=_stroke(style)))
         command_count += len(commands)
+
+    # Post-routing validation (honesty-only — adds flag, never re-routes or changes geometry).
+    # Tests ALL emitted strokes (body + arrowhead barbs) against interior_obstacles using the
+    # same chord subdivision and Liang-Barsky algorithm as connector_crossing.py.  Catching
+    # wobble bow in the body curve and arrowhead barbs over in-transit text both fire here.
+    if ConnectorDegradation.ROUTING_FALLBACK not in degradation and any(
+        _curve_hits_obstacles(p.commands, interior_obstacles, _BEZIER_VALIDATION_SAMPLES)
+        for p in paths
+    ):
+        degradation.append(ConnectorDegradation.ROUTING_FALLBACK)
 
     group = InkGroup(group_id=group_id, role=InkRole.CONNECTOR, paths=tuple(paths))
     return ConnectorResult(group=group, degradation=tuple(degradation))
