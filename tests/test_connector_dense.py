@@ -400,6 +400,70 @@ class TestMakeConnectorWithManyObstacles:
 
 
 # ---------------------------------------------------------------------------
+# Regression tests: pre-routing validation must test the full segment
+# ---------------------------------------------------------------------------
+
+
+class TestConnectorPreRoutingValidation:
+    """Routing must trigger on any in-transit obstacle, not just an obstacle at the midpoint.
+
+    Bug (pre-fix): make_connector only checked whether the MIDPOINT of the direct
+    segment was inside an expanded obstacle.  An obstacle at t≈0.25 (far from the
+    midpoint) was silently ignored — the connector drew straight through it with
+    degradation=().
+
+    Fix: replace the midpoint-only gate with a full _segment_hits call against the
+    interior obstacle set.  A passing post-routing _curve_hits_obstacles check (using
+    Liang-Barsky) ensures the emitted curve is also validated, not just the anchor
+    chords.
+    """
+
+    def test_midpoint_clear_but_path_blocked(self) -> None:
+        """Obstacle at t≈0.25 must not be ignored just because the midpoint is clear.
+
+        Coordinator probe case:
+          start (0,50) → target (100,50), clearance=3, obstacle [20,48,30,54].
+          Expanded obstacle: [17,45,33,57].
+          Midpoint (50,50): clear (x=50 > 33) — midpoint-only gate skips routing.
+          But the segment at t=0.25 → (25,50) IS inside the expanded obstacle.
+
+        Before fix: routing skips entirely → connector draws through the obstacle
+        with degradation=().
+
+        After fix: full-segment check triggers routing; bypass-Y at y=44 (one point
+        below the expanded obstacle's y0=45) succeeds cleanly, so the emitted
+        connector avoids the obstacle with degradation=().
+        """
+        bounds = LocalRect(x0=0.0, y0=0.0, x1=200.0, y1=200.0)
+        note_edge = LocalPoint(x=0.0, y=50.0)
+        target_edge = LocalPoint(x=100.0, y=50.0)
+        clearance = 3.0
+        obstacle = LocalRect(x0=20.0, y0=48.0, x1=30.0, y1=54.0)
+
+        result = make_connector(
+            _rng("midpoint-gap"),
+            note_edge,
+            target_edge,
+            [obstacle],
+            clearance,
+            load_builtin_style(),
+            bounds,
+            "cn-midgap",
+        )
+
+        # Connector must either route cleanly around the obstacle, OR be honestly
+        # flagged with ROUTING_FALLBACK.  Silently crossing while reporting
+        # degradation=() is the pre-fix bug.
+        assert (
+            not _route_crosses_obstacle(result, obstacle, clearance)
+            or ConnectorDegradation.ROUTING_FALLBACK in result.degradation
+        ), (
+            "Connector crosses an in-transit obstacle with no degradation flag — "
+            "midpoint-only gate (pre-fix bug) is still active"
+        )
+
+
+# ---------------------------------------------------------------------------
 # render_plan integration test: dense PDF must not raise
 # ---------------------------------------------------------------------------
 
