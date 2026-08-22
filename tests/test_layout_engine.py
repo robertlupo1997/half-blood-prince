@@ -18,6 +18,7 @@ implementation with no occupancy tracking, no priority sort, no skip logic.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -1382,7 +1383,9 @@ def test_p3s2b_beam_determinism_across_pythonhashseed() -> None:
     import os
     import subprocess
 
-    _src = "/mnt/c/Users/Trey/Downloads/half-blood-prince/src"
+    # Repo-relative, not absolute: an absolute path from the original author's
+    # machine silently broke this subprocess on every other checkout.
+    _src = str(Path(__file__).resolve().parents[1] / "src")
     _script = f"""
 import sys
 sys.path.insert(0, {_src!r})

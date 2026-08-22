@@ -9,6 +9,7 @@ See :func:`_isolate_user_config` for why that is not optional.
 
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -20,6 +21,23 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+# Neutralise colour-forcing environment variables BEFORE any test module is
+# imported, and therefore before ``halfblood.cli`` constructs its module-level
+# Rich console. This must happen at conftest import time, not in a per-test
+# fixture: Rich decides terminal-ness lazily, but it CACHES ``color_system``
+# at Console construction from ``FORCE_COLOR``/``CLICOLOR_FORCE``. A console
+# built under a colour-forcing shell keeps emitting ANSI forever, so seven CLI
+# tests asserting on exact captured output failed in a
+# ``FORCE_COLOR=1 CLICOLOR_FORCE=1 CLICOLOR=1`` shell while passing in a plain
+# one -- environment bleed masquerading as product bugs. Deleting the same
+# variables also makes ``NO_COLOR`` unable to make two machines disagree.
+# Restoring them per-test is unnecessary: no product or test code legitimately
+# reads these variables, and subprocesses spawned by tests inherit the
+# sanitised environment too.
+for _var in ("FORCE_COLOR", "CLICOLOR_FORCE", "CLICOLOR", "NO_COLOR"):
+    os.environ.pop(_var, None)
 
 
 @pytest.fixture(autouse=True)

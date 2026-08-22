@@ -12,6 +12,7 @@ import os
 import random
 import subprocess
 import sys
+from pathlib import Path
 
 from halfblood.ink.model import InkRole
 from halfblood.ink.seeding import derive_seed, make_stream
@@ -126,13 +127,21 @@ class TestPythonHashSeedIndependence:
             "h = hash('sentinel_p3t2_hashseed_probe'); "
             "print(s, h)"
         )
-        env = {**os.environ, "PYTHONHASHSEED": hashseed}
+        # Import the package from this repo's src/ via PYTHONPATH and run in a
+        # repo-derived cwd. The previous absolute cwd was the original author's
+        # checkout path; on any other machine the subprocess never started.
+        repo_src = str(Path(__file__).resolve().parents[1] / "src")
+        env = {
+            **os.environ,
+            "PYTHONHASHSEED": hashseed,
+            "PYTHONPATH": repo_src + os.pathsep + os.environ.get("PYTHONPATH", ""),
+        }
         result = subprocess.run(
             [sys.executable, "-c", script],
             capture_output=True,
             text=True,
             env=env,
-            cwd="/mnt/c/Users/Trey/Downloads/half-blood-prince",
+            cwd=str(Path(__file__).resolve().parents[1]),
         )
         assert result.returncode == 0, (
             f"subprocess (PYTHONHASHSEED={hashseed}) failed: {result.stderr}"

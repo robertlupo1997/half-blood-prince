@@ -11,6 +11,7 @@ from halfblood.generation.errors import ProviderConfigurationError
 from halfblood.generation.providers.anthropic import AnthropicProvider
 from halfblood.generation.providers.base import LLMProvider, ProviderCapabilities
 from halfblood.generation.providers.openai_compat import OpenAICompatibleProvider
+from halfblood.generation.providers.stub import StubProvider
 
 if TYPE_CHECKING:
     from halfblood.config import ResolvedConfig
@@ -104,6 +105,8 @@ def build_provider(
     attribution: Mapping[str, str] | None = None,
 ) -> LLMProvider:
     """Construct an adapter from already-resolved, nonsecret configuration."""
+    if config.provider == "stub":
+        return StubProvider()
     profile = get_profile(config.provider)
     if profile.adapter is AdapterKind.ANTHROPIC:
         if api_key is None:

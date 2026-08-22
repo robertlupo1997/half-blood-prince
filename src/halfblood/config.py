@@ -101,6 +101,11 @@ PROVIDER_PRESETS: dict[str, ProviderPreset] = {
     "openai-compatible": ProviderPreset(
         "openai-compatible", None, "HALFBLOOD_API_KEY", "auto"
     ),
+    # Offline deterministic stub: base_url is a loopback discard port that is
+    # never contacted; it exists only to satisfy base_url validation.
+    "stub": ProviderPreset(
+        "stub", "http://127.0.0.1:9/v1", None, "tool", default_model="stub-deterministic"
+    ),
 }
 
 

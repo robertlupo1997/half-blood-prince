@@ -15,13 +15,18 @@ PDF/EPUB in
     → DocumentProcessor.load() / EpubProcessor.load()
         → list[PageContent] (page_number, text, width, height)
     → AnnotationGenerator.generate_for_document()
-        → for each page: build system+user prompt → call Claude with forced tool_use
-        → parse tool_use block → validate via Pydantic → AnnotationPlan
-    → DocumentProcessor.render_annotations() / EpubProcessor.render_annotations()
-        → find_text_rect() locates target passages on the PDF page
-        → add_margin_note() draws handwriting-style text via fitz.Shape with morph rotation
-        → _mark_target() adds native PDF annotations (underline/highlight/circle/strikeout)
-        → _draw_connector() draws bowed arrows from margin notes to target passages
+        → pages are generated in concurrent waves (ThreadPoolExecutor,
+          `concurrency` default 3, `config.py`) — not one page at a time
+        → for each page: build system+user prompt → call the configured provider;
+          structured-output mode is negotiated per provider (`generation/structured_output.py`),
+          payloads re-validated via Pydantic → AnnotationPlan
+    → DocumentProcessor.render_plan() / EpubProcessor.render_plan()   ← what the CLI runs
+        → targets resolved by a tolerance ladder (_resolve_annotation_to_anchor), never lone-word anchors
+        → margin notes drawn as VECTOR DRAWINGS via fitz.Shape with morph rotation
+        → bowed connector arrows from notes to target passages
+        → this path emits NO native PDF annotation objects (asserted in tests/test_cli_end_to_end.py)
+      Legacy v1 render_annotations()/add_margin_note()/_mark_target() (native PDF
+      underline/highlight annots) still exists but is NOT the CLI path — verify before probing it.
     → annotated PDF/EPUB out
 ```
 
@@ -46,7 +51,7 @@ Review whether each dependency is the right choice. Consider alternatives and do
 | Dependency | Purpose | Questions to investigate |
 |---|---|---|
 | **PyMuPDF (fitz)** | PDF text extraction, annotation rendering, Shape-based handwriting | Is this the best choice? Compare with reportlab, pypdf, pdfplumber. Key requirement: `morph` parameter on `insert_text` for rotation. |
-| **Anthropic SDK** | Direct LLM calls with forced tool_use | Is direct SDK the right call vs. LangChain/LlamaIndex for this use case? (Current answer: yes, but validate.) |
+| **Raw httpx provider seam** (no Anthropic SDK — none is installed; `pyproject.toml` declares no vendor SDK, pinned by tests/test_packaging.py) | Direct LLM calls with negotiated structured output | Is the thin httpx seam right vs. adding an SDK? (Current answer: yes — one stateless call per page, seam is the sole retry owner; validate.) |
 | **Pydantic v2** | Data validation for Annotation models | Any issues with v2 vs v1? Serialization performance? |
 | **Click** | CLI framework | vs. Typer? Click is more established but Typer has better type hints. |
 | **ebooklib** | EPUB read/write | Known bugs (toc uid=None). Are there better EPUB libraries? |
@@ -83,13 +88,13 @@ These were found during an adversarial review. Critical and High bugs were fixed
 
 ### Unfixed (Medium/Low — fix these):
 
-11. **Retry ownership during the provider transition.** The Anthropic SDK already retries 429, 408, 409, and 5xx responses twice with backoff. Per architecture spec §4.6, Phase 1's httpx provider transport becomes the **sole retry owner**; until that transition, do not add a second retry layer around the SDK.
+11. ~~Retry ownership during the provider transition~~ **RESOLVED.** There is no SDK to retry: all providers go through the direct-httpx seam (`generation/providers/`), and that seam is now the **sole retry owner** (backoff/retry lives there). Do not add a second retry layer anywhere else.
 
-12. **No async/concurrent page processing.** Pages are processed sequentially. For a 300-page book, this is painfully slow. Consider `asyncio` with `anthropic.AsyncAnthropic` and a semaphore for rate limiting.
+12. ~~No async/concurrent page processing~~ **FIXED.** Pages are generated in concurrent waves via `ThreadPoolExecutor(max_workers=concurrency)` (`annotation_generator.py`, default `concurrency: 3` in `config.py`, tunable via `HALFBLOOD_CONCURRENCY`). Remaining question is rate-limit tuning for very large books, not the absence of concurrency.
 
 13. **`_search_variants` can match the wrong passage.** If the longest single word in `target_text` appears multiple times on the page, the annotation anchors to the first occurrence, which may be wrong. No disambiguation.
 
-14. **Annotation overlap/collision detection.** Multiple annotations targeting nearby or overlapping passages can produce overlapping margin notes. No layout-level collision avoidance.
+14. ~~Annotation overlap/collision detection~~ **BUILT** (`layout/page_solver.py`): candidate placement runs pairwise conflict detection (`_candidate_conflicts`, conflict-mask pruning) so overlapping margin notes are resolved at layout time rather than drawn on top of each other.
 
 15. ~~**EPUB processor `_locate_text` only searches within single text nodes.**~~ **FIXED — do not rebuild this.** The v2 render path resolves targets across inline tag boundaries via `documents/epub.py:locate_across_nodes`, wired at `epub_processor.py` phase 1 and phase 4. Verified directly: targets spanning `text → <em> → text`, `<em> → text → <strong> → text`, and `<strong> → text` all resolve. The legacy `_locate_text` still exists but is no longer the v2 path. This entry stayed stale long enough to cost a full wasted investigation cycle — **probe HEAD with a real command before believing any documented gap in this file.**
 
@@ -102,20 +107,30 @@ These were found during an adversarial review. Critical and High bugs were fixed
 ### Run existing tests (no API key needed):
 
 ```bash
-cd half-blood-prince
-pip install -e ".[dev]"
-pytest tests/ -v
+uv venv && uv pip install -e ".[dev]"   # or: pip install -e ".[dev]"
+.venv/bin/python -m pytest tests/ -q
 ```
 
-All 44 tests should pass. They use mocked responses — no real API calls.
+All tests must pass in a plain non-tty shell too (`env -i PATH="$PATH" HOME="$HOME" .venv/bin/python -m pytest -q`). They use mocked/stub providers — no real API calls. Current count: **1,861 tests, all passing** (verify with the command above; this file's counts go stale — trust the run).
+
+### Offline end-to-end smoke (no API key needed):
+
+```bash
+halfblood annotate tests/fixtures/potions_textbook.pdf -o /tmp/out.pdf --provider stub --force
+python -c "import json; r=json.load(open('/tmp/out.pdf.report.json')); print(r['pages_annotated'], r['failed_pages'])"
+```
+
+Every `annotate` run also streams a checkpoint to `<output>.plan.json`; if a run dies partway, rerun with `--resume-from <output>.plan.json` and finished pages are not re-billed. Failed pages are named in `<output>.report.json`.
 
 ### Run the eval harness (needs API key):
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-python eval/eval_harness.py
-python eval/eval_harness.py --list  # just list test cases
+python eval/eval_harness.py --list                                  # just list test cases
+python eval/eval_harness.py --generator-model <gen> --judge-model <judge>
 ```
+
+The generator and judge must be different model families (self-judging is refused unless `--allow-self-judge` is passed).
 
 ### End-to-end test (needs API key + a PDF):
 

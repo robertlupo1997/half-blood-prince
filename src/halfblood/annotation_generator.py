@@ -18,9 +18,10 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass as _dataclass
+from pathlib import Path
 from typing import cast
 
 from halfblood.config import DEFAULT_ANTHROPIC_MODEL as DEFAULT_MODEL
@@ -212,6 +213,7 @@ class AnnotationGenerator:
         self.persona = persona if persona and persona.strip() else DEFAULT_PERSONA
         self.concurrency = concurrency
         self.failed_pages: list[int] = []
+        self.generation_statuses: tuple[PageGenerationStatus, ...] = ()
         self.usage_totals = UsageTotals(
             input_tokens=0,
             output_tokens=0,
@@ -396,6 +398,8 @@ class AnnotationGenerator:
         *,
         concurrency: int | None = None,
         on_page_done: Callable[[int, int], None] | None = None,
+        resume_pages: Mapping[int, AnnotatedPage] | None = None,
+        checkpoint_path: Path | None = None,
     ) -> AnnotationPlan:
         """Generate a full annotation plan for a multi-page document.
 
@@ -418,6 +422,16 @@ class AnnotationGenerator:
             on_page_done: Optional callback invoked after each page is added
                 to the plan. Receives the number of completed pages and the
                 total number of input pages, and runs on the calling thread.
+            resume_pages: Optional map of page number to already-annotated
+                page (from a previous interrupted run's checkpoint). These
+                pages are copied into the plan verbatim — no provider call is
+                made for them — and their INVENTION/WARNING notes still seed
+                ``running_notes`` for the pages that are generated fresh.
+            checkpoint_path: When set, the partial plan is serialized to this
+                path atomically after every page completes (including failed
+                pages, which are recorded in the plan but *excluded* from the
+                checkpoint so a resume retries them). Enables crash-safe
+                long runs via ``--resume-from``.
 
         Returns:
             An :class:`AnnotationPlan` containing an :class:`AnnotatedPage`
@@ -441,6 +455,34 @@ class AnnotationGenerator:
         pages_missing_usage = 0
         statuses: list[PageGenerationStatus] = []
         context_window_chars = 500
+
+        resume_map: dict[int, AnnotatedPage] = dict(resume_pages) if resume_pages else {}
+        if resume_map:
+            for resumed_number in sorted(resume_map):
+                for ann in resume_map[resumed_number].annotations:
+                    if ann.annotation_type in (
+                        AnnotationType.INVENTION,
+                        AnnotationType.WARNING,
+                    ):
+                        running_notes.append(f"(p.{resumed_number}) {ann.content}")
+            del running_notes[:-8]
+
+        def _write_checkpoint() -> None:
+            """Atomically persist the partial plan (failed pages excluded)."""
+            if checkpoint_path is None:
+                return
+            payload = plan.model_dump()
+            failed_so_far = {
+                status.ordinal for status in statuses if status.status == "failed"
+            }
+            payload["pages"] = [
+                page
+                for page in payload["pages"]
+                if page["page_number"] not in failed_so_far
+            ]
+            tmp = Path(str(checkpoint_path) + ".tmp")
+            tmp.write_text(plan.__class__(**payload).model_dump_json(), encoding="utf-8")
+            tmp.replace(checkpoint_path)
 
         def _build_context(i: int) -> str:
             """Build context for a page using its global document index."""
@@ -468,10 +510,16 @@ class AnnotationGenerator:
 
         for wave_start in range(0, len(pages), k):
             wave_pages = pages[wave_start : wave_start + k]
-            wave_tasks = [
-                (page_index, page, _build_context(page_index))
-                for page_index, page in enumerate(wave_pages, start=wave_start)
-            ]
+            wave_tasks = []
+            wave_resumed: list[tuple[int, PageContent, AnnotatedPage]] = []
+            for page_index, page in enumerate(wave_pages, start=wave_start):
+                resumed_page = resume_map.get(page.page_number)
+                if resumed_page is not None:
+                    wave_resumed.append((page_index, page, resumed_page))
+                else:
+                    wave_tasks.append(
+                        (page_index, page, _build_context(page_index))
+                    )
 
             wave_results: list[
                 tuple[
@@ -526,12 +574,58 @@ class AnnotationGenerator:
 
                 wave_results = [slot for slot in slots if slot is not None]
 
+            _PageResult = tuple[
+                list[Annotation],
+                bool,
+                bool,
+                ProviderError | None,
+                GenerationUsage | None,
+            ]
+            merged: list[
+                tuple[int, PageContent, _PageResult | None, AnnotatedPage | None]
+            ] = [
+                (page_index, page, result, None)
+                for page_index, page, result in wave_results
+            ]
+            merged += [
+                (page_index, page, None, resumed_page)
+                for page_index, page, resumed_page in wave_resumed
+            ]
+            merged.sort(key=lambda entry: entry[0])
+
             wave_new_notes: list[str] = []
             for (
                 _page_index,
                 page,
-                (page_annotations, attempted_call, failed, error, page_usage),
-            ) in wave_results:
+                generation_result,
+                resumed_page,
+            ) in merged:
+                if generation_result is None:
+                    assert resumed_page is not None
+                    statuses.append(
+                        PageGenerationStatus(
+                            unit_id=str(page.page_number),
+                            ordinal=page.page_number,
+                            status="resumed",
+                            attempts=0,
+                        )
+                    )
+                    plan.pages.append(resumed_page)
+                    for ann in resumed_page.annotations:
+                        if ann.annotation_type in (
+                            AnnotationType.INVENTION,
+                            AnnotationType.WARNING,
+                        ):
+                            wave_new_notes.append(
+                                f"(p.{page.page_number}) {ann.content}"
+                            )
+                    _write_checkpoint()
+                    if on_page_done is not None:
+                        on_page_done(len(plan.pages), len(pages))
+                    continue
+                page_annotations, attempted_call, failed, error, page_usage = (
+                    generation_result
+                )
                 if attempted_call:
                     attempted += 1
                     if failed:
@@ -591,6 +685,7 @@ class AnnotationGenerator:
                         annotations=page_annotations,
                     )
                 )
+                _write_checkpoint()
                 if on_page_done is not None:
                     on_page_done(len(plan.pages), len(pages))
 
@@ -598,6 +693,7 @@ class AnnotationGenerator:
             del running_notes[:-8]
 
         self.failed_pages = failed_pages
+        self.generation_statuses = tuple(statuses)
         self.usage_totals = UsageTotals(
             input_tokens=total_input_tokens,
             output_tokens=total_output_tokens,

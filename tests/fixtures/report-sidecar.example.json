@@ -1,0 +1,63 @@
+{
+  "report_version": "1.0",
+  "output": "out.pdf",
+  "pages_total": 5,
+  "pages_attempted": 5,
+  "pages_annotated": 3,
+  "total_annotations": 3,
+  "failed_pages": [
+    2,
+    4
+  ],
+  "skipped_pages": [],
+  "page_statuses": [
+    {
+      "page_number": 1,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 2,
+      "status": "failed",
+      "attempts": 1,
+      "error": "simulated --fail-pages failure for page 2"
+    },
+    {
+      "page_number": 3,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 4,
+      "status": "failed",
+      "attempts": 1,
+      "error": "simulated --fail-pages failure for page 4"
+    },
+    {
+      "page_number": 5,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    }
+  ],
+  "render": {
+    "report_version": "1.0",
+    "rendered": [
+      "stub-correction-pg1",
+      "stub-correction-pg3",
+      "stub-correction-pg5"
+    ],
+    "skipped": [],
+    "marks_only": [],
+    "warnings": [],
+    "degradation_flags": [],
+    "output_hashes": [
+      {
+        "role": "annotated_pdf",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ]
+  }
+}

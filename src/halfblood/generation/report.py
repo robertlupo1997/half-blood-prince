@@ -5,7 +5,7 @@ from typing import Literal
 
 from halfblood.generation.errors import ProviderError
 
-PageStatusValue = Literal["success", "failed", "skipped"]
+PageStatusValue = Literal["success", "failed", "skipped", "resumed"]
 
 
 @dataclass(frozen=True)
