@@ -84,6 +84,33 @@ The sidecar is machine-readable: `pages_total`, `pages_attempted`,
 `pages_annotated`, `failed_pages`, `skipped_pages`, and per-page statuses.
 A run that dies mid-book never costs you the pages it already finished.
 
+### 400-page stress test
+
+You can reproduce a real book-scale survival test offline for $0 with
+`scripts/stress_large_book.py` (builds a ~400-page PDF with a real text layer
+from the committed example's public-domain source):
+
+```bash
+# ~410-page input (deterministic given the same PyMuPDF version):
+python scripts/stress_large_book.py --txt examples/src/pg11.txt --out big.pdf --pages 400
+
+# Kill the run mid-book:
+timeout -s KILL 2 halfblood annotate big.pdf -o out.pdf --provider stub --force
+# -> exit 137; NO out.pdf; out.plan.json holds every page finished so far
+#    (261 of 410 in our run).
+
+# Resume from the checkpoint:
+halfblood annotate big.pdf -o out.pdf --provider stub --resume-from out.plan.json --force
+# -> exit 0; out.pdf.report.json shows pages_annotated: 410 with
+#    statuses {resumed: <killed mid-book>, success: <generated after resume>}.
+```
+
+Measured on this tree: full 410-page stub run ~32s; kill at 2s left 261 pages
+in the checkpoint; resume produced 410/410 annotations (261 resumed + 149 new)
+and a rendered artifact. Forced failures stay visible at scale too:
+`--fail-pages 7,13,400` ships the artifact with `failed_pages: [7, 13, 400]`
+in the sidecar and `pages_annotated: 407`.
+
 ## Installation
 
 ```bash
