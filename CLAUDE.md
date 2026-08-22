@@ -90,11 +90,11 @@ These were found during an adversarial review. Critical and High bugs were fixed
 
 11. ~~Retry ownership during the provider transition~~ **RESOLVED.** There is no SDK to retry: all providers go through the direct-httpx seam (`generation/providers/`), and that seam is now the **sole retry owner** (backoff/retry lives there). Do not add a second retry layer anywhere else.
 
-12. ~~No async/concurrent page processing~~ **FIXED.** Pages are generated in concurrent waves via `ThreadPoolExecutor(max_workers=concurrency)` (`annotation_generator.py`, default `concurrency: 3` in `config.py`, tunable via `HALFBLOOD_CONCURRENCY`). Remaining question is rate-limit tuning for very large books, not the absence of concurrency.
+12. ~~Sequential-only page generation~~ **FIXED — concurrency shipped.** Pages are generated in concurrent waves via `ThreadPoolExecutor(max_workers=concurrency)` (`annotation_generator.py`, default `concurrency: 3` in `config.py`, tunable via `HALFBLOOD_CONCURRENCY`). Remaining question is rate-limit tuning for very large books, not the absence of concurrency.
 
 13. **`_search_variants` can match the wrong passage.** If the longest single word in `target_text` appears multiple times on the page, the annotation anchors to the first occurrence, which may be wrong. No disambiguation.
 
-14. ~~Annotation overlap/collision detection~~ **BUILT** (`layout/page_solver.py`): candidate placement runs pairwise conflict detection (`_candidate_conflicts`, conflict-mask pruning) so overlapping margin notes are resolved at layout time rather than drawn on top of each other.
+14. ~~Overlapping margin notes with no layout avoidance~~ **BUILT** (`layout/page_solver.py`): candidate placement runs pairwise conflict detection (`_candidate_conflicts`, conflict-mask pruning) so overlapping margin notes are resolved at layout time rather than drawn on top of each other.
 
 15. ~~**EPUB processor `_locate_text` only searches within single text nodes.**~~ **FIXED — do not rebuild this.** The v2 render path resolves targets across inline tag boundaries via `documents/epub.py:locate_across_nodes`, wired at `epub_processor.py` phase 1 and phase 4. Verified directly: targets spanning `text → <em> → text`, `<em> → text → <strong> → text`, and `<strong> → text` all resolve. The legacy `_locate_text` still exists but is no longer the v2 path. This entry stayed stale long enough to cost a full wasted investigation cycle — **probe HEAD with a real command before believing any documented gap in this file.**
 

@@ -121,6 +121,44 @@ def test_claude_md_states_the_true_retry_story(claude_md: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# CLAUDE.md truth pass (2026-07-27): the same absence-of-refuted-claim pattern
+# used for README above, applied to the five stale CLAUDE.md claims catalogued
+# in HBP-STATE-OX.md ("All 44 tests", no concurrency, collision detection open,
+# Anthropic SDK, native annots). Each asserts a refuted claim stays absent.
+# ---------------------------------------------------------------------------
+
+
+def test_claude_md_does_not_pin_a_stale_test_count(claude_md: str) -> None:
+    """Test counts rot on contact (44 → 1,861); the doc now points at the run."""
+    assert "All 44 tests should pass" not in claude_md
+
+
+def test_claude_md_does_not_claim_pages_run_sequentially(claude_md: str) -> None:
+    """Waves via ThreadPoolExecutor shipped (`concurrency` default 3, config.py)."""
+    assert "No async/concurrent page processing" not in claude_md
+    assert "Pages are processed sequentially" not in claude_md
+    assert "concurrent waves" in claude_md
+
+
+def test_claude_md_does_not_list_collision_detection_as_open(claude_md: str) -> None:
+    """Solver conflict detection is built (layout/page_solver.py _candidate_conflicts)."""
+    assert "Annotation overlap/collision detection." not in claude_md
+    assert "collision avoidance" not in claude_md.split("**BUILT**")[-1]
+
+
+def test_claude_md_does_not_prescribe_an_anthropic_sdk(claude_md: str) -> None:
+    """No vendor SDK exists; the httpx seam replaced the tech-stack table row."""
+    assert "**Anthropic SDK**" not in claude_md
+    assert "anthropic.AsyncAnthropic" not in claude_md
+
+
+def test_claude_md_diagram_names_the_live_render_entry_point(claude_md: str) -> None:
+    """The CLI runs render_plan (vector drawings); native annots are legacy-only."""
+    assert "render_plan()" in claude_md
+    assert "_mark_target() adds native PDF annotations" not in claude_md
+
+
+# ---------------------------------------------------------------------------
 # The documented commands actually exist
 # ---------------------------------------------------------------------------
 
