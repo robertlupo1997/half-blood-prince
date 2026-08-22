@@ -16,6 +16,10 @@ from __future__ import annotations
 
 import re
 import threading
+from typing import Any, get_args, get_origin
+
+from pydantic import BaseModel
+from pydantic_core import PydanticUndefined
 
 from halfblood.generation.errors import ProviderError, StructuredOutputError
 from halfblood.generation.providers.base import (
@@ -89,7 +93,29 @@ class StubProvider:
             supports_strict_json_schema=True,
         )
 
+    def _structured_neutral_response(
+        self, request: GenerationRequest
+    ) -> GenerationResult:
+        model = request.output_model
+        parsed = model(**_neutral_payload(model))
+        with self._lock:
+            self.call_count += 1
+        return GenerationResult(
+            parsed=parsed,
+            request_id=f"stub-req-{model.__name__.lower()}-{self.call_count}",
+            finish_reason="stop",
+            usage=GenerationUsage(input_tokens=200, output_tokens=120),
+            latency_seconds=0.001,
+            structured_output_mode="tool",
+        )
+
     def complete(self, request: GenerationRequest) -> GenerationResult:
+        if request.output_model is not RecordAnnotations:
+            # Judge-style structured request (e.g. the eval harness's
+            # record_scores): fabricate a deterministic neutral payload so the
+            # full generator->judge loop runs offline. Scores carry no quality
+            # signal and must never be published as one.
+            return self._structured_neutral_response(request)
         page_number = page_number_from_request(request)
         if page_number is None:
             raise ProviderError("stub provider: no PAGE NUMBER line found in prompt")
@@ -115,6 +141,38 @@ class StubProvider:
             latency_seconds=0.001,
             structured_output_mode="tool",
         )
+
+
+def _neutral_payload(model: type[BaseModel]) -> dict[str, Any]:
+    """Build a deterministic mid-range payload for a structured output model.
+
+    Int fields get 3, str fields get an explicit not-a-quality-signal note,
+    nested models recurse. Anything else without a default is refused loudly
+    rather than silently fabricated.
+    """
+    payload: dict[str, Any] = {}
+    for name, field_info in model.model_fields.items():
+        annotation = field_info.annotation
+        args = get_args(annotation)
+        inner = next((a for a in args if a is not type(None)), annotation)
+        origin = get_origin(inner)
+        if isinstance(inner, type) and issubclass(inner, BaseModel):
+            payload[name] = _neutral_payload(inner)
+        elif inner is int:
+            payload[name] = 3
+        elif inner is str or origin in (list, tuple):
+            payload[name] = (
+                "Deterministic stub judge output: neutral score with no quality signal."
+                if inner is str
+                else []
+            )
+        elif field_info.default is not PydanticUndefined:
+            continue
+        else:
+            raise ProviderError(
+                f"stub provider: cannot fabricate field {model.__name__}.{name}"
+            )
+    return payload
 
 
 class FailPagesProvider:

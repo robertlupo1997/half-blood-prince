@@ -290,6 +290,27 @@ same Anthropic preset and the harness exits with an error; choose a distinct gen
 `--allow-self-judge` permits identical settings for development only. The judge runs over the
 same httpx provider seam as generation, so no vendor SDK is involved on either path.
 
+**Offline smoke run (no credentials, no network):** the built-in `stub` provider works as
+both generator and judge, so the full harness wiring can be verified before any spend:
+
+```bash
+python eval/eval_harness.py --provider stub --judge-provider stub \
+    --allow-self-judge --json-out /tmp/eval-stub.json   # exits 1: neutral stub scores fail thresholds on purpose
+```
+
+Stub scores are deterministic mid-range noise with an explicit "no quality signal"
+justification; they are a wiring check only and must never be read as a quality result.
+
+With credentials, the paid run is the same command with real providers — generate with one
+family, judge with an independent frontier model, then commit the JSON next to this repo's
+committed example output:
+
+```bash
+python eval/eval_harness.py --provider <gen-provider> --model <gen-model> \
+    --judge-provider <judge-provider> --judge-model <judge-model> \
+    --json-out eval/results-gen-<model>.json
+```
+
 `HALFBLOOD_EVAL_MODEL` is deprecated but remains supported for one minor release as a
 generator-only model setting. An explicit `--model` takes precedence, and the variable never
 configures the judge.
