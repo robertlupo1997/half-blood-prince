@@ -177,6 +177,28 @@ def test_offline_no_api_key_in_output(
     assert _SENTINEL_KEY not in result.output
 
 
+def test_offline_without_api_key_still_exits_zero(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--offline is a config check, not a credential check: no key -> exit 0.
+
+    The default provider's key env var is missing, so a plain (online) doctor
+    would fail. --offline must still resolve and print the config, and must
+    say plainly that the key is missing rather than pretending it is set.
+    """
+    monkeypatch.delenv(_FAKE_API_KEY_ENV, raising=False)
+    result = runner.invoke(
+        cli_module.main,
+        ["providers", "doctor", "--offline", "--provider", "anthropic"],
+        env={},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "NOT SET" in result.output
+    assert _FAKE_API_KEY_ENV in result.output
+    assert "live calls will fail" in result.output
+
+
 def test_offline_missing_config_exits_nonzero_no_traceback(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:

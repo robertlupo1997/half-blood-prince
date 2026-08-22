@@ -1278,12 +1278,19 @@ def doctor(provider_name: str | None, model_name: str | None, offline: bool) -> 
         cli_overrides["model"] = model_name
 
     try:
-        config = resolve_generation_config(cli_overrides or None)
+        # --offline prints the resolved config only, so a missing API key is
+        # reported as part of that output rather than aborting the check.
+        config = resolve_generation_config(
+            cli_overrides or None, require_api_key=not offline
+        )
     except ProviderConfigurationError as exc:
         raise click.ClickException(str(exc)) from exc
 
     click.echo(config.safe_repr())
     if offline:
+        key_env = config.api_key_env
+        if key_env is not None and not os.environ.get(key_env):
+            click.echo(f"api_key: NOT SET ({key_env} missing; live calls will fail)")
         return
 
     api_key = os.environ.get(config.api_key_env) if config.api_key_env else None

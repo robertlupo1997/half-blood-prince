@@ -326,6 +326,7 @@ def resolve_generation_config(
     environ: Mapping[str, str] | None = None,
     project_config_path: Path | None = None,
     user_config_path: Path | None = None,
+    require_api_key: bool = True,
 ) -> ResolvedConfig:
     """Resolve provider settings or raise for any unsafe/unresolvable state."""
     cli = cli_overrides or {}
@@ -410,7 +411,11 @@ def resolve_generation_config(
     else:
         api_key_env = _require_nonempty_string(api_key_setting[0], "api_key_env")
         sources["api_key_env"] = api_key_setting[1]
-    if api_key_env is not None and not environment.get(api_key_env):
+    if (
+        require_api_key
+        and api_key_env is not None
+        and not environment.get(api_key_env)
+    ):
         raise ProviderConfigurationError(
             f"Environment variable {api_key_env} is required for provider {provider}"
         )

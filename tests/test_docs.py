@@ -238,6 +238,56 @@ def test_every_font_key_the_readme_advertises_actually_resolves(readme: str) -> 
         assert resolved, f"README advertises --font {key}, which does not resolve"
 
 
+def test_readme_example_artifacts_exist() -> None:
+    """Every example artifact the README's examples table cites must exist.
+
+    Falsifiability guard: the README presents `examples/` as real committed
+    output produced by this tree. If an artifact is removed or renamed without
+    updating the README, this fails — and if the README stops citing them,
+    that is a doc regression too.
+    """
+    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    cited = [
+        "examples/hbp-example.pdf",
+        "examples/hbp-example.pdf.report.json",
+        "examples/hbp-example.epub",
+        "examples/hbp-example.epub.report.json",
+        "examples/screenshot.png",
+        "scripts/build_example_book.py",
+    ]
+    for rel in cited:
+        assert rel in readme, f"README no longer cites {rel}"
+        assert (_ROOT / rel).is_file(), f"README cites {rel} but it does not exist"
+    assert "--provider stub" in readme
+    assert "--resume-from" in readme
+
+
+def test_committed_example_sidecars_report_full_success() -> None:
+    """The committed sidecars must match what the README claims about them.
+
+    The README table asserts 78/78 annotated pages with no failures on the PDF
+    and a skipped cover page on the EPUB. If the pipeline changes and the
+    artifacts are regenerated differently, this test forces the README table
+    to be updated in the same commit.
+    """
+    import json
+
+    pdf_report = json.loads(
+        (_ROOT / "examples" / "hbp-example.pdf.report.json").read_text(encoding="utf-8")
+    )
+    assert pdf_report["pages_total"] == 78
+    assert pdf_report["pages_annotated"] == 78
+    assert pdf_report["failed_pages"] == []
+
+    epub_report = json.loads(
+        (_ROOT / "examples" / "hbp-example.epub.report.json").read_text(encoding="utf-8")
+    )
+    assert epub_report["pages_total"] == 13
+    assert epub_report["pages_annotated"] == 12
+    assert epub_report["skipped_pages"] == [1]
+    assert epub_report["failed_pages"] == []
+
+
 def test_readme_does_not_reference_models_py_as_a_file_path(readme: str) -> None:
     """`models` is a package; the type lives in models/annotations.py.
 

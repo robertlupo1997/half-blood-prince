@@ -36,6 +36,54 @@ halfblood annotate cookbook.pdf -o annotated.pdf \
 - A small hand-drawn connector arrow linking the note to the marked passage when it sits in the margin.
 - Notes that vary in confidence: a certain aside is bold and opaque, a speculative one is fainter, as if dashed off less certainly.
 
+## Committed example output
+
+`examples/` contains real output produced by this tree, end to end:
+
+![Annotated page from Alice's Adventures in Wonderland](examples/screenshot.png)
+
+| Artifact | What it is |
+| --- | --- |
+| `examples/hbp-example.pdf` | 78-page annotated PDF of *Alice's Adventures in Wonderland* (Project Gutenberg ebook #11), one annotation per page |
+| `examples/hbp-example.pdf.report.json` | its failure sidecar: `pages_annotated: 78`, `failed_pages: []` |
+| `examples/hbp-example.epub` | the EPUB twin, annotated (12/13 pages; page 1 is a near-blank cover, reported as `skipped`) |
+| `examples/hbp-example.epub.report.json` | its failure sidecar |
+| `examples/screenshot.png` | page 6 of the annotated PDF |
+| `examples/src/` | the unannotated source book (typeset from Gutenberg text + the Gutenberg EPUB) |
+
+**Honesty note:** these examples were rendered with the built-in deterministic
+stub provider (`--provider stub`), so the note text is fixed ("Stub
+correction — page N") — they demonstrate the *pipeline* (text anchoring,
+collision-aware margin layout, hand-drawn ink rendering, sidecar reporting),
+not model quality. Regenerate them yourself:
+
+```bash
+python scripts/build_example_book.py   # rebuilds examples/src/ from Project Gutenberg
+halfblood annotate examples/src/alice.pdf  -o examples/hbp-example.pdf  --provider stub --force
+halfblood annotate examples/src/alice.epub -o examples/hbp-example.epub --provider stub --force
+```
+
+## Crash safety: checkpoints, resume, and the failure sidecar
+
+Every `annotate` run streams a checkpoint to `<output>.plan.json` after each
+page completes, and writes a failure sidecar to `<output>.report.json` on
+every exit — success, failure, or total failure:
+
+```bash
+# A run that fails on pages 1-5 (offline stub provider, no API key needed):
+halfblood annotate book.pdf -o out.pdf --provider stub --fail-pages 1,2,3,4,5
+# -> exits 1, NO out.pdf, but out.pdf.report.json names the failed pages
+#    and out.plan.json holds the finished pages.
+
+# Resume: retry only what failed, keep what already succeeded:
+halfblood annotate book.pdf -o out.pdf --provider stub --resume-from out.plan.json --force
+# -> exit 0; out.pdf.report.json shows resumed pages + newly generated ones.
+```
+
+The sidecar is machine-readable: `pages_total`, `pages_attempted`,
+`pages_annotated`, `failed_pages`, `skipped_pages`, and per-page statuses.
+A run that dies mid-book never costs you the pages it already finished.
+
 ## Installation
 
 ```bash
