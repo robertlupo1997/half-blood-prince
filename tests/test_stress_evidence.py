@@ -63,20 +63,28 @@ def test_every_file_reference_in_summary_exists() -> None:
     walk(s)
 
 
-def test_provenance_names_the_sha_that_ran() -> None:
-    """The recorded code sha must name the commit that produced the evidence.
+def test_provenance_names_the_code_that_ran() -> None:
+    """The evidence must describe the stress script that is in the tree now.
 
-    Checkable at ANY future HEAD (a HEAD-pinning assertion would invalidate
-    itself on the very next commit): the sha must be a real ancestor of
-    HEAD, distinct from the non-reproducing base, AND the last commit that
-    touched scripts/stress_400.py as of that sha -- i.e. it names exactly
-    the code version that produced this evidence.
+    Checkable at ANY future HEAD, and -- unlike an ancestry assertion --
+    survives a squash merge. The earlier version of this guard required
+    ``executed_code_sha`` to be an ancestor of HEAD. Squash-merging the branch
+    that produced the evidence made that permanently false while the evidence
+    itself stayed valid, so ancestry was the wrong thing to assert.
+
+    What is asserted instead is content: the blob of scripts/stress_400.py
+    recorded at execution must equal the blob at HEAD. If the script changes
+    without a fresh run, this fails -- which is the point. The commit-level
+    check still runs whenever the recorded commit is reachable (it is kept
+    alive by ``evidence_ref``), and is skipped in a shallow clone rather than
+    reported as a broken claim.
     """
     import subprocess
 
     s = _summary()
     sha = s["executed_code_sha"]
     base = s["base_commit_before_fixes"]
+    recorded_blob = s["executed_code_blob"]
     repo = EVIDENCE.parents[1]
 
     def git(*args: str) -> subprocess.CompletedProcess[str]:
@@ -85,15 +93,20 @@ def test_provenance_names_the_sha_that_ran() -> None:
         )
 
     assert len(sha) >= 7 and sha != base  # d28f625 cannot run the primary path
-    assert git("cat-file", "-e", f"{sha}^{{commit}}").returncode == 0
-    assert git("merge-base", "--is-ancestor", sha, "HEAD").returncode == 0
-    last_touch = git(
-        "log", "-1", "--format=%h", sha, "--", "scripts/stress_400.py",
-    ).stdout.strip()
-    assert last_touch == sha, (
-        f"executed_code_sha {sha} is not the last commit touching "
-        f"scripts/stress_400.py (that is {last_touch!r})"
+
+    head_blob = git("rev-parse", "HEAD:scripts/stress_400.py").stdout.strip()
+    assert head_blob == recorded_blob, (
+        f"scripts/stress_400.py at HEAD is blob {head_blob!r}, but the evidence "
+        f"was produced by blob {recorded_blob!r}. Re-run the stress evidence or "
+        f"revert the script."
     )
+
+    if git("cat-file", "-e", f"{sha}^{{commit}}").returncode == 0:
+        at_sha = git("rev-parse", f"{sha}:scripts/stress_400.py").stdout.strip()
+        assert at_sha == recorded_blob, (
+            f"executed_code_sha {sha} carries blob {at_sha!r}, not the recorded "
+            f"{recorded_blob!r} -- the sha and the blob disagree about what ran."
+        )
 
 
 def test_crash_resume_numbers_match_sidecar() -> None:
