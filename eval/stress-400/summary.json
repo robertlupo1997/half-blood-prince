@@ -1,7 +1,9 @@
 {
   "what": "scripts/stress_400.py executed for real at --pages 400 against a freshly downloaded public-domain book (Project Gutenberg #2701, Moby Dick) typeset to a 562-page PDF with a real text layer. The provider is the built-in deterministic stub: this evidence proves pipeline MECHANICS on a book-length document -- mid-run crash survival via the streaming checkpoint, resume without repeating provider calls, deep mid-book loss recovery, visible per-page failures -- NOT model output quality.",
   "executed_at_utc": "2026-08-23 ~15:09-15:11",
-    "executed_code_sha": "9b6d850",
+  "executed_code_sha": "9b6d850",
+  "executed_code_blob": "192c7488d92c5ee270e15f9634d5fa892a5d76a5",
+  "evidence_ref": "refs/heads/evidence/stress-400",
   "provenance_note": "The run EXECUTED the fixed scripts/stress_400.py (kill-trigger / truncated-resume-snapshot fixes), which was uncommitted working-tree code at run time and was committed as 9b6d850 together with this evidence. The pre-fix script at base_commit_before_fixes CANNOT reproduce this run: its primary path never executes its real-SIGKILL scenario. Reproduce from 9b6d850 or later.",
   "base_commit_before_fixes": "d28f625946d3a6361b909b2bd3bc345cf937d7ef",
   "script": "scripts/stress_400.py",
