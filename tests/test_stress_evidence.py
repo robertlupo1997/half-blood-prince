@@ -43,6 +43,42 @@ def test_run_verdict_was_pass() -> None:
     assert "killed=True exit=-9" in console
 
 
+def test_every_file_reference_in_summary_exists() -> None:
+    s = _summary()
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if isinstance(value, str) and (
+                    key.endswith("_file") or "sidecar_file" in key
+                ):
+                    path = Path(__file__).resolve().parents[1] / value
+                    assert path.is_file(), f"summary references missing file: {value}"
+                else:
+                    walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(s)
+
+
+def test_provenance_names_the_sha_that_ran() -> None:
+    s = _summary()
+    sha = s["executed_code_sha"]
+    # The recorded code sha must be a real commit, and the pre-fix base
+    # must be distinct: d28f625 cannot run the primary path at all.
+    assert len(sha) >= 7 and sha != s["base_commit_before_fixes"]
+    import subprocess
+
+    top = subprocess.run(
+        ["git", "-C", str(EVIDENCE.parents[1]), "rev-parse", "--short=7", "HEAD"],
+        capture_output=True, text=True,
+    )
+    assert top.returncode == 0
+    assert top.stdout.strip() == sha
+
+
 def test_crash_resume_numbers_match_sidecar() -> None:
     s = _summary()["scenario_A_real_crash_and_resume"]
     r = _sidecar("stress-crash-resume.report.json")
