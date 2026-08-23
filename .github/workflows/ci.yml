@@ -15,6 +15,12 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          # tests/test_stress_evidence.py resolves the commit named in the
+          # stress-run provenance and walks history to it. The default
+          # fetch-depth of 1 leaves that commit out of the clone, so the guard
+          # fails in CI while passing in every full checkout.
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}

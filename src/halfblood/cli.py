@@ -44,7 +44,9 @@ from halfblood.document_processor import DocumentProcessor, PageContent
 from halfblood.epub_processor import EpubProcessor
 from halfblood.generation.errors import ProviderConfigurationError, ProviderError
 from halfblood.generation.providers.base import GenerationRequest, LLMProvider
+from halfblood.generation.providers.stub import FailPagesProvider
 from halfblood.generation.registry import build_provider
+from halfblood.generation.run_report import build_run_report, write_run_report
 from halfblood.generation.schema import generate_annotation_schema
 from halfblood.ink.composer import HandwritingUnavailable
 from halfblood.models import AnnotatedPage, AnnotationPlan
@@ -110,6 +112,7 @@ def _provider_options(command: _CommandFunction) -> _CommandFunction:
                     "ollama",
                     "lmstudio",
                     "openai-compatible",
+                    "stub",
                 )
             ),
             default=None,
@@ -508,31 +511,67 @@ def _refuse_existing_output(
         )
 
 
+def _checkpoint_path_for(output_file: Path) -> Path:
+    """Return the streaming checkpoint-plan path for an artifact path.
+
+    ``out.pdf`` checkpoints to ``out.plan.json`` — the file a later run can
+    pass to ``--resume-from`` after an interruption.
+    """
+    return output_file.with_name(output_file.stem + ".plan.json")
+
+
+def _load_resume_pages(resume_from: Path) -> dict[int, AnnotatedPage]:
+    """Load a partial plan for ``--resume-from``; page number -> page."""
+    try:
+        resume_plan = AnnotationPlan.model_validate_json(
+            resume_from.read_text(encoding="utf-8")
+        )
+    except ValueError as exc:
+        raise click.ClickException(
+            f"--resume-from {resume_from} is not a valid annotation plan "
+            f"JSON: {exc}"
+        ) from exc
+    return {page.page_number: page for page in resume_plan.pages}
+
+
 def _generate_with_progress(
     generator: AnnotationGenerator,
     pages: list[PageContent],
     max_annotations_per_page: int,
     on_page_done: Callable[[int, int], None],
+    resume_pages: dict[int, AnnotatedPage] | None = None,
+    checkpoint_path: Path | None = None,
 ) -> AnnotationPlan:
     """Generate a plan with callbacks when the generator supports them.
 
     The signature check preserves compatibility with third-party generator
-    doubles written against the older two-argument method.
+    doubles written against the older two-argument method: ``resume_pages``
+    and ``checkpoint_path`` are only forwarded when the target accepts them.
     """
     generate = generator.generate_for_document
     parameters = inspect.signature(generate).parameters.values()
-    supports_callback = any(
-        parameter.name == "on_page_done"
-        or parameter.kind is inspect.Parameter.VAR_KEYWORD
-        for parameter in parameters
+    names = {parameter.name for parameter in parameters}
+    has_var_kw = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters
     )
-    if supports_callback:
-        return generate(
-            pages,
-            max_annotations_per_page=max_annotations_per_page,
-            on_page_done=on_page_done,
-        )
-    return generate(pages, max_annotations_per_page=max_annotations_per_page)
+
+    def _supports(parameter_name: str) -> bool:
+        return parameter_name in names or has_var_kw
+
+    kwargs: dict[str, Any] = {"max_annotations_per_page": max_annotations_per_page}
+    if _supports("on_page_done"):
+        kwargs["on_page_done"] = on_page_done
+    if resume_pages and _supports("resume_pages"):
+        kwargs["resume_pages"] = resume_pages
+    if checkpoint_path is not None and _supports("checkpoint_path"):
+        kwargs["checkpoint_path"] = checkpoint_path
+    return generate(pages, **kwargs)
+
+
+def _generation_statuses(generator: object) -> tuple[Any, ...]:
+    """Return retained per-page statuses; tolerant of legacy test doubles."""
+    statuses = getattr(generator, "generation_statuses", None)
+    return tuple(statuses) if statuses else ()
 
 
 def _print_usage_line(generator: object, console: Console) -> None:
@@ -652,6 +691,27 @@ def main() -> None:
     ),
 )
 @click.option("--force", is_flag=True, help="Overwrite an existing output file.")
+@click.option(
+    "--fail-pages",
+    default=None,
+    metavar="N,N",
+    help=(
+        "Simulate a provider failure on these page numbers (e.g. '7,13'). "
+        "Testing knob for the report sidecar; typically used with --provider stub."
+    ),
+)
+@click.option(
+    "--resume-from",
+    "resume_from",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Resume an interrupted run: skip the pages already annotated in this "
+        "partial annotation-plan JSON and generate only the missing ones. "
+        "Every annotate run streams its partial plan to <output>.plan.json "
+        "while it works, so after a crash you can resume from that file."
+    ),
+)
 @_provider_options
 def annotate(
     input_file: Path,
@@ -666,6 +726,8 @@ def annotate(
     dry_run: bool,
     annotate_boilerplate: bool,
     force: bool,
+    fail_pages: str | None,
+    resume_from: Path | None,
     provider: str | None,
     model: str | None,
     base_url: str | None,
@@ -721,6 +783,18 @@ def annotate(
         max_per_page=max_per_page,
         font=font,
     )
+    if fail_pages:
+        try:
+            fail_pages_set = frozenset(
+                int(part) for part in fail_pages.split(",") if part.strip()
+            )
+        except ValueError as exc:
+            raise click.ClickException(
+                f"--fail-pages must be a comma-separated list of integers: {exc}"
+            ) from exc
+        if not fail_pages_set:
+            raise click.ClickException("--fail-pages parsed to an empty page set")
+        provider_obj = FailPagesProvider(provider_obj, fail_pages_set)
     effective_font = config.font
     if input_file.suffix.lower() == ".epub" and effective_font is not None:
         console.print(
@@ -751,6 +825,9 @@ def annotate(
         _all_sources.append(_cli_font_source)
     if font_path is not None:
         _all_sources.append(font_path)
+    if resume_from is not None:
+        _all_sources.append(resume_from)
+    checkpoint_path = _checkpoint_path_for(output_file)
     _refuse_existing_output(output_file, force, source_paths=tuple(_all_sources))
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -792,6 +869,8 @@ def annotate(
         _require_text_layer(selected)
 
         # Filter boilerplate sections (unless overridden)
+        pages_selected = len(selected)
+        boilerplate_skipped: list[int] = []
         if not annotate_boilerplate:
             from halfblood.boilerplate import classify
 
@@ -806,12 +885,40 @@ def annotate(
                     )
                 else:
                     selected = [p for p in selected if p not in bp_pages]
+                    boilerplate_skipped = list(bp_nums)
                     console.print(
                         f"Skipped {len(bp_pages)} boilerplate section(s): "
                         + ", ".join(str(n) for n in bp_nums)
                     )
 
         # Generate
+        resume_pages: dict[int, AnnotatedPage] | None = None
+        if resume_from is not None:
+            loaded = _load_resume_pages(resume_from)
+            selected_numbers = {page.page_number for page in selected}
+            ignored = sorted(set(loaded) - selected_numbers)
+            if ignored:
+                console.print(
+                    f"[yellow]Warning:[/yellow] {len(ignored)} page(s) in "
+                    f"{resume_from} are outside the selected range and will be "
+                    f"regenerated: {ignored}"
+                )
+            resume_pages = {
+                number: page
+                for number, page in loaded.items()
+                if number in selected_numbers
+            }
+            if resume_pages:
+                console.print(
+                    f"[cyan]Resuming:[/cyan] {len(resume_pages)} page(s) already "
+                    f"annotated in {resume_from}; skipping them."
+                )
+            if not resume_pages:
+                console.print(
+                    f"[yellow]Nothing to resume:[/yellow] no page in {resume_from} "
+                    "matches the selection; generating everything."
+                )
+                resume_pages = None
         gen_task = progress.add_task("Generating annotations...", total=len(selected))
         try:
             plan = _generate_with_progress(
@@ -821,19 +928,51 @@ def annotate(
                 lambda done, _total: progress.update(
                     gen_task, completed=done
                 ),
+                resume_pages=resume_pages,
+                checkpoint_path=checkpoint_path,
             )
         except (AllPagesFailedError, ProviderError) as exc:
+            if checkpoint_path.exists():
+                console.print(
+                    f"[yellow]Checkpoint kept:[/yellow] {checkpoint_path} — "
+                    f"rerun with --resume-from {checkpoint_path} to continue "
+                    "from the pages that already finished."
+                )
+            if _generation_statuses(generator):
+                sidecar = write_run_report(
+                    build_run_report(
+                        output_file=output_file,
+                        plan=None,
+                        statuses=_generation_statuses(generator),
+                        boilerplate_pages=boilerplate_skipped,
+                        pages_selected=pages_selected,
+                    ),
+                    output_file,
+                )
+                console.print(f"Run report -> [cyan]{sidecar}[/cyan]")
             raise click.ClickException(str(exc)) from exc
         progress.update(gen_task, completed=len(selected))
         _print_usage_line(generator, console)
 
         if dry_run:
             output_file.write_text(plan.model_dump_json(), encoding="utf-8")
+            sidecar = write_run_report(
+                build_run_report(
+                    output_file=output_file,
+                    plan=plan,
+                    statuses=_generation_statuses(generator),
+                    boilerplate_pages=boilerplate_skipped,
+                    pages_selected=pages_selected,
+                ),
+                output_file,
+            )
+            console.print(f"Run report -> [cyan]{sidecar}[/cyan]")
             console.print(
                 f"[bold green]Done.[/bold green] {plan.total_annotations} annotations "
                 f"across {len(plan.pages)} pages. "
                 f"Dry run — no artifact rendered -> [cyan]{output_file}[/cyan]"
             )
+            checkpoint_path.unlink(missing_ok=True)
             return
 
         # Render — both DocumentProcessor and EpubProcessor define render_plan.
@@ -846,6 +985,21 @@ def annotate(
         v2_plan = migrate_v1_to_v2(plan.model_dump())
         report = processor.render_plan(str(input_file), v2_plan, str(output_file))
         progress.update(render_task, completed=1)
+
+    render_dump = report if report is not None else None
+
+    sidecar = write_run_report(
+        build_run_report(
+            output_file=output_file,
+            plan=plan,
+            statuses=_generation_statuses(generator),
+            render_report=render_dump,
+            boilerplate_pages=boilerplate_skipped,
+            pages_selected=pages_selected,
+        ),
+        output_file,
+    )
+    console.print(f"Run report -> [cyan]{sidecar}[/cyan]")
 
     if report is not None:
         summary = f"Rendered {report.rendered_count} / Skipped {report.skipped_count}"
@@ -863,6 +1017,7 @@ def annotate(
         f"[bold green]Done.[/bold green] {plan.total_annotations} annotations "
         f"across {len(plan.pages)} pages -> [cyan]{output_file}[/cyan]"
     )
+    checkpoint_path.unlink(missing_ok=True)
 
 
 @main.command()
@@ -1132,12 +1287,19 @@ def doctor(provider_name: str | None, model_name: str | None, offline: bool) -> 
         cli_overrides["model"] = model_name
 
     try:
-        config = resolve_generation_config(cli_overrides or None)
+        # --offline prints the resolved config only, so a missing API key is
+        # reported as part of that output rather than aborting the check.
+        config = resolve_generation_config(
+            cli_overrides or None, require_api_key=not offline
+        )
     except ProviderConfigurationError as exc:
         raise click.ClickException(str(exc)) from exc
 
     click.echo(config.safe_repr())
     if offline:
+        key_env = config.api_key_env
+        if key_env is not None and not os.environ.get(key_env):
+            click.echo(f"api_key: NOT SET ({key_env} missing; live calls will fail)")
         return
 
     api_key = os.environ.get(config.api_key_env) if config.api_key_env else None

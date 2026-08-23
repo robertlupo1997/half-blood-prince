@@ -121,6 +121,44 @@ def test_claude_md_states_the_true_retry_story(claude_md: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# CLAUDE.md truth pass (2026-07-27): the same absence-of-refuted-claim pattern
+# used for README above, applied to the five stale CLAUDE.md claims catalogued
+# in HBP-STATE-OX.md ("All 44 tests", no concurrency, collision detection open,
+# Anthropic SDK, native annots). Each asserts a refuted claim stays absent.
+# ---------------------------------------------------------------------------
+
+
+def test_claude_md_does_not_pin_a_stale_test_count(claude_md: str) -> None:
+    """Test counts rot on contact (44 → 1,861); the doc now points at the run."""
+    assert "All 44 tests should pass" not in claude_md
+
+
+def test_claude_md_does_not_claim_pages_run_sequentially(claude_md: str) -> None:
+    """Waves via ThreadPoolExecutor shipped (`concurrency` default 3, config.py)."""
+    assert "No async/concurrent page processing" not in claude_md
+    assert "Pages are processed sequentially" not in claude_md
+    assert "concurrent waves" in claude_md
+
+
+def test_claude_md_does_not_list_collision_detection_as_open(claude_md: str) -> None:
+    """Solver conflict detection is built (layout/page_solver.py _candidate_conflicts)."""
+    assert "Annotation overlap/collision detection." not in claude_md
+    assert "collision avoidance" not in claude_md.split("**BUILT**")[-1]
+
+
+def test_claude_md_does_not_prescribe_an_anthropic_sdk(claude_md: str) -> None:
+    """No vendor SDK exists; the httpx seam replaced the tech-stack table row."""
+    assert "**Anthropic SDK**" not in claude_md
+    assert "anthropic.AsyncAnthropic" not in claude_md
+
+
+def test_claude_md_diagram_names_the_live_render_entry_point(claude_md: str) -> None:
+    """The CLI runs render_plan (vector drawings); native annots are legacy-only."""
+    assert "render_plan()" in claude_md
+    assert "_mark_target() adds native PDF annotations" not in claude_md
+
+
+# ---------------------------------------------------------------------------
 # The documented commands actually exist
 # ---------------------------------------------------------------------------
 
@@ -198,6 +236,56 @@ def test_every_font_key_the_readme_advertises_actually_resolves(readme: str) -> 
     for key in keys:
         resolved = _resolve_font_option(key)
         assert resolved, f"README advertises --font {key}, which does not resolve"
+
+
+def test_readme_example_artifacts_exist() -> None:
+    """Every example artifact the README's examples table cites must exist.
+
+    Falsifiability guard: the README presents `examples/` as real committed
+    output produced by this tree. If an artifact is removed or renamed without
+    updating the README, this fails — and if the README stops citing them,
+    that is a doc regression too.
+    """
+    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    cited = [
+        "examples/hbp-example.pdf",
+        "examples/hbp-example.pdf.report.json",
+        "examples/hbp-example.epub",
+        "examples/hbp-example.epub.report.json",
+        "examples/screenshot.png",
+        "scripts/build_example_book.py",
+    ]
+    for rel in cited:
+        assert rel in readme, f"README no longer cites {rel}"
+        assert (_ROOT / rel).is_file(), f"README cites {rel} but it does not exist"
+    assert "--provider stub" in readme
+    assert "--resume-from" in readme
+
+
+def test_committed_example_sidecars_report_full_success() -> None:
+    """The committed sidecars must match what the README claims about them.
+
+    The README table asserts 78/78 annotated pages with no failures on the PDF
+    and a skipped cover page on the EPUB. If the pipeline changes and the
+    artifacts are regenerated differently, this test forces the README table
+    to be updated in the same commit.
+    """
+    import json
+
+    pdf_report = json.loads(
+        (_ROOT / "examples" / "hbp-example.pdf.report.json").read_text(encoding="utf-8")
+    )
+    assert pdf_report["pages_total"] == 78
+    assert pdf_report["pages_annotated"] == 78
+    assert pdf_report["failed_pages"] == []
+
+    epub_report = json.loads(
+        (_ROOT / "examples" / "hbp-example.epub.report.json").read_text(encoding="utf-8")
+    )
+    assert epub_report["pages_total"] == 13
+    assert epub_report["pages_annotated"] == 12
+    assert epub_report["skipped_pages"] == [1]
+    assert epub_report["failed_pages"] == []
 
 
 def test_readme_does_not_reference_models_py_as_a_file_path(readme: str) -> None:

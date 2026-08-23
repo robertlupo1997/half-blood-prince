@@ -36,6 +36,81 @@ halfblood annotate cookbook.pdf -o annotated.pdf \
 - A small hand-drawn connector arrow linking the note to the marked passage when it sits in the margin.
 - Notes that vary in confidence: a certain aside is bold and opaque, a speculative one is fainter, as if dashed off less certainly.
 
+## Committed example output
+
+`examples/` contains real output produced by this tree, end to end:
+
+![Annotated page from Alice's Adventures in Wonderland](examples/screenshot.png)
+
+| Artifact | What it is |
+| --- | --- |
+| `examples/hbp-example.pdf` | 78-page annotated PDF of *Alice's Adventures in Wonderland* (Project Gutenberg ebook #11), one annotation per page |
+| `examples/hbp-example.pdf.report.json` | its failure sidecar: `pages_annotated: 78`, `failed_pages: []` |
+| `examples/hbp-example.epub` | the EPUB twin, annotated (12/13 pages; page 1 is a near-blank cover, reported as `skipped`) |
+| `examples/hbp-example.epub.report.json` | its failure sidecar |
+| `examples/screenshot.png` | page 6 of the annotated PDF |
+| `examples/src/` | the unannotated source book (typeset from Gutenberg text + the Gutenberg EPUB) |
+
+**Honesty note:** these examples were rendered with the built-in deterministic
+stub provider (`--provider stub`), so the note text is fixed ("Stub
+correction — page N") — they demonstrate the *pipeline* (text anchoring,
+collision-aware margin layout, hand-drawn ink rendering, sidecar reporting),
+not model quality. Regenerate them yourself:
+
+```bash
+python scripts/build_example_book.py   # rebuilds examples/src/ from Project Gutenberg
+halfblood annotate examples/src/alice.pdf  -o examples/hbp-example.pdf  --provider stub --force
+halfblood annotate examples/src/alice.epub -o examples/hbp-example.epub --provider stub --force
+```
+
+## Crash safety: checkpoints, resume, and the failure sidecar
+
+Every `annotate` run streams a checkpoint to `<output>.plan.json` after each
+page completes, and writes a failure sidecar to `<output>.report.json` on
+every exit — success, failure, or total failure:
+
+```bash
+# A run that fails on pages 1-5 (offline stub provider, no API key needed):
+halfblood annotate book.pdf -o out.pdf --provider stub --fail-pages 1,2,3,4,5
+# -> exits 1, NO out.pdf, but out.pdf.report.json names the failed pages
+#    and out.plan.json holds the finished pages.
+
+# Resume: retry only what failed, keep what already succeeded:
+halfblood annotate book.pdf -o out.pdf --provider stub --resume-from out.plan.json --force
+# -> exit 0; out.pdf.report.json shows resumed pages + newly generated ones.
+```
+
+The sidecar is machine-readable: `pages_total`, `pages_attempted`,
+`pages_annotated`, `failed_pages`, `skipped_pages`, and per-page statuses.
+A run that dies mid-book never costs you the pages it already finished.
+
+### 400-page stress test
+
+You can reproduce a real book-scale survival test offline for $0 with
+`scripts/stress_large_book.py` (builds a ~400-page PDF with a real text layer
+from the committed example's public-domain source):
+
+```bash
+# ~410-page input (deterministic given the same PyMuPDF version):
+python scripts/stress_large_book.py --txt examples/src/pg11.txt --out big.pdf --pages 400
+
+# Kill the run mid-book:
+timeout -s KILL 2 halfblood annotate big.pdf -o out.pdf --provider stub --force
+# -> exit 137; NO out.pdf; out.plan.json holds every page finished so far
+#    (261 of 410 in our run).
+
+# Resume from the checkpoint:
+halfblood annotate big.pdf -o out.pdf --provider stub --resume-from out.plan.json --force
+# -> exit 0; out.pdf.report.json shows pages_annotated: 410 with
+#    statuses {resumed: <killed mid-book>, success: <generated after resume>}.
+```
+
+Measured on this tree: full 410-page stub run ~32s; kill at 2s left 261 pages
+in the checkpoint; resume produced 410/410 annotations (261 resumed + 149 new)
+and a rendered artifact. Forced failures stay visible at scale too:
+`--fail-pages 7,13,400` ships the artifact with `failed_pages: [7, 13, 400]`
+in the sidecar and `pages_annotated: 407`.
+
 ## Installation
 
 ```bash
@@ -241,6 +316,27 @@ same Anthropic preset and the harness exits with an error; choose a distinct gen
 `--provider`/`--model` or a distinct judge with `--judge-provider`/`--judge-model`.
 `--allow-self-judge` permits identical settings for development only. The judge runs over the
 same httpx provider seam as generation, so no vendor SDK is involved on either path.
+
+**Offline smoke run (no credentials, no network):** the built-in `stub` provider works as
+both generator and judge, so the full harness wiring can be verified before any spend:
+
+```bash
+python eval/eval_harness.py --provider stub --judge-provider stub \
+    --allow-self-judge --json-out /tmp/eval-stub.json   # exits 1: neutral stub scores fail thresholds on purpose
+```
+
+Stub scores are deterministic mid-range noise with an explicit "no quality signal"
+justification; they are a wiring check only and must never be read as a quality result.
+
+With credentials, the paid run is the same command with real providers — generate with one
+family, judge with an independent frontier model, then commit the JSON next to this repo's
+committed example output:
+
+```bash
+python eval/eval_harness.py --provider <gen-provider> --model <gen-model> \
+    --judge-provider <judge-provider> --judge-model <judge-model> \
+    --json-out eval/results-gen-<model>.json
+```
 
 `HALFBLOOD_EVAL_MODEL` is deprecated but remains supported for one minor release as a
 generator-only model setting. An explicit `--model` takes precedence, and the variable never

@@ -1,0 +1,573 @@
+{
+  "report_version": "1.0",
+  "output": "examples/hbp-example.pdf",
+  "pages_total": 78,
+  "pages_attempted": 78,
+  "pages_annotated": 78,
+  "total_annotations": 78,
+  "failed_pages": [],
+  "skipped_pages": [],
+  "page_statuses": [
+    {
+      "page_number": 1,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 2,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 3,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 4,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 5,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 6,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 7,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 8,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 9,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 10,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 11,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 12,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 13,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 14,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 15,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 16,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 17,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 18,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 19,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 20,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 21,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 22,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 23,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 24,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 25,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 26,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 27,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 28,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 29,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 30,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 31,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 32,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 33,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 34,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 35,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 36,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 37,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 38,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 39,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 40,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 41,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 42,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 43,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 44,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 45,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 46,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 47,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 48,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 49,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 50,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 51,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 52,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 53,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 54,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 55,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 56,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 57,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 58,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 59,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 60,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 61,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 62,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 63,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 64,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 65,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 66,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 67,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 68,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 69,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 70,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 71,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 72,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 73,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 74,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 75,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 76,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 77,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 78,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    }
+  ],
+  "render": {
+    "report_version": "1.0",
+    "rendered": [
+      "3f973669-0c61-54ad-9208-17ab06b204ae",
+      "d0601389-7cf9-5b58-bfd3-04bac8b8a2b9",
+      "5eb2970a-d2ff-5824-8c42-d90ac16ea96a",
+      "85ed84e2-cfa8-5928-af6b-bfcc274f7f07",
+      "1aa4b768-b86e-581e-9f59-475fc1091d39",
+      "664e5eb0-464b-5573-be90-97a2d64870c8",
+      "7cee8f37-e623-5f76-bb29-bcaf74f9665d",
+      "ba7eccfb-63b0-582f-a5de-2a5c54eb5db9",
+      "65adf9be-151d-5df0-86df-489cb8c18e53",
+      "2a8bf271-c38f-5cdd-b862-b5fa89ea1f5f",
+      "11a31e35-80cf-5363-86a7-3ca199662984",
+      "6d846c8d-4691-54dc-a054-7581ac777836",
+      "fc700bbf-0b5e-5379-8504-6daf712976b5",
+      "112fadd7-c6af-5bfe-aba5-424f95f4e5f1",
+      "7c7c7076-4740-578c-9da6-d0684966ee13",
+      "d7355871-9d1f-5562-a476-b98f963b3638",
+      "92b56650-82ef-5b22-bf08-1bed0ab85ae2",
+      "5ea705d9-f58d-5f8e-a47e-0a6efbb15fab",
+      "84078773-340f-50cb-8140-63b2adc6a01a",
+      "8329df11-b5ec-56c5-b429-a3f1474ab2dc",
+      "e71658a1-356d-5c70-ad65-34e27abb195d",
+      "6b164a28-352f-5803-a03d-a78f5508347c",
+      "189e96ce-beac-5ab3-b12c-8a09b55f5a0b",
+      "42fe8361-5250-57de-962a-867cddc51800",
+      "c2905d91-baa0-5463-b71c-eb9a63471e6e",
+      "4cab7dbd-68f8-57bd-89dc-1e6c9f465583",
+      "5c87cdbf-604a-50de-a143-34e53f4c8f79",
+      "32e15823-d2a7-5804-b3b6-bd6da940f4e2",
+      "dffba7b4-533c-59d7-a6c0-4a03ba595869",
+      "c17e5764-2f34-5a13-b8c6-b7b4a515e738",
+      "b28ccb12-8e56-5499-aa2a-e08e2ae0badf",
+      "f9644af6-e410-5d8a-a647-5f2919c12d95",
+      "8e8ae282-ea62-5b80-95a3-1436aa5a5cf4",
+      "f98bd634-9518-54bb-94ec-257c2d0eedb8",
+      "ca439e99-ac0f-52e8-b44e-aeb71c5e8626",
+      "54f1b455-d7e8-50b3-91d7-48d6f8b774fc",
+      "daabb512-5ffc-5497-aa77-160d2e03f10f",
+      "c788c5f7-6253-5dcc-b315-11d2258c3ae3",
+      "e72cab14-4bb6-5c33-89db-46504b1f47e8",
+      "a3ebde3e-0284-5734-b99f-a18aed16ff77",
+      "b0298bab-45a6-5987-a695-4617289fff7e",
+      "7bb4193e-2b3b-5ef1-8f79-9d2c4009f1d6",
+      "a158eb62-5743-569a-b122-04196fb24205",
+      "0153e23a-2908-5b5f-b337-c326d6a0d17a",
+      "8758fac3-9ecf-59e0-abf1-d3f2f515d3b5",
+      "ca3e488b-4c8c-5716-93ad-5a6c11705b1d",
+      "5c31aae9-d8e9-568f-acc9-9eacfaa69530",
+      "0f374018-5072-52a8-ac92-05a501be4f99",
+      "fbd0a046-e974-5c1a-90dc-3c7e32e604fd",
+      "d3c16246-ed5d-58b3-a934-db72d309f177",
+      "4e1f2d5c-6b0a-5581-8380-a8baecd7eac8",
+      "3e8e8dc9-25b4-5020-a866-1948b570b940",
+      "0cd3a758-46e7-5e01-b830-d6e4aea864b8",
+      "d80a2751-4bb8-5b01-bbd1-651123ad796e",
+      "6d49d871-7926-537a-b25d-9528a2ab4d6d",
+      "932a8a8d-ffcc-535a-8b12-cac108ee3a33",
+      "76ca8403-87c4-5dae-bcf5-9dcb6a8e7a47",
+      "87c68b0c-99f4-5e61-bbb9-da9ad9a06108",
+      "5ce4b1da-0b4f-5e14-98ad-fd823fddcb1b",
+      "05476e30-9e82-541f-b6de-454e0fef54d4",
+      "185874df-33a6-5063-9be3-061ec1af3036",
+      "61774351-80c0-5355-9d47-984025c81701",
+      "bb16111e-86ca-51ca-8a36-0a288703934f",
+      "820f7f49-11ff-5102-95cf-566ae8ec2843",
+      "f10813d5-1eed-54d6-9815-3ca6f8531350",
+      "e97c872d-5718-5e25-99a8-b5c1c9a31987",
+      "a554565a-16ff-5d56-a251-7669e280e8a8",
+      "ef1422a1-93e8-5d75-a6ac-9bcf422de802",
+      "0d2540e1-efba-5cb0-9cca-84663e573df6",
+      "f8f948e2-6983-55fd-9e2a-c30881cc33cc",
+      "94e6da93-a9fa-5e33-a41b-f482f3695646",
+      "2c558b04-40ec-5101-bc36-76dcc67f5b08",
+      "d2db899f-6f93-5c56-995b-e01a0fae722b",
+      "4805dc81-03ad-517a-b2ef-81dfdfe4a536",
+      "0ac1c877-d30e-5820-9ba4-401169cd5214",
+      "b929836e-b3e2-5b5b-826d-3aab94d1f504",
+      "0adb9a53-fdb3-5e92-ae75-ff53b78f3922",
+      "bcfbeb15-2002-574e-8ce6-e18f66fe06a1"
+    ],
+    "skipped": [],
+    "marks_only": [],
+    "warnings": [],
+    "degradation_flags": [],
+    "output_hashes": [
+      {
+        "role": "pdf",
+        "sha256": "292369057a4bf856d39b83a27e70292609c80e66709efed97e13544694e4091e"
+      }
+    ]
+  }
+}

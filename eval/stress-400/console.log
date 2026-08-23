@@ -1,0 +1,18 @@
+downloading https://www.gutenberg.org/files/2701/2701-0.txt
+typeset /tmp/hbp-stress-oa/moby.pdf (562 pages)
++ /home/tlupo/prime-agent-lab/wt/hbp-pilot/.venv/bin/halfblood annotate /tmp/hbp-stress-oa/moby.pdf -o /tmp/hbp-stress-oa/stress-crash.pdf --provider stub --force --pages 1-400
+crash run: killed=True exit=-9 checkpoint=True
+checkpoint survived with 7 finished pages
++ /home/tlupo/prime-agent-lab/wt/hbp-pilot/.venv/bin/halfblood annotate /tmp/hbp-stress-oa/moby.pdf -o /tmp/hbp-stress-oa/stress-crash.pdf --provider stub --force --pages 1-400 --resume-from /tmp/hbp-stress-oa/stress-crash.plan.json
+resume run: exit=0
+sidecar after resume: pages_total=400 pages_annotated=399 failed_pages=[] skipped_pages=[2] resumed=7/400
+crash checkpoint shallower than truncation depth; building a full plan via --dry-run for the deep-loss case
++ /home/tlupo/prime-agent-lab/wt/hbp-pilot/.venv/bin/halfblood annotate /tmp/hbp-stress-oa/moby.pdf -o /tmp/hbp-stress-oa/stress-dryrun-plan.pdf --provider stub --force --pages 1-400 --dry-run
++ /home/tlupo/prime-agent-lab/wt/hbp-pilot/.venv/bin/halfblood annotate /tmp/hbp-stress-oa/moby.pdf -o /tmp/hbp-stress-oa/stress-resume.pdf --provider stub --force --pages 1-400 --resume-from /tmp/hbp-stress-oa/stress-truncated.plan.json
+truncated-resume run: exit=0
+sidecar after truncated resume: pages_total=400 pages_annotated=399 resumed=150/400 failed_pages=[]
++ /home/tlupo/prime-agent-lab/wt/hbp-pilot/.venv/bin/halfblood annotate /tmp/hbp-stress-oa/moby.pdf -o /tmp/hbp-stress-oa/stress-fail.pdf --provider stub --force --pages 1-400 --fail-pages 37,101,233
+fail-pages run: exit=0 artifact=True
+sidecar: pages_total=400 failed_pages=[37, 101, 233] skipped_pages=[2] pages_annotated=396 breakdown={'success': 396, 'skipped': 1, 'failed': 3}
+
+STRESS RESULT: PASS

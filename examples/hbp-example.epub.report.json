@@ -1,0 +1,116 @@
+{
+  "report_version": "1.0",
+  "output": "examples/hbp-example.epub",
+  "pages_total": 13,
+  "pages_attempted": 12,
+  "pages_annotated": 12,
+  "total_annotations": 12,
+  "failed_pages": [],
+  "skipped_pages": [
+    1
+  ],
+  "page_statuses": [
+    {
+      "page_number": 1,
+      "status": "skipped",
+      "attempts": 0,
+      "error": ""
+    },
+    {
+      "page_number": 3,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 4,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 5,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 6,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 7,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 8,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 9,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 10,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 11,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 12,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 13,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 14,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    }
+  ],
+  "render": {
+    "report_version": "1.0",
+    "rendered": [
+      "114ed19b-9fb8-5df9-af20-c1c2398f256b",
+      "1614c505-1c9e-5b95-85dc-1ad3d4faf761",
+      "518428b8-fe42-5e40-a1f4-a3812bea0fb8",
+      "accb501d-a401-54f9-962c-55e62aa5a34b",
+      "d9c1a7ca-ae25-590c-a0cc-48853aa721df",
+      "fe635cbc-c60f-5ac8-a29d-a7c031df1c7c",
+      "cd395c51-907b-57fd-93f2-b0835957e1fc",
+      "52925acf-c31d-54f7-86ae-39f924fa16f0",
+      "0ee0eacb-a4bb-53f3-a9d7-194939bf0d13",
+      "c5e95ae6-4142-5f8c-bf2b-ce13453c8d8f",
+      "b6bf942a-3984-599c-bd30-0fc03d0f2e71",
+      "1ee0e5c5-7df9-5846-94f1-bf697b9bb9ae"
+    ],
+    "skipped": [],
+    "marks_only": [],
+    "warnings": [],
+    "degradation_flags": [
+      "epub_no_target_geometry"
+    ],
+    "output_hashes": []
+  }
+}

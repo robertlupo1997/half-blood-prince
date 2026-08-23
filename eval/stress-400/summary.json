@@ -1,0 +1,121 @@
+{
+  "what": "scripts/stress_400.py executed for real at --pages 400 against a freshly downloaded public-domain book (Project Gutenberg #2701, Moby Dick) typeset to a 562-page PDF with a real text layer. The provider is the built-in deterministic stub: this evidence proves pipeline MECHANICS on a book-length document -- mid-run crash survival via the streaming checkpoint, resume without repeating provider calls, deep mid-book loss recovery, visible per-page failures -- NOT model output quality.",
+  "executed_at_utc": "2026-08-23 ~15:09-15:11",
+    "executed_code_sha": "9b6d850",
+  "provenance_note": "The run EXECUTED the fixed scripts/stress_400.py (kill-trigger / truncated-resume-snapshot fixes), which was uncommitted working-tree code at run time and was committed as 9b6d850 together with this evidence. The pre-fix script at base_commit_before_fixes CANNOT reproduce this run: its primary path never executes its real-SIGKILL scenario. Reproduce from 9b6d850 or later.",
+  "base_commit_before_fixes": "d28f625946d3a6361b909b2bd3bc345cf937d7ef",
+  "script": "scripts/stress_400.py",
+  "command": ".venv/bin/python scripts/stress_400.py --pdf /tmp/hbp-stress-oa/moby.pdf --pages 400",
+  "exit_status": 0,
+  "verdict_line": "STRESS RESULT: PASS",
+  "scenario_A_real_crash_and_resume": {
+    "kill_method": "real SIGKILL delivered as soon as the streaming checkpoint <output>.plan.json held >0 pages (earliest observable progress)",
+    "child_exit": -9,
+    "checkpoint_pages_surviving": 7,
+    "post_resume_sidecar_file": "eval/stress-400/stress-crash-resume.report.json",
+    "pages_total": 400,
+    "pages_annotated": 399,
+    "failed_pages": [],
+    "skipped_pages": [
+      2
+    ],
+    "status_breakdown": {
+      "resumed": 7,
+      "skipped": 1,
+      "success": 392
+    },
+    "assertions_held": [
+      "checkpoint survived the SIGKILL",
+      "resume-from-checkpoint finished the artifact with exit 0",
+      "all 7 checkpointed pages returned status=resumed (zero provider calls repeated)",
+      "all 400 selected pages accounted for in the sidecar",
+      "no sidecar was written for the killed run",
+      "checkpoint consumed by the successful resume"
+    ]
+  },
+  "scenario_A2_deep_truncated_loss_and_resume": {
+    "setup": "full 400-page plan built via --dry-run, truncated to its first 150 pages, then resumed",
+    "kept_pages": 150,
+    "sidecar_file": "eval/stress-400/stress-truncated-resume.report.json",
+    "pages_total": 400,
+    "pages_annotated": 399,
+    "failed_pages": [],
+    "status_breakdown": {
+      "resumed": 150,
+      "skipped": 1,
+      "success": 249
+    },
+    "assertion_held": "exactly the 150 pre-loss pages came back status=resumed; the rest generated fresh; all 400 accounted for"
+  },
+  "scenario_B_visible_page_failures": {
+    "injected_failures": [
+      37,
+      101,
+      233
+    ],
+    "sidecar_file": "eval/stress-400/stress-fail.report.json",
+    "artifact_shipped": true,
+    "pages_total": 400,
+    "pages_annotated": 396,
+    "failed_pages_reported": [
+      37,
+      101,
+      233
+    ],
+    "skipped_pages": [
+      2
+    ],
+    "status_breakdown": {
+      "success": 396,
+      "skipped": 1,
+      "failed": 3
+    },
+    "assertions_held": [
+      "artifact shipped even though 3 pages failed",
+      "sidecar lists exactly pages 37, 101, 233 as failed with per-page records",
+      "boilerplate-filtered page 2 recorded as skipped",
+      "accounting identity pages_annotated == 400 - 3 failed - 1 skipped holds"
+    ]
+  },
+  "not_proven_by_this_run": [
+    "model annotation quality (stub provider is deterministic, not an LLM)",
+    "cost or latency under a real rate-limited API (offline by construction)",
+    "real-model behavior on page 400 of a book (Phase 2 item 1, blocked on credentials)"
+  ],
+  "large_artifacts_not_committed": {
+    "moby.txt": {
+      "bytes": 1234609,
+      "sha256": "0670d7bb10b99d05f095a28942801aa74d4921d1b34dbdc76900e2c4c2bd2189"
+    },
+    "moby.pdf": {
+      "bytes": 5736129,
+      "sha256": "f1c7c1d0a928d87cf1201ee929a4a67ce47b1a3abafffdf48cb2c9d705f1e5cb"
+    },
+    "stress-crash.pdf": {
+      "bytes": 1816002,
+      "sha256": "3b88967a9480b1a41b9ab37d45dc2a938ba6411cc667bcdfc659fbaf665e8353"
+    },
+    "stress-dryrun-plan.pdf": {
+      "bytes": 995383,
+      "sha256": "cc48e5af89c869aa2b58f2e1d8a61d917950893c0cc8f13174029cbb8d33096e"
+    },
+    "stress-fail.pdf": {
+      "bytes": 1814082,
+      "sha256": "8a005aeb50b647054bc1b6925b99e78fdcec4f12c852b0cb3631db53439a8e55"
+    },
+    "stress-resume.pdf": {
+      "bytes": 1816002,
+      "sha256": "37024b87e3ddd31a70e1210cfd07a6d9a0b00a8ca04c86e86f0b216643a35518"
+    },
+    "stress-truncated.plan.json": {
+      "bytes": 384976,
+      "sha256": "456fa83b6bab7badfe5adb2da450059b77ae1ab9f9628b50ca70b002ef35cb8c"
+    }
+  },
+  "reproduce": [
+    "git clone <repo> && cd half-blood-prince",
+    "uv venv && uv pip install -e . -r requirements-dev.lock",
+    ".venv/bin/python scripts/stress_400.py --pdf /tmp/hbp-stress/moby.pdf --pages 400",
+    "expect exit 0 and 'STRESS RESULT: PASS'"
+  ]
+}

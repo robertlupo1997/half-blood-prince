@@ -32,6 +32,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -650,7 +651,9 @@ class TestSolve:
     def test_determinism_across_pythonhashseed(self) -> None:
         # Run the solver in subprocesses with varying PYTHONHASHSEED.
         # Identical output across all seeds confirms no hash-order dependence.
-        _src = "/mnt/c/Users/Trey/Downloads/half-blood-prince/src"
+        # Repo-relative, not absolute: an absolute path from the original
+        # author's machine silently broke this subprocess on other checkouts.
+        _src = str(Path(__file__).resolve().parents[1] / "src")
         _script = f"""
 import sys
 sys.path.insert(0, {_src!r})
