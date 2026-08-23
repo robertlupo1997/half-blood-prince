@@ -64,19 +64,36 @@ def test_every_file_reference_in_summary_exists() -> None:
 
 
 def test_provenance_names_the_sha_that_ran() -> None:
-    s = _summary()
-    sha = s["executed_code_sha"]
-    # The recorded code sha must be a real commit, and the pre-fix base
-    # must be distinct: d28f625 cannot run the primary path at all.
-    assert len(sha) >= 7 and sha != s["base_commit_before_fixes"]
+    """The recorded code sha must name the commit that produced the evidence.
+
+    Checkable at ANY future HEAD (a HEAD-pinning assertion would invalidate
+    itself on the very next commit): the sha must be a real ancestor of
+    HEAD, distinct from the non-reproducing base, AND the last commit that
+    touched scripts/stress_400.py as of that sha -- i.e. it names exactly
+    the code version that produced this evidence.
+    """
     import subprocess
 
-    top = subprocess.run(
-        ["git", "-C", str(EVIDENCE.parents[1]), "rev-parse", "--short=7", "HEAD"],
-        capture_output=True, text=True,
+    s = _summary()
+    sha = s["executed_code_sha"]
+    base = s["base_commit_before_fixes"]
+    repo = EVIDENCE.parents[1]
+
+    def git(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], capture_output=True, text=True,
+        )
+
+    assert len(sha) >= 7 and sha != base  # d28f625 cannot run the primary path
+    assert git("cat-file", "-e", f"{sha}^{{commit}}").returncode == 0
+    assert git("merge-base", "--is-ancestor", sha, "HEAD").returncode == 0
+    last_touch = git(
+        "log", "-1", "--format=%h", sha, "--", "scripts/stress_400.py",
+    ).stdout.strip()
+    assert last_touch == sha, (
+        f"executed_code_sha {sha} is not the last commit touching "
+        f"scripts/stress_400.py (that is {last_touch!r})"
     )
-    assert top.returncode == 0
-    assert top.stdout.strip() == sha
 
 
 def test_crash_resume_numbers_match_sidecar() -> None:
