@@ -61,14 +61,20 @@ def build_run_report(
     plan: Any,
     statuses: Sequence[Any],
     render_report: RenderReport | None = None,
+    boilerplate_pages: Sequence[int] = (),
+    pages_selected: int | None = None,
 ) -> RunReport:
     """Build a :class:`RunReport` from a finished (or failed) generation run.
 
     ``statuses`` are the :class:`PageGenerationStatus` records retained by the
     generator (including the all-pages-failed path, which sets them before
     raising). ``plan`` may be ``None`` when generation produced no plan.
+    ``boilerplate_pages`` are page numbers dropped by boilerplate filtering
+    before generation; they are recorded as skipped so every selected page is
+    accounted for in ``page_statuses``. ``pages_selected`` overrides
+    ``pages_total`` with the pre-filter selection size when given.
     """
-    page_status_records = tuple(
+    page_status_records = [
         PageStatusRecord(
             page_number=status.ordinal,
             status=status.status,
@@ -76,11 +82,25 @@ def build_run_report(
             error=str(status.error) if status.error is not None else "",
         )
         for status in statuses
-    )
+    ]
+    seen = {record.page_number for record in page_status_records}
+    for number in boilerplate_pages:
+        if number not in seen:
+            page_status_records.append(
+                PageStatusRecord(
+                    page_number=number,
+                    status="skipped",
+                    attempts=0,
+                    error="boilerplate",
+                )
+            )
+    page_status_records.sort(key=lambda record: record.page_number)
     pages = list(plan.pages) if plan is not None else []
     return RunReport(
         output=str(output_file),
-        pages_total=len(pages),
+        pages_total=(
+            pages_selected if pages_selected is not None else len(pages)
+        ),
         pages_attempted=sum(
             1 for s in page_status_records if s.status not in ("skipped", "resumed")
         ),
@@ -92,7 +112,7 @@ def build_run_report(
         skipped_pages=tuple(
             s.page_number for s in page_status_records if s.status == "skipped"
         ),
-        page_statuses=page_status_records,
+        page_statuses=tuple(page_status_records),
         render=render_report.model_dump() if render_report is not None else None,
     )
 

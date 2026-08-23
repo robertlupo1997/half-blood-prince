@@ -869,6 +869,8 @@ def annotate(
         _require_text_layer(selected)
 
         # Filter boilerplate sections (unless overridden)
+        pages_selected = len(selected)
+        boilerplate_skipped: list[int] = []
         if not annotate_boilerplate:
             from halfblood.boilerplate import classify
 
@@ -883,6 +885,7 @@ def annotate(
                     )
                 else:
                     selected = [p for p in selected if p not in bp_pages]
+                    boilerplate_skipped = list(bp_nums)
                     console.print(
                         f"Skipped {len(bp_pages)} boilerplate section(s): "
                         + ", ".join(str(n) for n in bp_nums)
@@ -941,6 +944,8 @@ def annotate(
                         output_file=output_file,
                         plan=None,
                         statuses=_generation_statuses(generator),
+                        boilerplate_pages=boilerplate_skipped,
+                        pages_selected=pages_selected,
                     ),
                     output_file,
                 )
@@ -956,6 +961,8 @@ def annotate(
                     output_file=output_file,
                     plan=plan,
                     statuses=_generation_statuses(generator),
+                    boilerplate_pages=boilerplate_skipped,
+                    pages_selected=pages_selected,
                 ),
                 output_file,
             )
@@ -987,6 +994,8 @@ def annotate(
             plan=plan,
             statuses=_generation_statuses(generator),
             render_report=render_dump,
+            boilerplate_pages=boilerplate_skipped,
+            pages_selected=pages_selected,
         ),
         output_file,
     )
