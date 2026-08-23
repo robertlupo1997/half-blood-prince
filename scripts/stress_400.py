@@ -86,15 +86,37 @@ def cli_path() -> str:
     return str(sibling) if sibling.exists() else "halfblood"
 
 
-def spawn_annotate(pdf: Path, out: Path, extra: list[str]) -> subprocess.Popen:
+def spawn_annotate(
+    pdf: Path, out: Path, extra: list[str], log: Path | None = None,
+) -> subprocess.Popen:
+    """Start an ``annotate`` run.
+
+    With ``log``, the child's stdout/stderr stream to that file and the
+    caller must use :func:`finish` (a 400-page progress stream overruns the
+    OS pipe buffer and deadlocks the child if nobody reads a PIPE). Without
+    it, output stays on a PIPE for short runs finished by ``communicate()``.
+    """
     cmd = [
         cli_path(), "annotate", str(pdf), "-o", str(out),
         "--provider", "stub", "--force", *extra,
     ]
     print("+", " ".join(cmd), flush=True)
+    if log is not None:
+        fh = open(log, "w", encoding="utf-8")
+        return subprocess.Popen(cmd, stdout=fh, stderr=subprocess.STDOUT)
     return subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
+
+
+def finish(proc: subprocess.Popen, log: Path | None = None) -> tuple[int, str]:
+    """Wait a spawned run out and return (exit code, output tail)."""
+    if log is None:
+        stdout = proc.communicate()[0]
+        return proc.returncode, stdout
+    proc.wait()
+    text = log.read_text(encoding="utf-8", errors="replace")
+    return proc.returncode, text[-2000:]
 
 
 def checkpoint_pages(plan_json: Path) -> int:
@@ -116,12 +138,15 @@ def scenario_crash_during_render(
     import fitz
 
     out = work / "stress-crash.pdf"
-    plan_json = Path(f"{out}.plan.json")
+    # cli._checkpoint_path_for replaces the suffix: stress-crash.pdf ->
+    # stress-crash.plan.json (NOT stress-crash.pdf.plan.json).
+    plan_json = out.with_name(out.stem + ".plan.json")
     report_json = Path(f"{out}.report.json")
     for p in (out, plan_json, report_json):
         p.unlink(missing_ok=True)
 
-    proc = spawn_annotate(pdf, out, ["--pages", f"1-{n_pages}"])
+    kill_log = work / "stress-crash.spawn.log"
+    proc = spawn_annotate(pdf, out, ["--pages", f"1-{n_pages}"], log=kill_log)
     deadline = time.monotonic() + 1800
     killed = False
     while time.monotonic() < deadline:
@@ -133,13 +158,13 @@ def scenario_crash_during_render(
         if proc.poll() is not None:
             break
         time.sleep(0.05)
-    proc.communicate()
+    code, _tail = finish(proc, log=kill_log)
     print(
-        f"crash run: killed={killed} exit={proc.returncode} "
+        f"crash run: killed={killed} exit={code} "
         f"checkpoint={plan_json.exists()}",
         flush=True,
     )
-    if not killed or proc.returncode != -signal.SIGKILL \
+    if not killed or code != -signal.SIGKILL \
             or not plan_json.exists():
         # Small/fast books can outrun the poll loop. Fall back to a
         # deterministic simulated crash: a dry-run produces the full plan,
@@ -150,11 +175,13 @@ def scenario_crash_during_render(
         )
         dry_out = work / "stress-dryrun-plan.pdf"
         dry_out.unlink(missing_ok=True)
+        dry_log = work / "stress-dryrun.spawn.log"
         procd = spawn_annotate(
-            pdf, dry_out, ["--pages", f"1-{n_pages}", "--dry-run"]
+            pdf, dry_out, ["--pages", f"1-{n_pages}", "--dry-run"],
+            log=dry_log,
         )
-        procd.communicate()
-        if procd.returncode != 0:
+        dcode, dtail = finish(procd, log=dry_log)
+        if dcode != 0:
             print("FAIL: dry-run plan generation failed")
             return False
         data = json.loads(dry_out.read_text(encoding="utf-8"))
@@ -171,13 +198,15 @@ def scenario_crash_during_render(
         print("FAIL: empty checkpoint")
         return False
 
+    resume_log = work / "stress-resume1.spawn.log"
     proc2 = spawn_annotate(
-        pdf, out, ["--pages", f"1-{n_pages}", "--resume-from", str(plan_json)]
+        pdf, out, ["--pages", f"1-{n_pages}", "--resume-from", str(plan_json)],
+        log=resume_log,
     )
-    stdout2 = proc2.communicate()[0]
-    print(f"resume run: exit={proc2.returncode}")
-    if proc2.returncode != 0:
-        print("FAIL: resume run failed\n" + stdout2[-2000:])
+    code2, tail2 = finish(proc2, log=resume_log)
+    print(f"resume run: exit={code2}")
+    if code2 != 0:
+        print("FAIL: resume run failed\n" + tail2)
         return False
     report = load_report(report_json)
     statuses = [s["status"] for s in report["page_statuses"]]
@@ -230,13 +259,15 @@ def _truncated_resume(
     out2 = work / "stress-resume.pdf"
     report2_json = Path(f"{out2}.report.json")
     report2_json.unlink(missing_ok=True)
+    trunc_log = work / "stress-trunc.spawn.log"
     proc3 = spawn_annotate(
-        pdf, out2, ["--pages", f"1-{n_pages}", "--resume-from", str(trunc)]
+        pdf, out2, ["--pages", f"1-{n_pages}", "--resume-from", str(trunc)],
+        log=trunc_log,
     )
-    stdout3 = proc3.communicate()[0]
-    print(f"truncated-resume run: exit={proc3.returncode}")
-    if proc3.returncode != 0:
-        print("FAIL: truncated resume failed\n" + stdout3[-2000:])
+    code3, tail3 = finish(proc3, log=trunc_log)
+    print(f"truncated-resume run: exit={code3}")
+    if code3 != 0:
+        print("FAIL: truncated resume failed\n" + tail3)
         return False
     r2 = load_report(report2_json)
     st2 = [s["status"] for s in r2["page_statuses"]]
@@ -266,13 +297,15 @@ def scenario_visible_failures(pdf: Path, work: Path, n_pages: int) -> bool:
     for p in (out, report_json, Path(f"{out}.plan.json")):
         p.unlink(missing_ok=True)
 
+    fail_log = work / "stress-fail.spawn.log"
     proc = spawn_annotate(
         pdf, out, ["--pages", f"1-{n_pages}",
-                   "--fail-pages", ",".join(map(str, fails))]
+                   "--fail-pages", ",".join(map(str, fails))],
+        log=fail_log,
     )
-    proc.communicate()
-    print(f"fail-pages run: exit={proc.returncode} artifact={out.exists()}")
-    if proc.returncode != 0 or not out.exists():
+    codef, _tailf = finish(proc, log=fail_log)
+    print(f"fail-pages run: exit={codef} artifact={out.exists()}")
+    if codef != 0 or not out.exists():
         print("FAIL: artifact should ship when some (not all) pages fail")
         return False
     report = load_report(report_json)
