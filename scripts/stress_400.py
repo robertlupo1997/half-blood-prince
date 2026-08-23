@@ -4,8 +4,10 @@ This is the executable form of the headline claim "the pipeline survives a
 real 400-page book". It runs two scenarios against the first ``--pages``
 pages of a public-domain book typeset to PDF:
 
-A. Crash mid-book. A real subprocess is SIGKILLed during the render phase
-   (the streaming checkpoint ``<output>.plan.json`` still exists). The
+A. Crash mid-book. A real subprocess is SIGKILLed as soon as its
+   streaming checkpoint shows progress (the earliest observable instant,
+   typically mid-generation; the checkpoint ``<output>.plan.json`` is
+   atomic, so what it holds at kill time is exactly what survives). The
    script asserts the checkpoint survived, then a ``--resume-from`` run
    finishes the book with every checkpointed page reported as status
    "resumed" (zero provider calls repeated) and a valid full artifact.
@@ -102,8 +104,10 @@ def spawn_annotate(
     ]
     print("+", " ".join(cmd), flush=True)
     if log is not None:
-        fh = open(log, "w", encoding="utf-8")
-        return subprocess.Popen(cmd, stdout=fh, stderr=subprocess.STDOUT)
+        fh = open(log, "w", encoding="utf-8")  # noqa: SIM115 - closed by finish()
+        proc = subprocess.Popen(cmd, stdout=fh, stderr=subprocess.STDOUT)
+        proc.log_fh = fh  # closed by finish(); the child owns it until then
+        return proc
     return subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
@@ -115,8 +119,29 @@ def finish(proc: subprocess.Popen, log: Path | None = None) -> tuple[int, str]:
         stdout = proc.communicate()[0]
         return proc.returncode, stdout
     proc.wait()
+    fh = getattr(proc, "log_fh", None)
+    if fh is not None:
+        fh.close()
     text = log.read_text(encoding="utf-8", errors="replace")
     return proc.returncode, text[-2000:]
+
+
+def full_plan_dry_run(pdf: Path, work: Path, n_pages: int) -> Path:
+    """Produce a complete plan JSON for pages 1..n via ``--dry-run``.
+
+    The dry-run output at ``-o`` IS the plan format, so the returned path
+    is directly usable as a resume source.
+    """
+    dry_out = work / "stress-dryrun-plan.pdf"
+    dry_out.unlink(missing_ok=True)
+    log = work / "stress-dryrun.spawn.log"
+    procd = spawn_annotate(
+        pdf, dry_out, ["--pages", f"1-{n_pages}", "--dry-run"], log=log,
+    )
+    code, tail = finish(procd, log=log)
+    if code != 0:
+        raise SystemExit("FAIL: dry-run plan generation failed\n" + tail)
+    return dry_out
 
 
 def checkpoint_pages(plan_json: Path) -> int:
@@ -150,14 +175,20 @@ def scenario_crash_during_render(
     deadline = time.monotonic() + 1800
     killed = False
     while time.monotonic() < deadline:
-        if out.exists() and plan_json.exists():
-            # render phase: the checkpoint is alive until render returns
+        # Kill at the EARLIEST sign of progress: the streaming checkpoint
+        # appears from the first finished page onward (atomic tmp+replace,
+        # so a read never sees a torn file). Waiting for the output file
+        # too loses the race on fast/stub runs -- the whole book can render
+        # inside one 50 ms poll. Killing on the checkpoint alone is a real
+        # mid-run SIGKILL either way: whatever the checkpoint holds at that
+        # instant is all the run gets to keep.
+        if checkpoint_pages(plan_json) > 0:
             proc.send_signal(signal.SIGKILL)
             killed = True
             break
         if proc.poll() is not None:
             break
-        time.sleep(0.05)
+        time.sleep(0.01)
     code, _tail = finish(proc, log=kill_log)
     print(
         f"crash run: killed={killed} exit={code} "
@@ -173,20 +204,9 @@ def scenario_crash_during_render(
             "WARN: subprocess finished before the render phase could be "
             "caught; using a deterministic simulated crash instead"
         )
-        dry_out = work / "stress-dryrun-plan.pdf"
-        dry_out.unlink(missing_ok=True)
-        dry_log = work / "stress-dryrun.spawn.log"
-        procd = spawn_annotate(
-            pdf, dry_out, ["--pages", f"1-{n_pages}", "--dry-run"],
-            log=dry_log,
+        return _truncated_resume(
+            pdf, work, n_pages, full_plan_dry_run(pdf, work, n_pages),
         )
-        dcode, dtail = finish(procd, log=dry_log)
-        if dcode != 0:
-            print("FAIL: dry-run plan generation failed")
-            return False
-        data = json.loads(dry_out.read_text(encoding="utf-8"))
-        plan_json.write_text(json.dumps(data), encoding="utf-8")
-        return _truncated_resume(pdf, work, n_pages, plan_json)
 
     ok = True
     if report_json.exists():
@@ -197,6 +217,12 @@ def scenario_crash_during_render(
     if checkpointed <= 0:
         print("FAIL: empty checkpoint")
         return False
+
+    # Snapshot the surviving checkpoint BEFORE the resume run consumes it:
+    # a successful resume deletes <output>.plan.json by design, and the
+    # truncated-resume case below needs the full pre-loss page set.
+    full_snapshot = work / "stress-full.plan.json"
+    full_snapshot.write_text(plan_json.read_text(encoding="utf-8"), encoding="utf-8")
 
     resume_log = work / "stress-resume1.spawn.log"
     proc2 = spawn_annotate(
@@ -242,7 +268,7 @@ def scenario_crash_during_render(
         ok = False
     artifact.close()
 
-    return ok and _truncated_resume(pdf, work, n_pages, plan_json)
+    return ok and _truncated_resume(pdf, work, n_pages, full_snapshot)
 
 
 def _truncated_resume(
@@ -251,6 +277,15 @@ def _truncated_resume(
     """Deterministic mid-book loss: truncate a full checkpoint to its first
     K pages and resume from it -- the pre-loss pages must come back as
     "resumed" (zero provider calls) and the rest generated fresh."""
+    if checkpoint_pages(full_plan) < min(150, n_pages):
+        # The mid-run kill caught an early checkpoint. Rebuild a complete
+        # plan deterministically so the truncated-resume case still
+        # exercises a DEEP mid-book loss (first 150 of n_pages kept).
+        print(
+            "crash checkpoint shallower than truncation depth; "
+            "building a full plan via --dry-run for the deep-loss case"
+        )
+        full_plan = full_plan_dry_run(pdf, work, n_pages)
     keep = min(150, checkpoint_pages(full_plan))
     trunc = work / "stress-truncated.plan.json"
     data = json.loads(full_plan.read_text(encoding="utf-8"))
