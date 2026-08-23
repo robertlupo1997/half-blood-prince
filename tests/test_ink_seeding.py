@@ -125,7 +125,7 @@ class TestPythonHashSeedIndependence:
             "s = derive_seed(9876543210, 'ann-uuid-0001', "
             "InkRole.HANDWRITING, 'test-v1', 'stroke'); "
             "h = hash('sentinel_p3t2_hashseed_probe'); "
-            "print(s, h)"
+            "print('PROBE', s, h)"
         )
         # Import the package from this repo's src/ via PYTHONPATH and run in a
         # repo-derived cwd. The previous absolute cwd was the original author's
@@ -146,7 +146,17 @@ class TestPythonHashSeedIndependence:
         assert result.returncode == 0, (
             f"subprocess (PYTHONHASHSEED={hashseed}) failed: {result.stderr}"
         )
-        seed_str, hash_str = result.stdout.strip().split()
+        # Anything else on the subprocess's stdout -- an import-time banner, a
+        # warning routed to stdout by a dependency -- used to make this an
+        # unpack error rather than a readable failure. Find our own line.
+        probe = [
+            line for line in result.stdout.splitlines() if line.startswith("PROBE ")
+        ]
+        assert len(probe) == 1, (
+            f"expected exactly one PROBE line on stdout, got {len(probe)}; "
+            f"full stdout was {result.stdout!r}"
+        )
+        _, seed_str, hash_str = probe[0].split()
         return int(seed_str), int(hash_str)
 
     def test_seeds_equal_across_pythonhashseeds(self) -> None:
