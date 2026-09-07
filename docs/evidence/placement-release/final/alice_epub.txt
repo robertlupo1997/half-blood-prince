@@ -1,0 +1,15 @@
+$ .venv/bin/halfblood annotate examples/src/alice.epub -o /tmp/hbp-final-alice.epub --provider stub --force
+exit_code: 0
+
+──────────────────────── Half-Blood Prince -- Annotate ─────────────────────────
+Provider: stub | Model: stub-deterministic | Mode: tool
+Skipped 2 boilerplate section(s): 2, 15
+Tokens: 1440 in / 720 out
+INFO halfblood.epub_processor: render_plan: rendered 12, skipped 0
+  Extracting text...          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1/1   0:00:00
+  Generating annotations...   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 13/13 0:00:00
+  Rendering annotated file... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1/1   0:00:00
+
+Run report -> /tmp/hbp-final-alice.epub.report.json
+Rendered 12 / Skipped 0
+Done. 12 annotations across 13 pages -> /tmp/hbp-final-alice.epub

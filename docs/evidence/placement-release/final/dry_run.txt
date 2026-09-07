@@ -1,0 +1,12 @@
+$ .venv/bin/halfblood annotate examples/src/alice.pdf -o /tmp/hbp-final-plan.json --provider stub --pages 1-3 --dry-run --force
+exit_code: 0
+
+──────────────────────── Half-Blood Prince -- Annotate ─────────────────────────
+Provider: stub | Model: stub-deterministic | Mode: tool
+Tokens: 360 in / 180 out
+Run report -> /tmp/hbp-final-plan.json.report.json
+Done. 3 annotations across 3 pages. Dry run — no artifact rendered -> 
+/tmp/hbp-final-plan.json
+  Extracting text...        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1/1 0:00:00
+  Generating annotations... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3/3 0:00:00
+

@@ -1,0 +1,3 @@
+$ git diff --exit-code 0739f28 -- examples/src/alice.pdf examples/src/alice.epub
+exit_code: 0
+

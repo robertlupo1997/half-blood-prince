@@ -1,0 +1,4 @@
+$ .venv/bin/python -c "import halfblood; print(halfblood.__file__)"
+exit_code: 0
+
+/home/tlupo/projects/half-blood-prince/src/halfblood/__init__.py

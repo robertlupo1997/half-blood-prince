@@ -1,0 +1,5 @@
+$ .venv/bin/python -m pytest tests/test_placement_benchmark.py -k RedMutations -q
+exit_code: 0
+
+........                                                                 [100%]
+8 passed, 28 deselected in 0.85s

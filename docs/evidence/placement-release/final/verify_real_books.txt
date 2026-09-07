@@ -1,0 +1,5 @@
+$ .venv/bin/python docs/evidence/placement-release/verify_real_books.py
+exit_code: 0
+
+{"failed_pages": [], "format": "pdf", "native_annotations": 0, "pages_annotated": 78, "pages_total": 78, "placement_statuses": {"resolved": 78}, "render_skips": 0, "rendered": 78, "skipped_pages": [], "source_page_text_retained": true, "vector_drawings": 312}
+{"failed_pages": [], "format": "epub", "pages_annotated": 12, "pages_total": 15, "pdf_quads": 0, "placement_statuses": {"resolved": 12}, "render_skips": 0, "rendered": 12, "skipped_pages": [1, 2, 15], "target_spans": 12}

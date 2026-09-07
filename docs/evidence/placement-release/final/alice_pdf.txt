@@ -1,0 +1,13 @@
+$ .venv/bin/halfblood annotate examples/src/alice.pdf -o /tmp/hbp-final-alice.pdf --provider stub --force
+exit_code: 0
+
+──────────────────────── Half-Blood Prince -- Annotate ─────────────────────────
+Provider: stub | Model: stub-deterministic | Mode: tool
+Tokens: 9360 in / 4680 out
+  Extracting text...          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1/1   0:00:00
+  Generating annotations...   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 78/78 0:00:00
+  Rendering annotated file... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1/1   0:00:02
+
+Run report -> /tmp/hbp-final-alice.pdf.report.json
+Rendered 78 / Skipped 0
+Done. 78 annotations across 78 pages -> /tmp/hbp-final-alice.pdf

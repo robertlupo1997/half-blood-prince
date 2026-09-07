@@ -1,0 +1,118 @@
+$ .venv/bin/python -m pytest tests/ -q
+exit_code: 0
+
+........................................................................ [  3%]
+........................................................................ [  6%]
+........................................................................ [ 10%]
+........................................................................ [ 13%]
+........................................................................ [ 17%]
+........................................................................ [ 20%]
+........................................................................ [ 24%]
+........................................................................ [ 27%]
+........................................................................ [ 31%]
+........................................................................ [ 34%]
+........................................................................ [ 38%]
+........................................................................ [ 41%]
+........................................................................ [ 45%]
+........................................................................ [ 48%]
+........................................................................ [ 52%]
+........................................................................ [ 55%]
+........................................................................ [ 59%]
+........................................................................ [ 62%]
+........................................................................ [ 66%]
+........................................................................ [ 69%]
+........................................................................ [ 73%]
+........................................................................ [ 76%]
+........................................................................ [ 80%]
+........................................................................ [ 83%]
+........................................................................ [ 86%]
+........................................................................ [ 90%]
+........................................................................ [ 93%]
+........................................................................ [ 97%]
+......................................................                   [100%]
+=============================== warnings summary ===============================
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_exit_code_is_zero
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_output_file_is_valid_zip
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_output_has_correct_mimetype
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_annotated_chapters_contain_hbp_css_classes
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_annotated_chapters_are_parseable_xhtml
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_cli_output_reports_all_four_annotations_rendered
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_no_real_api_calls_are_made
+  /home/tlupo/projects/half-blood-prince/src/halfblood/epub_processor.py:320: XMLParsedAsHTMLWarning: It looks like you're using an HTML parser to parse an XML document.
+  
+  Assuming this really is an XML document, what you're doing might work, but you should know that using an XML parser will be more reliable. To parse this document as XML, make sure you have the Python package 'lxml' installed, and pass the keyword argument `features="xml"` into the BeautifulSoup constructor.
+  
+  If you want or need to use an HTML parser on this document, you can make this warning go away by filtering it. To do that, run this code before calling the BeautifulSoup constructor:
+  
+      from bs4 import XMLParsedAsHTMLWarning
+      import warnings
+  
+      warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+  
+    soup = BeautifulSoup(html, "lxml")
+
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_exit_code_is_zero
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_output_file_is_valid_zip
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_output_has_correct_mimetype
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_annotated_chapters_contain_hbp_css_classes
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_annotated_chapters_are_parseable_xhtml
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_cli_output_reports_all_four_annotations_rendered
+tests/test_cli_end_to_end.py::TestAnnotateEpubE2E::test_no_real_api_calls_are_made
+tests/test_phase2_regressions.py::test_epub_render_plan_finds_unique_target
+  /home/tlupo/projects/half-blood-prince/src/halfblood/epub_processor.py:640: XMLParsedAsHTMLWarning: It looks like you're using an HTML parser to parse an XML document.
+  
+  Assuming this really is an XML document, what you're doing might work, but you should know that using an XML parser will be more reliable. To parse this document as XML, make sure you have the Python package 'lxml' installed, and pass the keyword argument `features="xml"` into the BeautifulSoup constructor.
+  
+  If you want or need to use an HTML parser on this document, you can make this warning go away by filtering it. To do that, run this code before calling the BeautifulSoup constructor:
+  
+      from bs4 import XMLParsedAsHTMLWarning
+      import warnings
+  
+      warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+  
+    soup = BeautifulSoup(item.get_content(), "lxml")
+
+tests/test_config.py::test_generator_default_model_is_current
+  /home/tlupo/projects/half-blood-prince/tests/test_config.py:46: DeprecationWarning: api_key= is deprecated; pass provider= (an LLMProvider) instead. The api_key= path will be removed in the next minor release.
+    gen = AnnotationGenerator(api_key="sk-ant-test-fake-key-not-real")
+
+tests/test_generation_orchestration.py::test_pages_processed_in_order_and_plan_assembled
+tests/test_generation_orchestration.py::test_context_window_is_trailing_and_leading_500_chars
+tests/test_generation_orchestration.py::test_only_invention_and_warning_notes_carry_forward
+tests/test_generation_orchestration.py::test_running_notes_consumed_are_capped_at_eight
+tests/test_generation_orchestration.py::test_over_cap_keeps_highest_confidence
+tests/test_generation_orchestration.py::test_over_cap_preserves_original_order_on_ties
+tests/test_generation_orchestration.py::test_blank_pages_are_included_but_not_failures
+tests/test_generation_orchestration.py::test_partial_failure_records_and_continues
+tests/test_generation_orchestration.py::test_all_failed_raises
+  /home/tlupo/projects/half-blood-prince/tests/test_generation_orchestration.py:71: DeprecationWarning: api_key= is deprecated; pass provider= (an LLMProvider) instead. The api_key= path will be removed in the next minor release.
+    return AnnotationGenerator(api_key="sk-ant-test-fake-key-not-real")
+
+tests/test_pipeline.py::test_generate_for_page_short_circuits_on_empty_text
+  /home/tlupo/projects/half-blood-prince/tests/test_pipeline.py:78: DeprecationWarning: api_key= is deprecated; pass provider= (an LLMProvider) instead. The api_key= path will be removed in the next minor release.
+    return AnnotationGenerator(api_key="sk-ant-test-fake-key-not-real")
+
+tests/test_placement_rendering.py::test_epub_keeps_initial_resolution_after_prior_dom_mutation
+  /home/tlupo/projects/half-blood-prince/tests/test_placement_rendering.py:86: XMLParsedAsHTMLWarning: It looks like you're using an HTML parser to parse an XML document.
+  
+  Assuming this really is an XML document, what you're doing might work, but you should know that using an XML parser will be more reliable. To parse this document as XML, make sure you have the Python package 'lxml' installed, and pass the keyword argument `features="xml"` into the BeautifulSoup constructor.
+  
+  If you want or need to use an HTML parser on this document, you can make this warning go away by filtering it. To do that, run this code before calling the BeautifulSoup constructor:
+  
+      from bs4 import XMLParsedAsHTMLWarning
+      import warnings
+  
+      warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+  
+    soup = BeautifulSoup(output.get_item_with_id("chapter").get_content(), "lxml")
+
+tests/test_token_usage.py::test_usage_totals_partial_none_usage
+  /home/tlupo/projects/half-blood-prince/tests/test_token_usage.py:284: DeprecationWarning: api_key= is deprecated; pass provider= (an LLMProvider) instead. The api_key= path will be removed in the next minor release.
+    gen = AnnotationGenerator(api_key="sk-ant-test-fake-key-not-real")
+
+tests/test_token_usage.py::test_usage_totals_all_none_usage
+  /home/tlupo/projects/half-blood-prince/tests/test_token_usage.py:315: DeprecationWarning: api_key= is deprecated; pass provider= (an LLMProvider) instead. The api_key= path will be removed in the next minor release.
+    gen = AnnotationGenerator(api_key="sk-ant-test-fake-key-not-real")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2070 passed, 29 warnings in 24.65s

@@ -1,9 +1,15 @@
 # Latest Handoff
 
-> **In-progress preservation checkpoint:**
-> `thoughts/shared/handoffs/general/2026-09-07_21-02-15_general_astra-placement-checkpoint.md`
-> Free-worker outputs and implementation are preserved. Final validation and PR remain pending.
+> **Latest evidence packet:** `thoughts/shared/handoffs/general/2026-09-07_21-42-43_general_astra-evidence-placement-release.md`
+> Whole-quote placement contract and refusal benchmark verified at `79da678`.
+> Final root run: 2070 passed, 29 warnings in 24.65s; Ruff/mypy and wheel smoke pass; original input guard 8/8.
+> Frontier quality evaluation remains **Blocked: rejected credential (HTTP 401)**.
+> Ready for PR review, not a merge or public-release verdict.
 
+## Previous preservation checkpoint
+
+> `thoughts/shared/handoffs/general/2026-09-07_21-02-15_general_astra-placement-checkpoint.md`
+> Four free-worker reports and the interrupted implementation remain preserved.
 
 > **Latest handoff:**
 > `thoughts/shared/handoffs/general/2026-07-27_general_crash-dataloss-epub-prefix.md`

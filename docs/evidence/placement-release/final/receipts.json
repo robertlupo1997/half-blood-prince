@@ -1,0 +1,162 @@
+{
+  "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+  "environment": {
+    "PYTHONPYCACHEPREFIX": "/tmp/hbp-final-release-pycache",
+    "NO_COLOR": "1",
+    "TERM": "dumb"
+  },
+  "checks": [
+    {
+      "name": "harness",
+      "command": ".venv/bin/python scripts/check_harness_contracts.py",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/harness.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "wheel",
+      "command": ".venv/bin/python scripts/wheel_smoke.py",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/wheel.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "guard8",
+      "command": ".venv/bin/python -m pytest tests/test_cli_hardening.py -k \"refuses_to_overwrite_file_input or dry_run_also_refuses_file_input_as_output\" -q",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/guard8.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "strict",
+      "command": ".venv/bin/python -m pytest tests/test_strict_placement.py tests/test_placement_rendering.py tests/test_placement_result_model.py tests/test_placement_migration.py tests/test_placement_benchmark.py tests/test_cli_output_safety.py tests/test_checkpoint_resume.py tests/test_degradation_mapping.py -q",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/strict.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "alice_pdf",
+      "command": ".venv/bin/halfblood annotate examples/src/alice.pdf -o /tmp/hbp-final-alice.pdf --provider stub --force",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/alice_pdf.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "alice_epub",
+      "command": ".venv/bin/halfblood annotate examples/src/alice.epub -o /tmp/hbp-final-alice.epub --provider stub --force",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/alice_epub.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "dry_run",
+      "command": ".venv/bin/halfblood annotate examples/src/alice.pdf -o /tmp/hbp-final-plan.json --provider stub --pages 1-3 --dry-run --force",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/dry_run.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "degradations",
+      "command": ".venv/bin/python docs/evidence/placement-release/composition_probe.py",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/degradations.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "legacy_probe",
+      "command": ".venv/bin/python docs/evidence/placement-release/legacy_probe.py",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/legacy_probe.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "import",
+      "command": ".venv/bin/python -c \"import halfblood; print(halfblood.__file__)\"",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/import.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "docs_tests",
+      "command": ".venv/bin/python -m pytest tests/test_docs.py tests/test_packaging.py tests/test_font_packaging.py tests/test_font_resolution.py tests/test_font_selection.py tests/test_persona_config.py tests/test_persona_packaging.py -q",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/docs_tests.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "web_preview",
+      "command": ".venv/bin/halfblood web-preview /tmp/hbp-final-plan.json -o /tmp/hbp-final-preview.html --force",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/web_preview.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "verify_real_books",
+      "command": ".venv/bin/python docs/evidence/placement-release/verify_real_books.py",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/verify_real_books.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "source_unchanged",
+      "command": "git diff --exit-code 0739f28 -- examples/src/alice.pdf examples/src/alice.epub",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/source_unchanged.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "benchmark_mutations",
+      "command": ".venv/bin/python -m pytest tests/test_placement_benchmark.py -k RedMutations -q",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/benchmark_mutations.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "before source commit; same runtime code, then committed with docs/import-order changes"
+    },
+    {
+      "name": "tests",
+      "command": ".venv/bin/python -m pytest tests/ -q",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/tests.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "after source commit"
+    },
+    {
+      "name": "ruff",
+      "command": ".venv/bin/python -m ruff check src/ tests/ eval/ scripts/ benchmarks/",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/ruff.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "after source commit"
+    },
+    {
+      "name": "mypy",
+      "command": ".venv/bin/python -m mypy src/halfblood/",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/mypy.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "after source commit"
+    },
+    {
+      "name": "benchmark",
+      "command": ".venv/bin/python scripts/benchmark_placement.py",
+      "exit_code": 0,
+      "log": "docs/evidence/placement-release/final/benchmark.txt",
+      "source_commit": "79da678e66127466d69da26de4f37c7c9d0dcd9b",
+      "timing": "after source commit"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+$ .venv/bin/python -m pytest tests/test_cli_hardening.py -k "refuses_to_overwrite_file_input or dry_run_also_refuses_file_input_as_output" -q
+exit_code: 0
+
+........                                                                 [100%]
+8 passed, 26 deselected in 2.23s
