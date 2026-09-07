@@ -53,6 +53,7 @@ From a checkout, with Python 3.11+:
 ```bash
 uv venv
 uv pip install --python .venv/bin/python -e ".[dev]"
+.venv/bin/python -c "import halfblood; print(halfblood.__file__)"
 
 .venv/bin/python scripts/benchmark_placement.py
 .venv/bin/python -m pytest tests/ -q
@@ -93,13 +94,13 @@ sample and not pinned to a specific historical render.
 
 ```bash
 # Use the committed sources below; no download is needed.
-halfblood annotate examples/src/alice.pdf  -o examples/hbp-example.pdf  --provider stub --force
-halfblood annotate examples/src/alice.epub -o examples/hbp-example.epub --provider stub --force
-halfblood annotate examples/src/alice.pdf  -o /tmp/hbp-plan.json --provider stub --pages 1-3 --dry-run --force
+.venv/bin/halfblood annotate examples/src/alice.pdf  -o examples/hbp-example.pdf  --provider stub --force
+.venv/bin/halfblood annotate examples/src/alice.epub -o examples/hbp-example.epub --provider stub --force
+.venv/bin/halfblood annotate examples/src/alice.pdf  -o /tmp/hbp-plan.json --provider stub --pages 1-3 --dry-run --force
 # Only after an interrupted run left this checkpoint:
-halfblood annotate examples/src/alice.pdf  -o /tmp/hbp-demo.pdf --provider stub --resume-from /tmp/hbp-demo.pdf.plan.json --force
-halfblood annotate examples/src/alice.pdf  -o /tmp/hbp-demo.pdf --provider stub --fail-pages 1,2 --force
-halfblood web-preview /tmp/hbp-plan.json -o /tmp/hbp-demo.html --force
+.venv/bin/halfblood annotate examples/src/alice.pdf  -o /tmp/hbp-demo.pdf --provider stub --resume-from /tmp/hbp-demo.pdf.plan.json --force
+.venv/bin/halfblood annotate examples/src/alice.pdf  -o /tmp/hbp-demo.pdf --provider stub --fail-pages 1,2 --force
+.venv/bin/halfblood web-preview /tmp/hbp-plan.json -o /tmp/hbp-demo.html --force
 ```
 
 `--fail-pages` is a **test knob**: when some pages succeed the
@@ -141,7 +142,7 @@ then any `<project>/fonts/*aveat*.tt[fc]` glob, then the bundled
 `Helvetica-Oblique`.
 
 For reproducible CI / test versions, install from the checked-in lock
-file before the package itself:
+file before the package itself (with pip in an activated project venv):
 
 ```bash
 pip install -r requirements-dev.lock && pip install -e . --no-deps

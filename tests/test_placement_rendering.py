@@ -91,6 +91,7 @@ def test_epub_keeps_initial_resolution_after_prior_dom_mutation(tmp_path: Path):
 
 def test_direct_web_preview_refuses_input_alias(tmp_path):
     import json
+
     from halfblood.web_preview import generate_preview
     source = tmp_path / "plan.json"
     source.write_text(json.dumps({"title": "Owned", "prince_persona": "Test", "pages": []}))
