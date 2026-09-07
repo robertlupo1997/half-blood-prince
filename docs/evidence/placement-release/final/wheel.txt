@@ -1,0 +1,34 @@
+$ .venv/bin/python scripts/wheel_smoke.py
+exit_code: 0
+
+repo: /home/tlupo/projects/half-blood-prince
+
+[1/4] building wheel
+  PASS  wheel builds  -- half_blood_prince-0.1.0-py3-none-any.whl
+
+[2/4] inspecting wheel contents
+  PASS  packaged: halfblood/fonts/CaveatBrush-Regular.ttf
+  PASS  packaged: halfblood/personas/  -- 5 file(s)
+
+[3/4] installing into a clean venv outside the repo
+  PASS  console script installed  -- /tmp/hbp-wheel-smoke-znljjxl1/venv/bin/halfblood
+
+[4/4] using the installed CLI
+  PASS  --version exits 0
+  PASS  --help exits 0
+  PASS  default font resolves from installed package  -- warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+FONT_OK /tmp/hbp-wheel-smoke-znljjxl1/venv/lib/python3.12/sit
+  PASS  resolved font path is inside site-packages, not the repo
+  PASS  installed placement contract  -- warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+PLACEMENT_OK: four outcomes, cross-node range, round-trip, source intact
+  PASS  `annotate /nonexistent/book.pdf` does not traceback  --  `import pymupdf` instead.
+Usage: halfblood annotate [OPTIONS] INPUT_FILE
+Try 'halfblood annotate --help' for help.
+
+Error: Invalid value for 'INPUT_FILE': File '/nonexistent/book.pdf' does not exist.
+  PASS  `eval --list` does not traceback  -- blood eval requires a source checkout of the half-blood-prince repository — install with 'pip install -e .' from the repo root and run again. The eval harness is not included in the installed package.
+  PASS  `eval` failure message does not name a fabricated install path  -- warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+Error: halfblood eval requires a source checkout of the half-blood-prince repository — install with '
+
+==================================================================
+wheel smoke test PASSED

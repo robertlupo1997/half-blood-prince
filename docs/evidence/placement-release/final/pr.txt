@@ -1,0 +1,4 @@
+$ gh pr view 3 --json number,url,state,baseRefName,headRefName,mergeStateStatus
+exit_code: 0
+
+{"baseRefName":"main","headRefName":"release/evidence-placement-contract","mergeStateStatus":"UNSTABLE","number":3,"state":"OPEN","url":"https://github.com/robertlupo1997/half-blood-prince/pull/3"}

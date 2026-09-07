@@ -1,0 +1,6 @@
+$ .venv/bin/python -m pytest tests/test_docs.py tests/test_packaging.py tests/test_font_packaging.py tests/test_font_resolution.py tests/test_font_selection.py tests/test_persona_config.py tests/test_persona_packaging.py -q
+exit_code: 0
+
+........................................................................ [ 57%]
+......................................................                   [100%]
+126 passed in 0.97s

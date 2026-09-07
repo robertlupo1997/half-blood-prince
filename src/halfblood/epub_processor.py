@@ -42,8 +42,11 @@ import logging
 import posixpath
 import random
 import warnings
+import zipfile
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, cast
+from xml.etree import ElementTree as ET
 
 import ebooklib
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag, XMLParsedAsHTMLWarning
@@ -53,16 +56,28 @@ from halfblood.document_processor import PageContent
 from halfblood.documents import (
     CrossNodeMatch,
     CrossNodeSegment,
-    locate_across_nodes,
     normalize,
 )
 from halfblood.documents.epub import _MATCH_LADDER, _scan_prefix_tiers, _scan_with_tolerance
+from halfblood.file_safety import require_distinct_output
 from halfblood.models import Annotation, AnnotationPlan, AnnotationType
 from halfblood.models.annotations import Annotation as V2Annotation
 from halfblood.models.annotations import MarkIntent, TargetSelector
 from halfblood.models.documents import _MARK_INTENTS
 from halfblood.models.documents import AnnotationPlan as V2AnnotationPlan
-from halfblood.models.rendering import DegradationFlag, RenderReport, SkipReason, SkipRecord
+from halfblood.models.rendering import (
+    DegradationFlag,
+    PlacementRecord,
+    RenderReport,
+    SkipReason,
+    SkipRecord,
+)
+from halfblood.placement import (
+    PlacementResult,
+    PlacementStatus,
+    epub_match_from_placement,
+    resolve_epub_quote,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -501,42 +516,107 @@ class EpubProcessor:
                     return True
         return False
 
+    @staticmethod
+    def _isolate_resolved_segments(
+        matches: list[CrossNodeMatch | None],
+    ) -> list[CrossNodeMatch | None]:
+        """Split original nodes once, so later drawing never re-searches changed text.
+
+        All accepted ranges are disjoint. Each range receives dedicated live
+        nodes; wrapping an earlier range cannot invalidate a later one or make
+        an originally ambiguous quote appear unique.
+        """
+        nodes: dict[int, NavigableString] = {}
+        boundaries: dict[int, set[int]] = {}
+        for match in matches:
+            if match is None:
+                continue
+            for segment in match.segments:
+                key = id(segment.node)
+                nodes[key] = segment.node
+                boundaries.setdefault(key, {0, len(str(segment.node))}).update(
+                    (segment.start, segment.end)
+                )
+        pieces: dict[int, list[tuple[int, int, NavigableString]]] = {}
+        for key, node in nodes.items():
+            cuts = sorted(boundaries[key])
+            raw = str(node)
+            slices = [(a, b, NavigableString(raw[a:b]))
+                      for a, b in zip(cuts, cuts[1:], strict=False) if a < b]
+            node.replace_with(*(piece for _, _, piece in slices))
+            pieces[key] = slices
+        updated: list[CrossNodeMatch | None] = []
+        for match in matches:
+            if match is None:
+                updated.append(None)
+                continue
+            segments = tuple(
+                CrossNodeSegment(node=piece, start=0, end=b - a)
+                for segment in match.segments
+                for a, b, piece in pieces[id(segment.node)]
+                if segment.start <= a and b <= segment.end
+            )
+            updated.append(CrossNodeMatch(segments=segments, reason=match.reason))
+        return updated
+
+    @staticmethod
+    def _fixed_layout_ids(input_path: str) -> set[str]:
+        """Read rendition metadata before EbookLib discards itemref properties.
+
+        EbookLib's spine pairs contain only (idref, linear), not properties.
+        The XML parser reads archive members only and does not fetch external
+        entities. No archive member is extracted to the filesystem.
+        """
+        ocf = "{urn:oasis:names:tc:opendocument:xmlns:container}"
+        opf = "{http://www.idpf.org/2007/opf}"
+        with zipfile.ZipFile(input_path) as archive:
+            container = ET.fromstring(archive.read("META-INF/container.xml"))
+            rootfile = container.find(f"{ocf}rootfiles/{ocf}rootfile")
+            if rootfile is None or not rootfile.get("full-path"):
+                raise ValueError("EPUB container has no package document")
+            package = ET.fromstring(archive.read(rootfile.attrib["full-path"]))
+        fixed_default = any(
+            meta.get("property") == "rendition:layout"
+            and (meta.text or "").strip() == "pre-paginated"
+            for meta in package.findall(f"{opf}metadata/{opf}meta")
+        )
+        fixed_ids: set[str] = set()
+        for itemref in package.findall(f"{opf}spine/{opf}itemref"):
+            properties = itemref.get("properties", "").split()
+            fixed = "rendition:layout-pre-paginated" in properties or (
+                fixed_default and "rendition:layout-reflowable" not in properties
+            )
+            if fixed and itemref.get("idref"):
+                fixed_ids.add(itemref.attrib["idref"])
+        return fixed_ids
+
     def render_plan(
         self,
         input_path: str,
         plan: V2AnnotationPlan,
         output_path: str,
     ) -> RenderReport:
-        """Render a V2 AnnotationPlan into an EPUB using the shared cross-node path.
+        """Render a V2 plan into reflowable EPUB with original-DOM text evidence.
 
-        Routing:
-          1. Each annotation's ``TargetSelector`` is resolved via
-             ``locate_across_nodes`` before any DOM mutation (pre-resolve pass).
-          2. ``None`` returns are classified as AMBIGUOUS_TARGET or MISSING_TARGET
-             via ``_epub_miss_reason``.
-          3. Resolved pairs whose char intervals overlap on any shared DOM node are
-             classified OVERLAPPING_TARGET (the later annotation in plan order).
-          4. Surviving annotations are applied sequentially with fresh
-             ``locate_across_nodes`` calls (re-resolve after each DOM mutation),
-             so non-overlapping annotations that share a text node each find their
-             target correctly after the first wrapping splits the node.
-          5. ``DegradationFlag.EPUB_NO_TARGET_GEOMETRY`` is always set: reflowable
-             EPUB content has no fixed geometry.
+        Every annotation receives a PlacementRecord before DOM mutation.
+        Refusals produce no markup. Later overlapping ranges are skipped;
+        accepted original ranges are isolated into dedicated nodes before
+        drawing, so wrapping cannot change later occurrence selection.
 
-        Args:
-            input_path: Source EPUB path.
-            plan: A validated V2 AnnotationPlan (halfblood.models.documents.AnnotationPlan).
-            output_path: Destination EPUB path (created or overwritten).
-
-        Returns:
-            RenderReport with a complete rendered/skipped partition covering every
-            annotation in the plan.
+        Fixed-layout EPUB is unsupported, not a source of guessed coordinates.
+        Reflowable results carry DOM text ranges and EPUB_NO_TARGET_GEOMETRY,
+        never reader positions. The destination must differ from every input
+        alias. Invalid duplicate plan identities raise ValueError before writing.
         """
+        require_distinct_output(Path(output_path), (Path(input_path),))
+        plan = V2AnnotationPlan.model_validate(plan.model_dump())
         book = epub.read_epub(input_path)
         self._ensure_toc_uids(book.toc)
         is_epub3 = str(book.version).startswith("3")
         spine_docs: dict[int, epub.EpubHtml] = dict(self._iter_spine_documents(book))
+        fixed_layout_ids = self._fixed_layout_ids(input_path)
 
+        placements: list[PlacementRecord] = []
         rendered_ids: list[str] = []
         skip_records: list[SkipRecord] = []
         stylesheet: epub.EpubItem | None = None
@@ -547,6 +627,11 @@ class EpubProcessor:
             item = spine_docs.get(unit.ordinal)
             if item is None:
                 for ann in annotations:
+                    placements.append(PlacementRecord(
+                        annotation_id=ann.id, source_locator=unit.source_locator,
+                        result=PlacementResult(status=PlacementStatus.UNRESOLVED,
+                                               renderer="epub", reason="out_of_range_page"),
+                    ))
                     skip_records.append(
                         SkipRecord(annotation_id=ann.id, reason=SkipReason.OUT_OF_RANGE_PAGE)
                     )
@@ -557,16 +642,23 @@ class EpubProcessor:
 
             # Phase 1: pre-resolve all annotations on the initial DOM.
             pre_resolved: list[CrossNodeMatch | None] = []
-            for ann in annotations:
-                pre_resolved.append(locate_across_nodes(chapter_root, ann.target))
-
-            # Phase 2: classify unresolved annotations.
             skip_reason_for: dict[int, SkipReason] = {}
-            for idx, (ann, match) in enumerate(
-                zip(annotations, pre_resolved, strict=True)
-            ):
-                if match is None:
-                    skip_reason_for[idx] = self._epub_miss_reason(chapter_root, ann.target)
+            for idx, ann in enumerate(annotations):
+                result = resolve_epub_quote(
+                    chapter_root, ann.target, fixed_layout=item.get_id() in fixed_layout_ids,
+                )
+                placements.append(PlacementRecord(
+                    annotation_id=ann.id, source_locator=unit.source_locator, result=result,
+                ))
+                pre_resolved.append(epub_match_from_placement(chapter_root, result))
+                if result.status is not PlacementStatus.RESOLVED:
+                    skip_reason_for[idx] = (
+                        SkipReason.AMBIGUOUS_TARGET
+                        if result.status is PlacementStatus.AMBIGUOUS
+                        else SkipReason.UNSUPPORTED_RENDERER
+                        if result.status is PlacementStatus.UNSUPPORTED_RENDERER
+                        else SkipReason.MISSING_TARGET
+                    )
 
             # Phase 3: mark the later annotation in each overlapping pair.
             resolved_indices: list[int] = [
@@ -589,7 +681,11 @@ class EpubProcessor:
             for idx in overlapping:
                 skip_reason_for[idx] = SkipReason.OVERLAPPING_TARGET
 
-            # Phase 4: re-resolve and apply sequentially on the mutated DOM.
+            # Phase 4: isolate original accepted ranges; never re-search mutated DOM.
+            accepted = self._isolate_resolved_segments([
+                match if idx not in skip_reason_for else None
+                for idx, match in enumerate(pre_resolved)
+            ])
             chapter_rendered = 0
             for idx, ann in enumerate(annotations):
                 if idx in skip_reason_for:
@@ -598,7 +694,7 @@ class EpubProcessor:
                     )
                     continue
 
-                fresh_match = locate_across_nodes(chapter_root, ann.target)
+                fresh_match = accepted[idx]
                 if fresh_match is None:
                     skip_records.append(
                         SkipRecord(annotation_id=ann.id, reason=SkipReason.MISSING_TARGET)
@@ -642,6 +738,7 @@ class EpubProcessor:
                 DegradationFlag.EPUB_DENSE_NOTES_BLOCK_FALLBACK
             )
         return RenderReport(
+            placements=tuple(placements),
             rendered=tuple(rendered_ids),
             skipped=tuple(skip_records),
             degradation_flags=tuple(degradation_flags),
@@ -659,6 +756,7 @@ class EpubProcessor:
                 index, matching `PageContent.page_number` from `load`.
             output_path: Where to write the annotated EPUB.
         """
+        require_distinct_output(Path(output_path), (Path(input_path),))
         book = epub.read_epub(input_path)
         self._ensure_toc_uids(book.toc)
         is_epub3 = str(book.version).startswith("3")

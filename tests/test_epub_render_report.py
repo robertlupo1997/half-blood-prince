@@ -1493,8 +1493,8 @@ def test_nl3_model_enum_value_and_report_version() -> None:
         "NL3: DegradationFlag.EPUB_DENSE_NOTES_BLOCK_FALLBACK.value must be "
         "'epub_dense_notes_block_fallback'"
     )
-    assert RenderReport().report_version == "1.0", (
-        "NL3: RenderReport.report_version must remain '1.0' after the additive flag"
+    assert RenderReport().report_version == "1.1", (
+        "Placement records and lossless composer diagnostics use report version 1.1"
     )
 
 

@@ -1,0 +1,13 @@
+$ .venv/bin/python scripts/check_harness_contracts.py
+Captured at 0739f28 before edits.
+
+[CHECK-1] DIVERGENCE: .claude/agents/codebase-analyzer.md: missing opening frontmatter delimiter
+[CHECK-1] DIVERGENCE: .claude/agents/web-search-researcher.md: missing opening frontmatter delimiter
+[CHECK-4] DIVERGENCE: docs/superpowers/specs/2026-07-19-codex-usage-audit.md: historical claim says /goal uses raw Codex; .claude/skills/goal/SKILL.md is the current source of truth
+
+DIVERGENCE LEDGER
+| file | claim/state | expected | action |
+|---|---|---|---|
+| .claude/agents/codebase-analyzer.md | missing opening frontmatter delimiter | YAML-subset frontmatter with non-empty name and description | owner decision |
+| .claude/agents/web-search-researcher.md | missing opening frontmatter delimiter | YAML-subset frontmatter with non-empty name and description | owner decision |
+| docs/superpowers/specs/2026-07-19-codex-usage-audit.md | historical audit says /goal uses raw codex exec | current .claude/skills/goal/SKILL.md wrapper contract | historical-doc label |

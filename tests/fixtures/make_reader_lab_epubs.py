@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import re
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -314,12 +315,15 @@ def _rewrite_archive(path: Path, *, package_version: str) -> None:
 
 
 def _generate_artifact(output_path: Path, *, epub3: bool, plan: AnnotationPlan) -> str:
-    epub.write_epub(str(output_path), _build_book(epub3=epub3))
-    if not epub3:
-        _rewrite_archive(output_path, package_version="2.0")
-
-    processor = EpubProcessor(seed=SEED)
-    report = processor.render_plan(str(output_path), plan, str(output_path))
+    # Source and output are distinct even for generated fixtures: exercise the
+    # same never-overwrite-input rule as a real user's book.
+    with tempfile.TemporaryDirectory() as work:
+        source = Path(work) / "source.epub"
+        epub.write_epub(str(source), _build_book(epub3=epub3))
+        if not epub3:
+            _rewrite_archive(source, package_version="2.0")
+        processor = EpubProcessor(seed=SEED)
+        report = processor.render_plan(str(source), plan, str(output_path))
     expected_ids = tuple(
         annotation.id for unit in plan.units for annotation in unit.annotations
     )

@@ -42,11 +42,22 @@ from halfblood.annotation_generator import (
 from halfblood.config import ResolvedConfig, resolve_generation_config
 from halfblood.document_processor import DocumentProcessor, PageContent
 from halfblood.epub_processor import EpubProcessor
+from halfblood.file_safety import (
+    atomic_write_text,
+    require_distinct_output,
+)
+from halfblood.file_safety import (
+    is_same_file as _is_same_file,
+)
 from halfblood.generation.errors import ProviderConfigurationError, ProviderError
 from halfblood.generation.providers.base import GenerationRequest, LLMProvider
 from halfblood.generation.providers.stub import FailPagesProvider
 from halfblood.generation.registry import build_provider
-from halfblood.generation.run_report import build_run_report, write_run_report
+from halfblood.generation.run_report import (
+    build_run_report,
+    sidecar_path_for,
+    write_run_report,
+)
 from halfblood.generation.schema import generate_annotation_schema
 from halfblood.ink.composer import HandwritingUnavailable
 from halfblood.models import AnnotatedPage, AnnotationPlan
@@ -466,20 +477,6 @@ def _validate_input_signature(path: Path) -> None:
         )
 
 
-def _is_same_file(a: Path, b: Path) -> bool:
-    """Return True when *a* and *b* refer to the same filesystem object.
-
-    Uses :func:`os.path.samefile` when both paths exist (handles symlinks and
-    hard-links correctly), and falls back to comparing resolved paths when the
-    output does not yet exist (covers ``./book.pdf`` vs ``book.pdf`` etc.).
-    """
-    try:
-        return os.path.samefile(a, b)
-    except OSError:
-        # One or both paths do not exist yet; resolved comparison is best-effort.
-        return a.resolve() == b.resolve()
-
-
 def _refuse_existing_output(
     path: Path,
     force: bool,
@@ -498,13 +495,10 @@ def _refuse_existing_output(
             Pass all inputs (plan, book text, …) here so a future command with
             multiple inputs cannot accidentally omit one.
     """
-    for src in source_paths:
-        if _is_same_file(path, src):
-            raise click.ClickException(
-                f"Output file {path} is the same file as the input {src}. "
-                "Writing to the same path would overwrite your source. "
-                "Choose a different output path."
-            )
+    try:
+        require_distinct_output(path, source_paths)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
     if path.exists() and not force:
         raise click.ClickException(
             f"Output file {path} already exists; use --force to overwrite it."
@@ -514,10 +508,37 @@ def _refuse_existing_output(
 def _checkpoint_path_for(output_file: Path) -> Path:
     """Return the streaming checkpoint-plan path for an artifact path.
 
-    ``out.pdf`` checkpoints to ``out.plan.json`` — the file a later run can
-    pass to ``--resume-from`` after an interruption.
+    ``out.pdf`` checkpoints to ``out.pdf.plan.json``. Keeping the full
+    artifact name separates same-stem PDF and EPUB runs. Legacy stem-only
+    checkpoints remain readable via ``--resume-from``.
     """
-    return output_file.with_name(output_file.stem + ".plan.json")
+    return Path(str(output_file) + ".plan.json")
+
+
+def _prepare_annotate_outputs(
+    output_file: Path,
+    force: bool,
+    source_paths: tuple[Path, ...],
+    resume_from: Path | None,
+) -> Path:
+    """Validate every write/delete destination before generation starts.
+
+    A supplied resume plan is read-only. If it occupies the normal checkpoint
+    path, stream new progress to a distinct path instead. Same-output concurrent
+    invocations are not supported; distinct artifact names have distinct sidecars.
+    """
+    checkpoint = _checkpoint_path_for(output_file)
+    if resume_from is not None and _is_same_file(checkpoint, resume_from):
+        checkpoint = Path(str(output_file) + ".resume.plan.json")
+    destinations = (output_file, checkpoint, sidecar_path_for(output_file))
+    for index, destination in enumerate(destinations):
+        # Guard output/output aliases too: checkpoint cleanup must not delete
+        # the artifact or report, nor may a report overwrite either one.
+        other_outputs = destinations[:index] + destinations[index + 1:]
+        _refuse_existing_output(
+            destination, force, source_paths=source_paths + other_outputs,
+        )
+    return checkpoint
 
 
 def _load_resume_pages(resume_from: Path) -> dict[int, AnnotatedPage]:
@@ -708,8 +729,9 @@ def main() -> None:
     help=(
         "Resume an interrupted run: skip the pages already annotated in this "
         "partial annotation-plan JSON and generate only the missing ones. "
-        "Every annotate run streams its partial plan to <output>.plan.json "
-        "while it works, so after a crash you can resume from that file."
+        "Every run streams to <output>.plan.json (e.g. out.pdf.plan.json). "
+        "The supplied resume file is never changed or deleted; if it occupies "
+        "that checkpoint path, new progress goes to <output>.resume.plan.json."
     ),
 )
 @_provider_options
@@ -816,19 +838,27 @@ def annotate(
 
     # Collect every file this command will read, then refuse writing the
     # output over any of them — even with --force.
-    _all_sources: list[Path] = [input_file]
+    _all_sources: list[Path] = [input_file, *config.input_paths]
     if persona_file is not None:
         _all_sources.append(persona_file)
+    if persona_name is not None:
+        _all_sources.append(Path(str(
+            resources.files("halfblood").joinpath("personas", f"{persona_name}.txt")
+        )))
     if config_path is not None:
         _all_sources.append(config_path)
     if _cli_font_source is not None:
         _all_sources.append(_cli_font_source)
     if font_path is not None:
         _all_sources.append(font_path)
+    # Preserve a config/environment font path even when EPUB ignores it.
+    if effective_font is not None and Path(effective_font).expanduser().is_file():
+        _all_sources.append(Path(effective_font).expanduser())
     if resume_from is not None:
         _all_sources.append(resume_from)
-    checkpoint_path = _checkpoint_path_for(output_file)
-    _refuse_existing_output(output_file, force, source_paths=tuple(_all_sources))
+    checkpoint_path = _prepare_annotate_outputs(
+        output_file, force, tuple(_all_sources), resume_from,
+    )
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     processor = _processor_for(input_file, font_path, handwriting_engine)
@@ -955,7 +985,7 @@ def annotate(
         _print_usage_line(generator, console)
 
         if dry_run:
-            output_file.write_text(plan.model_dump_json(), encoding="utf-8")
+            atomic_write_text(output_file, plan.model_dump_json())
             sidecar = write_run_report(
                 build_run_report(
                     output_file=output_file,

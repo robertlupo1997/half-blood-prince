@@ -1,0 +1,4 @@
+$ .venv/bin/python -m ruff check src/ tests/ eval/ scripts/ benchmarks/
+exit_code: 0
+
+[1;32mAll checks passed![0m

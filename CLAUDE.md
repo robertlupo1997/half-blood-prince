@@ -1,4 +1,13 @@
-# Half-Blood Prince — Claude Code Session Handoff
+# Half-Blood Prince — Engineering Guide
+
+## Current placement work
+
+For changes to quote resolution, rendering, or public guarantees, read
+`docs/placement-contract.md` first. The supported seam is `halfblood.placement`
+and the processors' `render_plan`; legacy prefix helpers are outside it.
+Run `scripts/benchmark_placement.py` to check the guarantee, not a render count.
+`HANDOFF.md` points to the latest evidence packet. Historical measurements below
+are not release gates: re-run their commands before carrying them forward.
 
 ## MISSION
 
@@ -21,7 +30,7 @@ PDF/EPUB in
           structured-output mode is negotiated per provider (`generation/structured_output.py`),
           payloads re-validated via Pydantic → AnnotationPlan
     → DocumentProcessor.render_plan() / EpubProcessor.render_plan()   ← what the CLI runs
-        → targets resolved by a tolerance ladder (_resolve_annotation_to_anchor), never lone-word anchors
+        → complete normalized quotes resolved by halfblood.placement; ambiguity and misses refuse
         → margin notes drawn as VECTOR DRAWINGS via fitz.Shape with morph rotation
         → bowed connector arrows from notes to target passages
         → this path emits NO native PDF annotation objects (asserted in tests/test_cli_end_to_end.py)
@@ -40,7 +49,11 @@ PDF/EPUB in
 
 4. **Context windowing for cross-page continuity.** Each page gets the previous page's last 500 chars, next page's first 500 chars, and a rolling list of INVENTION/WARNING notes from prior pages. This is re-injected into the prompt — no conversation history, no state.
 
-5. **Progressive text matching.** LLM `target_text` rarely matches the PDF text layer byte-for-byte. `_search_variants()` tries: exact → 8-word prefix → 5-word → 3-word → longest single word. Plus whitespace/smart-quote normalization.
+5. **Whole-quote placement.** The supported renderer uses `resolve_pdf_quote` and
+   `resolve_epub_quote`. Prefix recovery, case folding, and first-hit fallbacks
+   remain only in legacy helpers; they must not enter the supported path.
+   A shortened prefix was observed anchoring “fifty milligrams” onto “five
+   milligrams”; the regression is in `tests/test_placement_rendering.py`.
 
 ---
 
@@ -92,13 +105,19 @@ These were found during an adversarial review. Critical and High bugs were fixed
 
 12. ~~Sequential-only page generation~~ **FIXED — concurrency shipped.** Pages are generated in concurrent waves via `ThreadPoolExecutor(max_workers=concurrency)` (`annotation_generator.py`, default `concurrency: 3` in `config.py`, tunable via `HALFBLOOD_CONCURRENCY`). Remaining question is rate-limit tuning for very large books, not the absence of concurrency.
 
-13. **`_search_variants` can match the wrong passage.** If the longest single word in `target_text` appears multiple times on the page, the annotation anchors to the first occurrence, which may be wrong. No disambiguation.
+13. **Legacy `_search_variants` can guess a passage.** It is not the supported
+    `render_plan` placement seam. Keep compatibility helpers outside the public
+    guarantee; do not use their recovery rate as evidence of correct placement.
 
 14. ~~Overlapping margin notes with no layout avoidance~~ **BUILT** (`layout/page_solver.py`): candidate placement runs pairwise conflict detection (`_candidate_conflicts`, conflict-mask pruning) so overlapping margin notes are resolved at layout time rather than drawn on top of each other.
 
 15. ~~**EPUB processor `_locate_text` only searches within single text nodes.**~~ **FIXED — do not rebuild this.** The v2 render path resolves targets across inline tag boundaries via `documents/epub.py:locate_across_nodes`, wired at `epub_processor.py` phase 1 and phase 4. Verified directly: targets spanning `text → <em> → text`, `<em> → text → <strong> → text`, and `<strong> → text` all resolve. The legacy `_locate_text` still exists but is no longer the v2 path. This entry stayed stale long enough to cost a full wasted investigation cycle — **probe HEAD with a real command before believing any documented gap in this file.**
 
-16. **Non-verbatim model quoting — partly mitigated.** The model does not reliably quote character-for-character, which is now the main source of dropped EPUB annotations. `documents/matching.py:MatchTolerance` walks EXACT → CASE_INSENSITIVE → PUNCTUATION_ELASTIC in `locate_across_nodes`, recovering case drift and quote-mark drift with exact semantics and no similarity threshold. Measured on a real book: **88% → 96% of annotations rendered**, across two independent generation runs. The residue is genuine paraphrase (dropped words, elided dialogue attributions), which is **deliberately not recovered** — fuzzy matching would anchor a note to the wrong words, and the reader cannot detect that. Prompt hardening was tried against this residue and **measurably did not help** across three runs, so the prompt was left alone — see `docs/decisions/verbatim-quoting-prompt-vs-matcher.md`.
+16. **Historical tolerance experiments are superseded for supported placement.**
+    Case drift, omitted punctuation, paraphrase, and OCR repairs are now refused
+    unless the full quote agrees under the documented normalization. Historical
+    recovery percentages in `docs/decisions/verbatim-quoting-prompt-vs-matcher.md`
+    describe the former path, not the current placement contract.
 
 ---
 
@@ -111,7 +130,7 @@ uv venv && uv pip install -e ".[dev]"   # or: pip install -e ".[dev]"
 .venv/bin/python -m pytest tests/ -q
 ```
 
-All tests must pass in a plain non-tty shell too (`env -i PATH="$PATH" HOME="$HOME" .venv/bin/python -m pytest -q`). They use mocked/stub providers — no real API calls. Current count: **1,861 tests, all passing** (verify with the command above; this file's counts go stale — trust the run).
+All tests must pass in a plain non-tty shell too. They use mocked/stub providers; the offline suite needs no API credentials. Trust the current test run, not historical counts.
 
 ### Offline end-to-end smoke (no API key needed):
 
@@ -156,14 +175,19 @@ halfblood annotate book.epub -o annotated.epub --pages 1-5
 
 ## IMPROVEMENT AREAS
 
-### High Priority
+### Current priorities
 
-- **Keep retry ownership singular during the provider transition.** The SDK retries currently cover transient responses; per architecture spec §4.6, Phase 1's httpx provider transport becomes the **sole retry owner**. Do not wrap the SDK in another retry layer meanwhile.
-- **Add async page processing** with a configurable concurrency limit (default 3-5). Massive speedup on long books.
-- **Add annotation collision detection** in `document_processor.py`. Track occupied margin regions per page and shift notes that would overlap.
-- **Add proper error messages** when PyMuPDF can't open a file (validate magic bytes before passing to `fitz.open`).
-- **Add a `--dry-run` flag** to the CLI that generates annotations but doesn't render, outputting the `AnnotationPlan` as JSON. Useful for debugging persona/prompt issues without waiting for rendering.
-- **Add streaming progress** — currently `generate_for_document` blocks until all pages are done. Show per-page progress as annotations come back.
+- Preserve whole-quote refusal and input-file safety when changing the pipeline.
+- Verify all four outcomes and exact ranges with the offline benchmark.
+- Keep failed or omitted drawing operations visible in `RenderReport`.
+- Measure routing quality separately from quote resolution. A resolved quote
+  does not promise a collision-free connector or a placeable margin note.
+- Independent frontier-model quality evaluation requires working credentials.
+  A stub or self-judge run checks wiring only.
+
+Observed shipped mechanisms (probe before changing): concurrent generation
+waves, collision-aware note layout, sole-httpx retries, `--dry-run`, and per-page
+progress. They are not missing features.
 
 ---
 
@@ -235,7 +259,7 @@ This project is a riff on [Riddle](https://github.com/MaximeRivest/riddle) (a Ru
 After your session, this project should:
 
 1. Have all Medium/Low bugs fixed
-2. Preserve the SDK's existing retries until Phase 1's httpx provider transport is the **sole retry owner**, with no duplicate retry layer
+2. Preserve the direct-httpx provider transport as the sole retry owner
 3. Have test coverage for EPUB processor and web preview
 4. Have linting configured (ruff + mypy)
 5. Have a validated tech stack with documented reasoning

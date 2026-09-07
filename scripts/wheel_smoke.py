@@ -144,11 +144,13 @@ def main() -> int:
             "p=d.DocumentProcessor();"
             "print('FONT_OK', p._fontfile)"
         )
-        res = subprocess.run(
-            [str(py), "-c", probe], cwd=runcwd, capture_output=True, text=True
-        )
+        res = subprocess.run([str(py), "-c", probe], cwd=runcwd, capture_output=True, text=True)
         ok = res.returncode == 0 and "FONT_OK" in res.stdout
-        check("default font resolves from installed package", ok, (res.stderr or res.stdout).strip()[:160])
+        check(
+            "default font resolves from installed package",
+            ok,
+            (res.stderr or res.stdout).strip()[:160],
+        )
         if ok and str(REPO) in res.stdout:
             check(
                 "resolved font path is inside site-packages, not the repo",
@@ -157,6 +159,15 @@ def main() -> int:
             )
         elif ok:
             check("resolved font path is inside site-packages, not the repo", True)
+
+        # Probe the public placement API from the installed wheel, without repo paths.
+        placement_probe = 'import json\nfrom pathlib import Path\nimport fitz\nimport halfblood\nfrom bs4 import BeautifulSoup\nfrom halfblood.placement import resolve_pdf_quote, resolve_epub_quote, PlacementResult\nfrom halfblood.models.annotations import TargetSelector\nfrom halfblood.document_processor import DocumentProcessor\n\nassert "site-packages" in halfblood.__file__\nwith fitz.open() as doc:\n    page = doc.new_page()\n    page.insert_text((72, 100), "The dose is five milligrams. Repeat. Repeat.")\n    resolved = resolve_pdf_quote(page, TargetSelector(exact="The dose is five milligrams."))\n    assert resolved.status == "resolved" and resolved.raw_span == (0, 28)\n    assert PlacementResult.model_validate_json(resolved.model_dump_json()) == resolved\n    assert resolve_pdf_quote(page, TargetSelector(exact="The dose is fifty milligrams.")).status == "unresolved"\n    assert resolve_pdf_quote(page, TargetSelector(exact="Repeat.")).status == "ambiguous"\n    doc.save("wheel-source.pdf")\nroot = BeautifulSoup("<p>The <em>dose</em> is five milligrams.</p>", "html.parser")\nresult = resolve_epub_quote(root, TargetSelector(exact="The dose is five milligrams."))\nassert result.status == "resolved" and not result.quads\nassert resolve_epub_quote(root, TargetSelector(exact="The dose"), fixed_layout=True).status == "unsupported_renderer"\nsource = Path("wheel-source.pdf")\nbefore = source.read_bytes()\ntry:\n    DocumentProcessor().render_annotations(str(source), [], str(source))\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError("input-overwrite guard missing")\nassert source.read_bytes() == before\nprint("PLACEMENT_OK: four outcomes, cross-node range, round-trip, source intact")\n'
+        res = run(["-I", "-c", placement_probe], exe_path=py)
+        check(
+            "installed placement contract",
+            res.returncode == 0 and "PLACEMENT_OK" in res.stdout,
+            (res.stdout if res.returncode == 0 else res.stderr).strip()[-500:],
+        )
 
         # Every command must fail cleanly, never with a traceback.
         for args in (["annotate", "/nonexistent/book.pdf", "-o", "out.pdf"], ["eval", "--list"]):

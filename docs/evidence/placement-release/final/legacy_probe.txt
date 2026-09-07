@@ -1,0 +1,28 @@
+$ .venv/bin/python docs/evidence/placement-release/legacy_probe.py
+exit_code: 0
+
+PDF prefix decoy source='The correct dose of this medicine is five milligrams.\nThe correct dose 0f this medicine is fifty milligrams.\n' target={'exact': 'The correct dose of this medicine is fifty milligrams.'}
+  result= {'range': (0, 24), 'anchored': 'The correct dose of this', 'rects': [(72.0, 60.17, 186.94, 75.29)]}
+EPUB prefix decoy markup='<p id="wrong">The correct dose of this medicine is five milligrams.</p><p id="intended">The correct dose 0f this medicine is fifty milligrams.</p>' target={'exact': 'The correct dose of this medicine is fifty milligrams.'}
+  result= {'text': 'The correct dose of this', 'segments': [('wrong', 'The correct dose of this')], 'reason': 'prefix-match: tier=2 prefix pos=0'}
+PDF overlap exact source='alpha alpha alpha alpha\n' target={'exact': 'alpha alpha alpha', 'prefix': 'alpha ', 'start_offset': 6, 'end_offset': 23}
+  result= {'range': (0, 17), 'anchored': 'alpha alpha alpha', 'rects': [(72.0, 60.17, 158.83, 75.29)]}
+EPUB overlap exact markup='<p>alpha alpha alpha alpha</p>' target={'exact': 'alpha alpha alpha', 'prefix': 'alpha ', 'start_offset': 6, 'end_offset': 23}
+  result= None
+PDF overlap CI source='ALPHA alpha ALPHA alpha\n' target={'exact': 'Alpha Alpha Alpha', 'prefix': 'ALPHA ', 'start_offset': 6, 'end_offset': 23}
+  result= {'range': (0, 17), 'anchored': 'ALPHA alpha ALPHA', 'rects': [(72.0, 60.17, 177.16, 75.29)]}
+EPUB overlap CI markup='<p>ALPHA alpha ALPHA alpha</p>' target={'exact': 'Alpha Alpha Alpha', 'prefix': 'ALPHA ', 'start_offset': 6, 'end_offset': 23}
+  result= None
+PDF no-index ambiguity source='Never heat the vessel.\nNever heat the vessel.\n' target={'exact': 'Never heat the vessel.'}
+  result= {'range': (0, 0), 'anchored': '', 'rects': [(72.0, 60.17, 181.44, 75.29)]}
+  geometry_text= 'Never heat the vessel.'
+PDF no-index explicit second source='Never heat the vessel.\nNever heat the vessel.\n' target={'exact': 'Never heat the vessel.', 'start_offset': 22}
+  result= {'range': (0, 0), 'anchored': '', 'rects': [(72.0, 60.17, 181.44, 75.29)]}
+  geometry_text= 'Never heat the vessel.'
+PDF no-index mixed-case union source='Never heat the vessel.\nNEVER HEAT THE VESSEL.\n' target={'exact': 'Never heat the vessel.', 'start_offset': 0}
+  result= {'range': (0, 0), 'anchored': '', 'rects': [(72.0, 60.17, 216.27, 135.29)]}
+  geometry_text= 'Never heat the vessel.\nNEVER HEAT THE VESSEL.'
+EPUB CSS-separated fixed layout markup='<div><span id="wrong" style="position:absolute;top:20px;left:20px">Never heat </span><span id="unrelated" style="position:absolute;top:600px;left:400px">the vessel.</span></div>' target={'exact': 'Never heat the vessel.'}
+  result= {'text': 'Never heat the vessel.', 'segments': [('wrong', 'Never heat '), ('unrelated', 'the vessel.')], 'reason': 'match: tier=0 context=1.00 offset=0.00 pos=0'}
+EPUB inline control markup='<p>Never <em>heat</em> the <strong>vessel.</strong></p>' target={'exact': 'Never heat the vessel.'}
+  result= {'text': 'Never heat the vessel.', 'segments': [(None, 'Never '), (None, 'heat'), (None, ' the '), (None, 'vessel.')], 'reason': 'match: tier=0 context=1.00 offset=0.00 pos=0'}

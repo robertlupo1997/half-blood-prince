@@ -6,15 +6,14 @@ import hashlib
 import json
 import uuid
 from copy import deepcopy
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from halfblood.models import legacy
 from halfblood.models.annotations import Annotation, MarkIntent, TargetSelector
 
 _ID_NAMESPACE = uuid.UUID("2a95ef2e-b21d-5a18-a0d8-3d8dca23a465")
-_CONTEXT_LENGTH = 32
 
 _MARK_INTENTS: dict[legacy.AnnotationType, MarkIntent] = {
     legacy.AnnotationType.CORRECTION: MarkIntent.UNDERLINE,
@@ -77,6 +76,17 @@ class AnnotationPlan(_StrictModel):
     units: list[Unit] = Field(default_factory=list)
     compatibility: CompatibilityEnvelope | None = None
 
+    @model_validator(mode="after")
+    def _unique_render_identities(self) -> Self:
+        for name, values in (
+            ("unit_id", [unit.unit_id for unit in self.units]),
+            ("unit ordinal", [unit.ordinal for unit in self.units]),
+            ("annotation id", [ann.id for unit in self.units for ann in unit.annotations]),
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError(f"{name} values must be unique")
+        return self
+
 
 class UnsupportedSchemaVersionError(ValueError):
     """Raised when a saved annotation plan uses an unsupported major version."""
@@ -94,21 +104,13 @@ def _sha256(value: str) -> str:
 
 
 def _selector(exact: str, original_text: str) -> TargetSelector:
-    start = original_text.find(exact)
-    if start < 0:
-        return TargetSelector(exact=exact)
+    """Preserve the quote, without inventing occurrence-selection evidence.
 
-    end = start + len(exact)
-    prefix = original_text[max(0, start - _CONTEXT_LENGTH) : start] or None
-    suffix = original_text[end : end + _CONTEXT_LENGTH] or None
-    return TargetSelector(
-        exact=exact,
-        prefix=prefix,
-        suffix=suffix,
-        start_offset=start,
-        end_offset=end,
-    )
-
+    V1 carries no selector context. Finding the first occurrence in extracted
+    text cannot tell us which occurrence the author intended. Extracted EPUB
+    chapter offsets also do not identify positions in individual DOM runs.
+    """
+    return TargetSelector(exact=exact)
 
 def migrate_v1_to_v2(data: dict[str, Any]) -> AnnotationPlan:
     """Purely migrate a validated legacy plan to the renderer-neutral v2 contract."""

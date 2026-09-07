@@ -28,6 +28,12 @@ jobs:
       - run: ruff check src tests eval scripts
       - run: mypy src/halfblood
       - run: pytest tests/ -q
+      - run: python scripts/benchmark_placement.py > placement-benchmark.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: placement-benchmark-${{ matrix.python-version }}
+          path: placement-benchmark.json
 
   wheel:
     # Builds the wheel, installs it into a clean venv outside the repo, and uses

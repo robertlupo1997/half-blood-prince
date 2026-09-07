@@ -1,22 +1,7 @@
-"""Every CONNECTOR degradation code must reach the RenderReport.
+"""Connector summary flags and unmapped composer diagnostics stay observable.
 
-Scope note: this enumerates ``ConnectorDegradation`` only. The composer emits
-other codes too (an AST sweep counted 11, of which 8 -- e.g.
-``caret_interline_gap_unavailable``, ``ink_geometry_invalid`` -- are still
-unmapped and take the warning-and-drop branch). Mapping those exhaustively wants
-a finite composer-code enum and is recorded as open work; do not read this
-module as proving it.
-
-`document_processor.render_plan` translates composer degradation codes into
-`DegradationFlag`s through a dict lookup. A code missing from that dict is
-silently dropped, so the user never learns the render was degraded.
-
-That is not hypothetical. `ConnectorDegradation.OBSTACLE_CAP_USED` was added
-with its `DegradationFlag.CONNECTOR_OBSTACLE_CAP` counterpart, the composer
-emitted it, and the mapping was not extended -- so the flag could never appear
-in a report. These tests pin the correspondence structurally rather than
-re-listing today's codes, so the NEXT code added fails here instead of vanishing
-in production.
+Summary flags remain finite. Report 1.1 also records every composer code, so
+unknown codes no longer depend on a log message or an ever-growing mapping.
 """
 
 from __future__ import annotations
@@ -105,15 +90,31 @@ class TestMappingStaysInSyncWithSource:
                 "in document_processor.py; the mapping has drifted."
             )
 
-    def test_unmapped_code_is_logged_not_swallowed(self) -> None:
-        """An unknown code must announce itself rather than disappearing.
+    def test_unmapped_code_is_preserved_in_report(self, tmp_path, monkeypatch) -> None:
+        """Even a future unmapped code survives actual composition and rendering."""
+        from dataclasses import replace
 
-        The original loop did `if flag is not None: append`, so an unmapped code
-        was a silent no-op. It now warns on the `flag is None` branch.
-        """
-        from pathlib import Path
+        from test_placement_rendering import make_plan, make_source
 
-        import halfblood.document_processor as dp
+        from halfblood.document_processor import DocumentProcessor
+        from halfblood.ink.composer import InkComposer, InkDegradation
 
-        source = Path(dp.__file__).read_text(encoding="utf-8")
-        assert "Unmapped composition degradation code" in source
+        original = InkComposer.compose
+
+        def compose(self, *args, **kwargs):
+            result = original(self, *args, **kwargs)
+            return replace(result, degradations=(*result.degradations, InkDegradation(
+                annotation_id="ann-0", role=None, code="future_unmapped_code",
+                detail="The diagnostic must remain visible.",
+            )))
+
+        monkeypatch.setattr(InkComposer, "compose", compose)
+        source = make_source(tmp_path, "pdf", "A uniquely supported quotation.")
+        report = DocumentProcessor().render_plan(
+            str(source), make_plan("A uniquely supported quotation."), str(tmp_path / "out.pdf"),
+        )
+        diagnostics = [d for d in report.composition_degradations
+                       if d.code == "future_unmapped_code"]
+        assert len(diagnostics) == 1
+        assert diagnostics[0].annotation_id == "ann-0"
+        assert diagnostics[0].detail == "The diagnostic must remain visible."

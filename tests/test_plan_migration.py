@@ -404,7 +404,7 @@ GOLDEN_V2_DEFAULTS_JSON = (
     '"label":"Page 1","original_text":"Add the wormwood slowly, stirring twice.",'
     '"source_locator":"page:1","status":"ok","annotations":[{'
     '"id":"6ad8c798-3e6e-5bb7-ba9a-30c4da27a9bb","target":{"exact":"wormwood slowly",'
-    '"prefix":"Add the ","suffix":", stirring twice.","start_offset":8,"end_offset":23},'
+    '"prefix":null,"suffix":null,"start_offset":null,"end_offset":null},'
     '"annotation_type":"correction","content":"No -- crush it first, fool.",'
     '"confidence":0.8,"requested_placement":"margin_right","mark_intent":"underline",'
     '"doodle_kind":null}]}],"compatibility":null}'

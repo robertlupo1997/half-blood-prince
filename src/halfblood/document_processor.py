@@ -63,6 +63,7 @@ from halfblood.documents.matching import (
     score_candidates,
 )
 from halfblood.documents.pdf_occupancy import PdfTextLayerOccupancyProvider
+from halfblood.file_safety import require_distinct_output
 from halfblood.ink.composer import (
     _MARK_ROLES,
     BuiltinRoughInkEngine,
@@ -90,14 +91,19 @@ from halfblood.models import (
 )
 from halfblood.models.rendering import (
     AnchorWarning,
+    CompositionDegradation,
     DegradationFlag,
     OutputHash,
+    PlacementRecord,
     RenderReport,
+    ResolvedAnchor,
     ResolvedAnnotation,
     SkipReason,
     SkipRecord,
+    SurfaceQuad,
     SurfaceRect,
 )
+from halfblood.placement import PlacementResult, PlacementStatus, resolve_pdf_quote
 from halfblood.renderers import PdfRenderer
 
 if TYPE_CHECKING:
@@ -894,6 +900,7 @@ class DocumentProcessor:
                 1-indexed, matching `PageContent.page_number`.
             output_path: Where to write the annotated PDF.
         """
+        require_distinct_output(Path(output_path), (Path(input_path),))
         doc = fitz.open(input_path)
         try:
             by_page: dict[int, list[Annotation]] = {}
@@ -1089,33 +1096,25 @@ class DocumentProcessor:
         plan: V2AnnotationPlan,
         output_path: str,
     ) -> RenderReport:
-        """Render a V2 AnnotationPlan onto a PDF using resolved anchors and layout.
+        """Render a V2 plan using the public whole-quote placement contract.
 
-        Pipeline per page:
-          1. Build PdfPageIndex for per-char geometry.
-          2. _resolve_annotation_to_anchor: each annotation → PdfAnchor or MISSING.
-          3. layout_page_annotations: assigns note_box and placement to each request.
-          4. For placed annotations: join the semantic Annotation, compose an InkScene
-             (InkComposer), render it as vectors (PdfRenderer.render_scene), and draw the
-             typeset note body (_draw_note_body). Highlights commit as an underlay.
-          5. Accumulate rendered IDs and SkipRecords into a RenderReport.
+        Every annotation receives a PlacementRecord before layout. Refusals
+        produce no ink. Resolved PDF display-space quads feed the layout solver
+        and vector ink renderer; a note can still be skipped by layout, with
+        its supported mark retained as marks_only. Composer diagnostics are
+        retained separately from the finite degradation summary flags.
 
-        Output is written atomically: fitz saves to a temp file in the same directory,
-        then os.replace to output_path.
-
-        This method does NOT touch render_annotations or add_margin_note.
-
-        Args:
-            input_path: Source PDF path.
-            plan: A validated V2 AnnotationPlan (halfblood.models.documents.AnnotationPlan).
-            output_path: Destination PDF path (created or overwritten atomically).
-
-        Returns:
-            RenderReport with rendered/skipped partition covering all input annotations.
+        The destination must differ from the input, including aliases. PDF
+        output is saved to a unique sibling temporary file and replaced
+        atomically. Invalid duplicate plan identities raise ValueError before
+        writing. See docs/placement-contract.md for outcome and offset semantics.
         """
-        from halfblood.layout.anchors import fitz_rect_from_surf, pdf_anchor_to_resolved_anchor
+        from halfblood.layout.anchors import fitz_rect_from_surf
+        from halfblood.models.documents import AnnotationPlan as V2AnnotationPlan
         from halfblood.models.documents import Unit
 
+        require_distinct_output(Path(output_path), (Path(input_path),))
+        plan = V2AnnotationPlan.model_validate(plan.model_dump())
         composer = InkComposer(
             BuiltinRoughInkEngine(),
             P3T5NoGoHandwritingEngine(),
@@ -1137,6 +1136,8 @@ class DocumentProcessor:
 
         rendered_ids: list[str] = []
         marks_only_ids: list[str] = []
+        placements: list[PlacementRecord] = []
+        composition_degradations: list[CompositionDegradation] = []
         skip_records: list[SkipRecord] = []
         warnings: list[AnchorWarning] = []
         degradation_flags: list[DegradationFlag] = []
@@ -1156,6 +1157,11 @@ class DocumentProcessor:
                 # Out-of-range page: skip all annotations on this unit.
                 if page_index < 0 or page_index >= doc.page_count:
                     for ann in annotations:
+                        placements.append(PlacementRecord(
+                            annotation_id=ann.id, source_locator=unit.source_locator,
+                            result=PlacementResult(status=PlacementStatus.UNRESOLVED,
+                                                   renderer="pdf", reason="out_of_range_page"),
+                        ))
                         skip_records.append(
                             SkipRecord(
                                 annotation_id=ann.id,
@@ -1170,21 +1176,31 @@ class DocumentProcessor:
 
                 page = doc[page_index]
                 page_occ = occupancy_provider.extract(page)
-                try:
-                    index: PdfPageIndex | None = PdfPageIndex(page)
-                except PdfAlignmentError:
-                    index = None
-
-                # --- Resolution phase ---
+                # --- Evidence resolution (no legacy prefix/search_for fallback) ---
                 requests: list[NoteRequest] = []
-                resolution_miss_ids: list[str] = []
-
                 for ann in annotations:
-                    pdf_anchor = self._resolve_annotation_to_anchor(page, index, ann)
-                    if pdf_anchor is None:
-                        resolution_miss_ids.append(ann.id)
+                    result = resolve_pdf_quote(page, ann.target)
+                    placements.append(PlacementRecord(
+                        annotation_id=ann.id, source_locator=unit.source_locator, result=result,
+                    ))
+                    if result.status is not PlacementStatus.RESOLVED:
+                        reason = (
+                            SkipReason.AMBIGUOUS_TARGET
+                            if result.status is PlacementStatus.AMBIGUOUS
+                            else SkipReason.UNSUPPORTED_RENDERER
+                            if result.status is PlacementStatus.UNSUPPORTED_RENDERER
+                            else SkipReason.MISSING_TARGET
+                        )
+                        skip_records.append(SkipRecord(
+                            annotation_id=ann.id, reason=reason, detail=result.reason,
+                        ))
                     else:
-                        resolved_anchor = pdf_anchor_to_resolved_anchor(pdf_anchor)
+                        assert result.raw_span is not None
+                        resolved_anchor = ResolvedAnchor(
+                            char_range=result.raw_span,
+                            quads=tuple(SurfaceQuad.model_validate(q.model_dump())
+                                        for q in result.quads),
+                        )
                         requests.append(
                             NoteRequest(
                                 annotation_id=ann.id,
@@ -1256,21 +1272,13 @@ class DocumentProcessor:
                         ),
                     }
                     for degradation in composition.degradations:
+                        composition_degradations.append(CompositionDegradation(
+                            annotation_id=ann.id, code=degradation.code,
+                            detail=degradation.detail[:500],
+                        ))
                         flag = degradation_mapping.get(degradation.code)
                         if flag is None:
-                            # An unmapped code is silently invisible to the user,
-                            # which is how the obstacle cap shipped unreportable:
-                            # the composer emitted it and this dict dropped it.
-                            # Log rather than swallow, so the next new code
-                            # announces itself instead of vanishing.
-                            logger.warning(
-                                "Unmapped composition degradation code %r "
-                                "(annotation %s) — it will not appear in the "
-                                "render report",
-                                degradation.code,
-                                resolved_ann.annotation_id,
-                            )
-                            continue
+                            continue  # Full diagnostic is retained above, even for new codes.
                         degradation_flags.append(flag)
 
                     if isinstance(composition.body, HandwritingUnavailable):
@@ -1338,19 +1346,14 @@ class DocumentProcessor:
                         handwriting_mode=self._handwriting_engine,
                         mark_only=True,
                     )
+                    composition_degradations.extend(
+                        CompositionDegradation(annotation_id=ann.id, code=d.code,
+                                               detail=d.detail[:500])
+                        for d in composition.degradations
+                    )
                     scene_result = renderer.render_scene(page, composition.scene)
                     if scene_result.rendered:
                         marks_only_ids.append(ann.id)
-
-                # Resolution misses (MISSING_TARGET)
-                for ann_id in resolution_miss_ids:
-                    skip_records.append(
-                        SkipRecord(
-                            annotation_id=ann_id,
-                            reason=SkipReason.MISSING_TARGET,
-                            detail="target text not found on page",
-                        )
-                    )
 
             # Atomic output: temp file in same dir → rename.
             out_path = Path(output_path)
@@ -1370,6 +1373,8 @@ class DocumentProcessor:
         output_sha256 = hashlib.sha256(Path(output_path).read_bytes()).hexdigest()
 
         return RenderReport(
+            placements=tuple(placements),
+            composition_degradations=tuple(composition_degradations),
             rendered=tuple(rendered_ids),
             skipped=tuple(skip_records),
             marks_only=tuple(marks_only_ids),

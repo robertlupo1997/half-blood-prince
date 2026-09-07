@@ -1,0 +1,4 @@
+$ .venv/bin/python -m ruff check src/ tests/ eval/
+Captured at 0739f28 before edits.
+
+[1;32mAll checks passed![0m

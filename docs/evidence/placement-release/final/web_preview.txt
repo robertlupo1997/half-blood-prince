@@ -1,0 +1,6 @@
+$ .venv/bin/halfblood web-preview /tmp/hbp-final-plan.json -o /tmp/hbp-final-preview.html --force
+exit_code: 0
+
+─────────────────────── Half-Blood Prince -- Web Preview ───────────────────────
+Done. 3 annotation(s) (3 anchored to text) across 3 page(s) -> 
+/tmp/hbp-final-preview.html
