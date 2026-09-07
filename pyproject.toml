@@ -83,3 +83,7 @@ packages = ["src/halfblood"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The repo root must be importable so tests can reach `benchmarks/`.
+# Without this, bare `pytest` (what CI runs) fails on collection while
+# `python -m pytest` passes, because only the latter puts cwd on sys.path.
+pythonpath = ["."]
