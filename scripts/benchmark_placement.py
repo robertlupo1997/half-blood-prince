@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from pathlib import Path
@@ -12,7 +13,13 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from benchmarks.placement import run_benchmark  # noqa: E402
+# This script's contract is "JSON on stdout, nothing else", and an import can break
+# it: PyMuPDF's `fitz` shim prints its deprecation notice to STDOUT, not stderr, on
+# any version newer than the dev lock's 1.28.0. CI resolves pymupdf from the
+# pyproject range and got one, which corrupted both this test and the workflow's
+# `> placement-benchmark.json` artifact. Any import chatter now lands on stderr.
+with contextlib.redirect_stdout(sys.stderr):
+    from benchmarks.placement import run_benchmark  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:

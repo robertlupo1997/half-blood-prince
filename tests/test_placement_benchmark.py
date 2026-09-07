@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -55,6 +56,43 @@ class TestBenchmarkPassesAgainstRealResolver:
         assert report["totals"]["mismatches"] == 0
         assert report["totals"]["wrong_anchors"] == 0
         assert report["fixture_errors"] == []
+
+    def test_stdout_is_pure_json_even_when_an_import_writes_to_stdout(
+        self, tmp_path: Path
+    ) -> None:
+        """The script's contract is JSON on stdout and nothing else.
+
+        PyMuPDF's ``fitz`` shim prints its deprecation notice to STDOUT, not
+        stderr, on versions newer than the dev lock's 1.28.0. CI resolves
+        pymupdf from the pyproject range, got one, and the leading warning line
+        made both this test and the workflow's ``> placement-benchmark.json``
+        artifact unparseable. This reproduces that by emitting the same line on
+        ``import fitz``, which is where the real one fires.
+        """
+        sitecustomize = tmp_path / "sitecustomize.py"
+        sitecustomize.write_text(
+            "import sys, importlib.abc\n"
+            "class _W(importlib.abc.MetaPathFinder):\n"
+            "    fired = False\n"
+            "    def find_spec(self, name, path, target=None):\n"
+            "        if name == 'fitz' and not _W.fired:\n"
+            "            _W.fired = True\n"
+            "            sys.stdout.write('warning: deprecated fitz API\\n')\n"
+            "        return None\n"
+            "sys.meta_path.insert(0, _W())\n",
+            encoding="utf-8",
+        )
+        env = dict(os.environ, PYTHONPATH=str(tmp_path))
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT)],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO),
+            env=env,
+        )
+        assert proc.returncode == 0, proc.stderr or proc.stdout
+        report = json.loads(proc.stdout)  # must not raise
+        assert report["passed"] is True
 
     def test_green_report_via_public_api(self) -> None:
         report = _report()
