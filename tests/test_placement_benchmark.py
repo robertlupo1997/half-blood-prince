@@ -93,6 +93,9 @@ class TestBenchmarkPassesAgainstRealResolver:
         assert proc.returncode == 0, proc.stderr or proc.stdout
         report = json.loads(proc.stdout)  # must not raise
         assert report["passed"] is True
+        # The chatter must be dropped, not relocated: TestScriptSafety asserts
+        # stderr is empty, so moving it there trades one red test for another.
+        assert proc.stderr == ""
 
     def test_green_report_via_public_api(self) -> None:
         report = _report()

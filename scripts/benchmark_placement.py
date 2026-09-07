@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import io
 import json
 import sys
 from pathlib import Path
@@ -13,12 +14,15 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-# This script's contract is "JSON on stdout, nothing else", and an import can break
-# it: PyMuPDF's `fitz` shim prints its deprecation notice to STDOUT, not stderr, on
-# any version newer than the dev lock's 1.28.0. CI resolves pymupdf from the
-# pyproject range and got one, which corrupted both this test and the workflow's
-# `> placement-benchmark.json` artifact. Any import chatter now lands on stderr.
-with contextlib.redirect_stdout(sys.stderr):
+# Both of this script's streams are contracts: JSON on stdout, and stderr quiet
+# enough that TestScriptSafety can assert it empty. An import can break either.
+# PyMuPDF's `fitz` shim prints its deprecation notice to STDOUT, not stderr, on
+# any version newer than the dev lock's 1.28.0; CI resolves pymupdf from the
+# pyproject range, got 1.28.2, and that line corrupted both the parsed report and
+# the workflow's `> placement-benchmark.json` artifact. Import chatter is dropped
+# rather than moved, so neither contract depends on what a dependency decides to
+# say. Exceptions are unaffected: tracebacks go to stderr, which is not redirected.
+with contextlib.redirect_stdout(io.StringIO()):
     from benchmarks.placement import run_benchmark  # noqa: E402
 
 
