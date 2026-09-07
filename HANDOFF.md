@@ -4,6 +4,7 @@
 > Whole-quote placement contract and refusal benchmark verified at `79da678`.
 > Final root run: 2070 passed, 29 warnings in 24.65s; Ruff/mypy and wheel smoke pass; original input guard 8/8.
 > Frontier quality evaluation remains **Blocked: rejected credential (HTTP 401)**.
+> PR: https://github.com/robertlupo1997/half-blood-prince/pull/3
 > Ready for PR review, not a merge or public-release verdict.
 
 ## Previous preservation checkpoint

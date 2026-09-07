@@ -313,5 +313,22 @@ should first add a checked-answer counterexample, not raise a recovery count.
 
 ## PR / push receipt
 
-Pending at packet construction. The final response and PR body link to this
-packet; no main-branch or visibility change is authorized by it.
+**Observed:** `git push -u origin release/evidence-placement-contract` exited 0
+and created the remote branch (full output: `final/push.txt`).
+
+Exact command:
+
+```bash
+gh pr create --base main --head release/evidence-placement-contract --title "Define whole-quote placement contract and refusal benchmark" --body-file /tmp/hbp-placement-pr-body.md
+```
+
+Exit 0; exact stdout:
+
+```text
+https://github.com/robertlupo1997/half-blood-prince/pull/3
+```
+
+The PR body links to this packet. PR verification is preserved in
+`docs/evidence/placement-release/final/pr.txt`. No merge or visibility change
+was performed. Hosted CI may still be running; the recorded checks above are
+local execution evidence, not a claim of completed hosted CI.

@@ -1,0 +1,10 @@
+$ git push -u origin release/evidence-placement-contract
+exit_code: 0
+
+remote: 
+remote: Create a pull request for 'release/evidence-placement-contract' on GitHub by visiting:        
+remote:      https://github.com/robertlupo1997/half-blood-prince/pull/new/release/evidence-placement-contract        
+remote: 
+To https://github.com/robertlupo1997/half-blood-prince.git
+ * [new branch]      release/evidence-placement-contract -> release/evidence-placement-contract
+branch 'release/evidence-placement-contract' set up to track 'origin/release/evidence-placement-contract'.
