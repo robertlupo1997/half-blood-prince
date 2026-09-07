@@ -14,7 +14,6 @@ from halfblood.models import legacy
 from halfblood.models.annotations import Annotation, MarkIntent, TargetSelector
 
 _ID_NAMESPACE = uuid.UUID("2a95ef2e-b21d-5a18-a0d8-3d8dca23a465")
-_CONTEXT_LENGTH = 32
 
 _MARK_INTENTS: dict[legacy.AnnotationType, MarkIntent] = {
     legacy.AnnotationType.CORRECTION: MarkIntent.UNDERLINE,
@@ -94,21 +93,13 @@ def _sha256(value: str) -> str:
 
 
 def _selector(exact: str, original_text: str) -> TargetSelector:
-    start = original_text.find(exact)
-    if start < 0:
-        return TargetSelector(exact=exact)
+    """Preserve the quote, without inventing occurrence-selection evidence.
 
-    end = start + len(exact)
-    prefix = original_text[max(0, start - _CONTEXT_LENGTH) : start] or None
-    suffix = original_text[end : end + _CONTEXT_LENGTH] or None
-    return TargetSelector(
-        exact=exact,
-        prefix=prefix,
-        suffix=suffix,
-        start_offset=start,
-        end_offset=end,
-    )
-
+    V1 carries no selector context. Finding the first occurrence in extracted
+    text cannot tell us which occurrence the author intended. Extracted EPUB
+    chapter offsets also do not identify positions in individual DOM runs.
+    """
+    return TargetSelector(exact=exact)
 
 def migrate_v1_to_v2(data: dict[str, Any]) -> AnnotationPlan:
     """Purely migrate a validated legacy plan to the renderer-neutral v2 contract."""

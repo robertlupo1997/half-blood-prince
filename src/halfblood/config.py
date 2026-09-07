@@ -126,6 +126,8 @@ class ResolvedConfig:
     persona: str | None = None
     max_per_page: int = 5
     font: str | None = None
+    # Files actually read by resolution, including implicit configs/personas.
+    input_paths: tuple[Path, ...] = ()
 
     def safe_repr(self) -> str:
         """Return diagnostics containing settings and sources, but no key values."""
@@ -334,6 +336,7 @@ def resolve_generation_config(
     project_path = project_config_path or Path.cwd() / "halfblood.toml"
     user_path = user_config_path or Path(user_config_dir("halfblood")) / "config.toml"
 
+    input_paths = [path for path in (project_path, user_path) if path.exists()]
     project_config = _load_toml(project_path)
     user_config = _load_toml(user_path)
     project_generation = _table(project_config, "generation", project_path)
@@ -533,6 +536,7 @@ def resolve_generation_config(
                 persona_path = Path(persona_file_value)
                 if relative_to is not None and not persona_path.is_absolute():
                     persona_path = relative_to / persona_path
+                input_paths.append(persona_path)
                 file_persona = _read_persona_file(persona_path, context)
                 if file_persona:
                     resolved_persona = file_persona
@@ -620,6 +624,7 @@ def resolve_generation_config(
         persona=resolved_persona,
         max_per_page=max_per_page,
         font=resolved_font,
+        input_paths=tuple(input_paths),
     )
 
 

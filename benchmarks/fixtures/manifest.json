@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "scope": "Deterministic offline quote-placement checks only; not annotation quality or end-to-end rendering.",
+  "source": {
+    "title": "Alice's Adventures in Wonderland",
+    "author": "Lewis Carroll",
+    "work_year": 1865,
+    "url": "https://www.gutenberg.org/ebooks/11",
+    "download_url": "https://www.gutenberg.org/cache/epub/11/pg11.txt",
+    "repository_path": "examples/src/pg11.txt",
+    "sha256": "01b38ea4c710a84bc18d0bd41271a5a1a92b94e97b2812f4dece97d4a694725e",
+    "excerpt": "CHAPTER I, paragraph beginning The rabbit-hole went straight on like a tunnel",
+    "license": "Public domain in the United States. The original Project Gutenberg file includes its terms. Users outside the US must check local copyright law.",
+    "transformation": "Verbatim paragraph and original line breaks, with one final LF; EPUB adds inline em/strong elements without altering text; PDF uses Courier 10pt at known positions."
+  },
+  "fixtures": {
+    "alice-excerpt": {
+      "text": "alice-excerpt.txt",
+      "pdf": "alice-excerpt.pdf",
+      "epub": "alice-excerpt.epub",
+      "chapter": "EPUB/chapter.xhtml",
+      "origin": "public-domain excerpt"
+    },
+    "overlap": {
+      "text": "overlap.txt",
+      "pdf": "overlap.pdf",
+      "epub": "overlap.epub",
+      "chapter": "EPUB/chapter.xhtml",
+      "origin": "project-authored adversarial fixture (AGPL-3.0-or-later)"
+    },
+    "duplicate": {
+      "text": "duplicate.txt",
+      "pdf": "duplicate.pdf",
+      "epub": "duplicate.epub",
+      "chapter": "EPUB/chapter.xhtml",
+      "origin": "project-authored adversarial fixture (AGPL-3.0-or-later)"
+    },
+    "no-text-layer": {
+      "pdf": "no-text-layer.pdf",
+      "origin": "project-authored blank PDF (AGPL-3.0-or-later)"
+    }
+  },
+  "sha256": {
+    "alice-excerpt.epub": "01bc220bb2cb14dc5f381f0697ebe1f77b67ff815bea55e53639f968f6a5dcf2",
+    "alice-excerpt.pdf": "e1c686fc96edcde5925509af03d7095a5b823904e945c3b85742b60a73d6e545",
+    "alice-excerpt.txt": "f326c59d2e7eabb7e2eea658dac5188f486b26e96f23d051731c20f2c18f7c6b",
+    "duplicate.epub": "7a2b254049c522fd0248eed31477fe1c6e805224c6b9c69382e87b1318c16887",
+    "duplicate.pdf": "a816b166cb719e787fc73f1d996337db7b6bc047692715d5f838f2503a593922",
+    "duplicate.txt": "e8a4bb34c1bb31e8f475ec0a7b143678b13b3771575d5b1ac24631072f5de0cd",
+    "no-text-layer.pdf": "625688125de451484af0b096fead4c4675db958595a887ec92fd6307dec4ed9a",
+    "overlap.epub": "f4fdbcb667c489d6898afac0e4c6c3993843e4d2b116b223c2d8e69acd8b2919",
+    "overlap.pdf": "cc052a17235674c3ef68761db512be596ed5961fded29e80469b70a39b8ff237",
+    "overlap.txt": "97377b8bec350db827d2b55b4f9baf7ffad18ea811c8f2e2a742ded09dd6116e"
+  }
+}

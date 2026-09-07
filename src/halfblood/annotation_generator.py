@@ -26,6 +26,7 @@ from typing import cast
 
 from halfblood.config import DEFAULT_ANTHROPIC_MODEL as DEFAULT_MODEL
 from halfblood.document_processor import PageContent
+from halfblood.file_safety import atomic_write_text
 from halfblood.generation.errors import ProviderError
 from halfblood.generation.providers.anthropic import AnthropicProvider
 from halfblood.generation.providers.base import (
@@ -480,9 +481,9 @@ class AnnotationGenerator:
                 for page in payload["pages"]
                 if page["page_number"] not in failed_so_far
             ]
-            tmp = Path(str(checkpoint_path) + ".tmp")
-            tmp.write_text(plan.__class__(**payload).model_dump_json(), encoding="utf-8")
-            tmp.replace(checkpoint_path)
+            atomic_write_text(
+                checkpoint_path, plan.__class__(**payload).model_dump_json(),
+            )
 
         def _build_context(i: int) -> str:
             """Build context for a page using its global document index."""

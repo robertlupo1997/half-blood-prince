@@ -26,6 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from halfblood.models.annotations import Placement
 from halfblood.models.documents import UnsupportedSchemaVersionError
+from halfblood.models.placement import PlacementResult
 
 _HEX64 = re.compile(r"\A[0-9a-f]{64}\Z")
 _RESOLVED_PLAN_MAJOR = "1"
@@ -96,6 +97,7 @@ class SkipReason(str, Enum):  # noqa: UP042  # Preserve the pinned string-enum c
 
     AMBIGUOUS_TARGET = "ambiguous_target"
     MISSING_TARGET = "missing_target"
+    UNSUPPORTED_RENDERER = "unsupported_renderer"
     OVERLAPPING_TARGET = "overlapping_target"
     FORBIDDEN_BOUNDARY = "forbidden_boundary"
     UNPLACEABLE = "unplaceable"
@@ -181,10 +183,28 @@ class ResolvedPlan(_StrictModel):
     )
 
 
+class PlacementRecord(_StrictModel):
+    """Evidence outcome before note layout, bound to one annotation and unit."""
+
+    annotation_id: str
+    source_locator: str
+    result: PlacementResult
+
+
+class CompositionDegradation(_StrictModel):
+    """Lossless composer diagnostic, including codes not mapped to summary flags."""
+
+    annotation_id: str
+    code: str = Field(min_length=1, max_length=100)
+    detail: str = Field(default="", max_length=500)
+
+
 class RenderReport(_StrictModel):
     """A versioned record of render outcomes, warnings, degradations, and output identity."""
 
-    report_version: str = "1.0"
+    report_version: str = "1.1"
+    placements: tuple[PlacementRecord, ...] = ()
+    composition_degradations: tuple[CompositionDegradation, ...] = ()
     rendered: tuple[str, ...] = ()
     skipped: tuple[SkipRecord, ...] = ()
     marks_only: tuple[str, ...] = ()

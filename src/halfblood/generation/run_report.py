@@ -16,6 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from halfblood.file_safety import atomic_write_text, require_distinct_output
 from halfblood.generation.report import PageStatusValue
 from halfblood.models.rendering import RenderReport
 
@@ -120,8 +121,6 @@ def build_run_report(
 def write_run_report(report: RunReport, output_file: Path) -> Path:
     """Write the sidecar next to ``output_file`` and return its path."""
     path = sidecar_path_for(output_file)
-    path.write_text(
-        json.dumps(report.model_dump(mode="json"), indent=2) + "\n",
-        encoding="utf-8",
-    )
+    require_distinct_output(path, (output_file,))
+    atomic_write_text(path, json.dumps(report.model_dump(mode="json"), indent=2) + "\n")
     return path
