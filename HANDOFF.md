@@ -1,5 +1,40 @@
 # Latest Handoff
 
+> **2026-09-07 — the product was run on a real book for the first time. It produced a file
+> with zero annotations.**
+> Evidence: `docs/evidence/2026-09-07-real-book-placement-failure.md`.
+> Corpus and frozen plans: `tests/corpora/real/` — measurable with no model call, no network,
+> no API key.
+>
+> `MAX_INPUT_CHARS = 50_000` (`src/halfblood/documents/matching.py:35`) versus an
+> 83,063-character chapter. `epub_processor.py:641-648` resolves against a whole chapter, so
+> every quote is refused on the bound with `input_limit_exceeded` before matching is
+> attempted — and `:655-661` discards that reason code and reports `MISSING_TARGET`.
+>
+> ⛔ **`MISSING_TARGET` on a real book does not mean the model quoted loosely.** A prior
+> handoff records the wrong diagnosis that mislabel produced: *"6/50 all MISSING_TARGET from
+> non-verbatim model quoting."*
+>
+> **The PDF path is unaffected** — it bounds per page (~2,300 chars, 20x headroom), not per
+> chapter. The defect is a choice of unit; the fix is making EPUB resolve against a bounded
+> unit the way PDF already does. The same engine places **5 of 8** given a block-level root.
+>
+> ⚠ **Not yet isolated:** *why* a large root behaves differently. A crude probe got 1/3
+> against a body root, so it degrades with size rather than failing outright. Isolate before
+> fixing. **The risk in any fix:** 955 independent block searches where there was one, and the
+> contract has an `ambiguous` outcome for a reason. Untested.
+>
+> ⚠ The `401` that has blocked the frontier eval since ~session 31 is an **expired** key in
+> `.env`, not a budget. A working OpenRouter key sits in `~/.prime/agent/auth.json`.
+>
+> Also added: `LESSONS.md` (four entries, one shape) and `GATES.md` (**UNRATIFIED**, red on
+> purpose, every `CHECK:` line needs owner sign-off).
+>
+> Session handoff: `~/project-ops/thoughts/shared/handoffs/general/2026-09-07_23-55-00_general_real-book-run-and-the-site-is-last.md`
+
+## Previous handoff
+
+
 > **Latest evidence packet:** `thoughts/shared/handoffs/general/2026-09-07_21-42-43_general_astra-evidence-placement-release.md`
 > Whole-quote placement contract and refusal benchmark verified at `79da678`.
 > Final root run: 2070 passed, 29 warnings in 24.65s; Ruff/mypy and wheel smoke pass; original input guard 8/8.
