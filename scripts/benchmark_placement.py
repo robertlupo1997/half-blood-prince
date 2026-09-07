@@ -16,13 +16,16 @@ from benchmarks.placement import run_benchmark  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the benchmark and stream the JSON report to stdout.
+
+    The benchmark writes nothing to disk. To capture the report, redirect stdout
+    with the shell (e.g. ``> report.json``). Do NOT pass a path that could overwrite
+    a benchmark input fixture.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, help="Also write the identical JSON report to this file")
-    args = parser.parse_args(argv)
+    parser.parse_args(argv)
     report = run_benchmark()
     payload = json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-    if args.output:
-        args.output.write_text(payload, encoding="utf-8")
     sys.stdout.write(payload)
     return 0 if report["passed"] else 1
 

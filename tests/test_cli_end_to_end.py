@@ -14,7 +14,7 @@ Empirical design notes (validated before writing, 2026-07-23):
   replacement is seen at Rich write-time, so no console monkeypatch is needed.
 * ``render_plan`` emits vector drawings (``page.get_drawings()``), NOT native
   PDF annotation objects (``page.annots()``).  PDF assertions use drawings.
-* All five KNOWN_PASSAGES targets resolve in the fixture PDF (rendered_count==5).
+* Two PDF targets resolve uniquely; three repeated short quotes are refused as ambiguous.
 * All four EPUB_PASSAGES targets resolve in sample_book.epub (rendered_count==4).
 * fitz writes non-deterministic /ID bytes into the PDF trailer; byte-level
   equality fails reliably.  Structural equality (page count + per-page drawing
@@ -41,6 +41,7 @@ Stub design (post-merge hardening, 2026-07-23):
 
 from __future__ import annotations
 
+import json
 import threading
 import zipfile
 from pathlib import Path
@@ -70,7 +71,7 @@ _TESTS_DIR = Path(__file__).resolve().parent
 _PDF_FIXTURE = _TESTS_DIR / "fixtures" / "potions_textbook.pdf"
 _EPUB_FIXTURE = _TESTS_DIR / "fixtures" / "sample_book.epub"
 
-# One target passage per PDF page (verified to resolve: rendered_count == 5).
+# One target per PDF page: pages 2, 4, and 5 deliberately repeat and must refuse.
 _PDF_PASSAGES: dict[int, str] = {
     1: "Potion-making is, and has always been, a discipline of exactitude.",
     2: "Sopophorous bean",
@@ -364,17 +365,22 @@ class TestAnnotatePdfE2E:
             f"(original {original_drawings}, annotated {annotated_drawings})"
         )
 
-    def test_cli_output_reports_all_five_annotations_rendered(
+    def test_cli_reports_unique_quotes_and_refuses_repeated_quotes(
         self, tmp_path: Path
     ) -> None:
         stub = DeterministicStubProvider(_pdf_stub_responses())
-        result, _ = _invoke_annotate(
+        result, output = _invoke_annotate(
             tmp_path, stub, input_file=_PDF_FIXTURE, output_suffix="pdf"
         )
-        # Exact counts from the empirically validated render path.
-        assert "Rendered 5 / Skipped 0" in result.output, (
-            f"Expected 'Rendered 5 / Skipped 0' in output:\n{result.output}"
-        )
+        assert "Rendered 2 / Skipped 3" in result.output, result.output
+        report = json.loads(Path(str(output) + ".report.json").read_text())["render"]
+        assert [(p["source_locator"], p["result"]["status"], p["result"]["candidate_count"])
+                for p in report["placements"]] == [
+            ("page:1", "resolved", 1), ("page:2", "ambiguous", 2),
+            ("page:3", "resolved", 1), ("page:4", "ambiguous", 2),
+            ("page:5", "ambiguous", 4),
+        ]
+        assert {s["reason"] for s in report["skipped"]} == {"ambiguous_target"}
         assert "Done." in result.output, (
             f"Expected 'Done.' in CLI output:\n{result.output}"
         )

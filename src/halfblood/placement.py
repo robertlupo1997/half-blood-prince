@@ -40,6 +40,7 @@ from halfblood.models.placement import (
     EpubSegmentRef,
     PlacementPoint,
     PlacementQuad,
+    PlacementReason,
     PlacementResult,
     PlacementStatus,
 )
@@ -59,10 +60,14 @@ class _Occurrence:
 class _PlacementBoundError(ValueError):
     """A deliberate work bound was exceeded."""
 
+    def __init__(self, reason: PlacementReason) -> None:
+        self.reason = reason
+        super().__init__(reason)
+
 
 def _refusal(
     renderer: _Renderer,
-    reason: str,
+    reason: PlacementReason,
     *,
     status: PlacementStatus = PlacementStatus.UNRESOLVED,
     candidate_count: int = 0,
@@ -73,7 +78,7 @@ def _refusal(
     )
 
 
-def _selector_error(selector: TargetSelector) -> str | None:
+def _selector_error(selector: TargetSelector) -> PlacementReason | None:
     if not isinstance(selector, TargetSelector):
         return "invalid_selector"
     if any(
@@ -259,7 +264,7 @@ def resolve_epub_quote(
             if len(hits) > MAX_CANDIDATES:
                 return _refusal("epub", "candidate_limit_exceeded")
     except _PlacementBoundError as exc:
-        return _refusal("epub", str(exc))
+        return _refusal("epub", exc.reason)
     except RecursionError:
         return _refusal("epub", "source_unavailable")
     choice = _choose("epub", hits)

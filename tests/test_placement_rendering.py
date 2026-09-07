@@ -87,3 +87,48 @@ def test_epub_keeps_initial_resolution_after_prior_dom_mutation(tmp_path: Path):
     assert [node.get_text() for node in soup.select(".hbp-target")] == [
         "First evidence", "Second evidence", "Third evidence",
     ]
+
+
+def test_direct_web_preview_refuses_input_alias(tmp_path):
+    import json
+    from halfblood.web_preview import generate_preview
+    source = tmp_path / "plan.json"
+    source.write_text(json.dumps({"title": "Owned", "prince_persona": "Test", "pages": []}))
+    before = source.read_bytes()
+    with pytest.raises(ValueError, match="same file"):
+        generate_preview(source, source)
+    assert source.read_bytes() == before
+
+
+@pytest.mark.parametrize(("global_fixed", "override", "expected"), [
+    (False, "rendition:layout-pre-paginated", "unsupported_renderer"),
+    (True, "", "unsupported_renderer"),
+    (True, "rendition:layout-reflowable", "resolved"),
+])
+def test_epub_spine_rendition_override(tmp_path, global_fixed, override, expected):
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    original = make_source(tmp_path, "epub", "Uniquely supported quotation.")
+    fixed = tmp_path / "rendition.epub"
+    ns = "{http://www.idpf.org/2007/opf}"
+    with zipfile.ZipFile(original) as archive, zipfile.ZipFile(fixed, "w") as output:
+        for member in archive.infolist():
+            data = archive.read(member)
+            if member.filename.endswith(".opf"):
+                package = ET.fromstring(data)
+                if global_fixed:
+                    meta = ET.SubElement(package.find(ns + "metadata"), ns + "meta",
+                                         {"property": "rendition:layout"})
+                    meta.text = "pre-paginated"
+                if override:
+                    package.find(ns + "spine/" + ns + "itemref").set("properties", override)
+                data = ET.tostring(package, encoding="utf-8", xml_declaration=True)
+            output.writestr(member, data)
+    report = EpubProcessor().render_plan(
+        str(fixed), make_plan("Uniquely supported quotation."), str(tmp_path / "out.epub"),
+    )
+    assert report.placements[0].result.status.value == expected
+    if expected == "unsupported_renderer":
+        assert not report.rendered and not report.marks_only
+        assert report.skipped[0].reason.value == expected

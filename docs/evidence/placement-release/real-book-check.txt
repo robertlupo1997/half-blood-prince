@@ -1,0 +1,4 @@
+pdf {"composition_codes": {}, "failed_pages": [], "pages_annotated": 78, "pages_total": 78, "placement_statuses": {"resolved": 78}, "skipped_pages": []}
+PDF original page text retained; drawings 312 native annotations 0
+epub {"composition_codes": {}, "failed_pages": [], "pages_annotated": 12, "pages_total": 15, "placement_statuses": {"resolved": 12}, "skipped_pages": [1, 2, 15]}
+EPUB target spans 12

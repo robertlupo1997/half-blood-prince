@@ -10,8 +10,9 @@ import json
 import math
 import zipfile
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import fitz
 from bs4 import BeautifulSoup, NavigableString, Tag

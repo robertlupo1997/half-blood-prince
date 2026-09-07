@@ -6,9 +6,9 @@ import hashlib
 import json
 import uuid
 from copy import deepcopy
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from halfblood.models import legacy
 from halfblood.models.annotations import Annotation, MarkIntent, TargetSelector
@@ -75,6 +75,17 @@ class AnnotationPlan(_StrictModel):
     document_seed: int = Field(ge=0, le=2**64 - 1)
     units: list[Unit] = Field(default_factory=list)
     compatibility: CompatibilityEnvelope | None = None
+
+    @model_validator(mode="after")
+    def _unique_render_identities(self) -> Self:
+        for name, values in (
+            ("unit_id", [unit.unit_id for unit in self.units]),
+            ("unit ordinal", [unit.ordinal for unit in self.units]),
+            ("annotation id", [ann.id for unit in self.units for ann in unit.annotations]),
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError(f"{name} values must be unique")
+        return self
 
 
 class UnsupportedSchemaVersionError(ValueError):

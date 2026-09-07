@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from halfblood.file_safety import atomic_write_text, require_distinct_output
 from halfblood.models import AnnotatedPage, Annotation, AnnotationPlan, AnnotationType
 
 # ---------------------------------------------------------------------------
@@ -394,12 +395,14 @@ def generate_preview(
     Returns:
         A :class:`PreviewResult` summarizing what was written.
     """
+    out_path = Path(output_path)
+    if isinstance(plan, (str, Path)):
+        require_distinct_output(out_path, (Path(plan),))
     loaded_plan = _load_plan(plan)
     html_str, data = _render(loaded_plan, book_text)
 
-    out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(html_str, encoding="utf-8")
+    atomic_write_text(out_path, html_str)
 
     totals = data["totals"]
     return PreviewResult(

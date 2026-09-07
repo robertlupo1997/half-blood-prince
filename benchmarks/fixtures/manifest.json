@@ -38,6 +38,26 @@
     "no-text-layer": {
       "pdf": "no-text-layer.pdf",
       "origin": "project-authored blank PDF (AGPL-3.0-or-later)"
+    },
+    "source-limit": {
+      "epub": "source-limit.epub",
+      "text": "source-limit.txt",
+      "chapter": "EPUB/chapter.xhtml",
+      "origin": "project-authored input-limit fixture (AGPL-3.0-or-later)"
+    },
+    "medicine": {
+      "text": "medicine.txt",
+      "pdf": "medicine.pdf",
+      "epub": "medicine.epub",
+      "chapter": "EPUB/chapter.xhtml",
+      "origin": "project-authored five-vs-fifty fixture (AGPL-3.0-or-later)"
+    },
+    "candidate-limit": {
+      "text": "candidate-limit.txt",
+      "pdf": "candidate-limit.pdf",
+      "epub": "candidate-limit.epub",
+      "chapter": "EPUB/chapter.xhtml",
+      "origin": "project-authored candidate-limit fixture (AGPL-3.0-or-later)"
     }
   },
   "sha256": {
@@ -50,6 +70,14 @@
     "no-text-layer.pdf": "625688125de451484af0b096fead4c4675db958595a887ec92fd6307dec4ed9a",
     "overlap.epub": "f4fdbcb667c489d6898afac0e4c6c3993843e4d2b116b223c2d8e69acd8b2919",
     "overlap.pdf": "cc052a17235674c3ef68761db512be596ed5961fded29e80469b70a39b8ff237",
-    "overlap.txt": "97377b8bec350db827d2b55b4f9baf7ffad18ea811c8f2e2a742ded09dd6116e"
+    "overlap.txt": "97377b8bec350db827d2b55b4f9baf7ffad18ea811c8f2e2a742ded09dd6116e",
+    "source-limit.epub": "422199b4a7fb63bf1fe8a809405b0fc2508e567e9b87f3ffba7ce0a9758e2681",
+    "source-limit.txt": "a6ef35e156d996bbf0001599dba2eb6028690ff55a79178f16a473a469f64592",
+    "medicine.txt": "e941c6f1138de9135f125c40b6d86bac8eb5d6bcd15a3b098504920ba0061333",
+    "medicine.pdf": "799a59f2716288f0fe8a789cb78103dc52e7594178c9be8f7b28fa24ea5cc6e7",
+    "medicine.epub": "8fef69a17793249f80a6387211250e24a02f36346f8661b3f558c3c913eaf94a",
+    "candidate-limit.txt": "6e5fcc994b7b38e91ba2cb5168f1d91e96e56621d6f5150c354ab2998d0a758d",
+    "candidate-limit.pdf": "e39b5ae566a8bfa83dbe1fbd832d2ce4fa0d02f5737fe2a677b49e97e977e84b",
+    "candidate-limit.epub": "1d1ed27cb4d22e31b5e861e4ea943129611fa1e491d9e49c18c974c44feee33a"
   }
 }

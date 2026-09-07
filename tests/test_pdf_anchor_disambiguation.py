@@ -318,8 +318,7 @@ class TestRenderPlanDisambiguationE2E:
             "ambiguous target with no context must NOT be rendered"
         )
         skip_reasons = {s.annotation_id: s.reason for s in report.skipped}
-        assert skip_reasons.get("ambig-ann") == SkipReason.MISSING_TARGET, (
-            f"ambiguous target (no context) must be skipped as MISSING_TARGET "
-            f"(from _resolve_annotation_to_anchor returning None); "
+        assert skip_reasons.get("ambig-ann") == SkipReason.AMBIGUOUS_TARGET, (
+            f"ambiguous target (no context) must be reported as AMBIGUOUS_TARGET; "
             f"got {skip_reasons.get('ambig-ann')}"
         )

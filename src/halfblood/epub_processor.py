@@ -42,9 +42,11 @@ import logging
 import posixpath
 import random
 import warnings
+import zipfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
+from xml.etree import ElementTree as ET
 
 import ebooklib
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag, XMLParsedAsHTMLWarning
@@ -54,21 +56,27 @@ from halfblood.document_processor import PageContent
 from halfblood.documents import (
     CrossNodeMatch,
     CrossNodeSegment,
-    locate_across_nodes,
     normalize,
 )
 from halfblood.documents.epub import _MATCH_LADDER, _scan_prefix_tiers, _scan_with_tolerance
+from halfblood.file_safety import require_distinct_output
 from halfblood.models import Annotation, AnnotationPlan, AnnotationType
 from halfblood.models.annotations import Annotation as V2Annotation
 from halfblood.models.annotations import MarkIntent, TargetSelector
 from halfblood.models.documents import _MARK_INTENTS
 from halfblood.models.documents import AnnotationPlan as V2AnnotationPlan
 from halfblood.models.rendering import (
-    DegradationFlag, PlacementRecord, RenderReport, SkipReason, SkipRecord,
+    DegradationFlag,
+    PlacementRecord,
+    RenderReport,
+    SkipReason,
+    SkipRecord,
 )
-from halfblood.file_safety import require_distinct_output
 from halfblood.placement import (
-    PlacementResult, PlacementStatus, epub_match_from_placement, resolve_epub_quote,
+    PlacementResult,
+    PlacementStatus,
+    epub_match_from_placement,
+    resolve_epub_quote,
 )
 
 logger = logging.getLogger(__name__)
@@ -552,18 +560,35 @@ class EpubProcessor:
         return updated
 
     @staticmethod
-    def _fixed_layout_item(book: epub.EpubBook, item: epub.EpubHtml) -> bool:
-        """Detect global EPUB3 rendition layout and per-spine-item overrides."""
-        for idref, properties in book.spine:
-            if idref == item.get_id():
-                if "rendition:layout-reflowable" in properties:
-                    return False
-                if "rendition:layout-pre-paginated" in properties:
-                    return True
-        return any(
-            attrs.get("property") == "rendition:layout" and value == "pre-paginated"
-            for value, attrs in book.get_metadata("OPF", "meta")
+    def _fixed_layout_ids(input_path: str) -> set[str]:
+        """Read rendition metadata before EbookLib discards itemref properties.
+
+        EbookLib's spine pairs contain only (idref, linear), not properties.
+        The XML parser reads archive members only and does not fetch external
+        entities. No archive member is extracted to the filesystem.
+        """
+        ocf = "{urn:oasis:names:tc:opendocument:xmlns:container}"
+        opf = "{http://www.idpf.org/2007/opf}"
+        with zipfile.ZipFile(input_path) as archive:
+            container = ET.fromstring(archive.read("META-INF/container.xml"))
+            rootfile = container.find(f"{ocf}rootfiles/{ocf}rootfile")
+            if rootfile is None or not rootfile.get("full-path"):
+                raise ValueError("EPUB container has no package document")
+            package = ET.fromstring(archive.read(rootfile.attrib["full-path"]))
+        fixed_default = any(
+            meta.get("property") == "rendition:layout"
+            and (meta.text or "").strip() == "pre-paginated"
+            for meta in package.findall(f"{opf}metadata/{opf}meta")
         )
+        fixed_ids: set[str] = set()
+        for itemref in package.findall(f"{opf}spine/{opf}itemref"):
+            properties = itemref.get("properties", "").split()
+            fixed = "rendition:layout-pre-paginated" in properties or (
+                fixed_default and "rendition:layout-reflowable" not in properties
+            )
+            if fixed and itemref.get("idref"):
+                fixed_ids.add(itemref.attrib["idref"])
+        return fixed_ids
 
     def render_plan(
         self,
@@ -571,36 +596,25 @@ class EpubProcessor:
         plan: V2AnnotationPlan,
         output_path: str,
     ) -> RenderReport:
-        """Render a V2 AnnotationPlan into an EPUB using the shared cross-node path.
+        """Render a V2 plan into reflowable EPUB with original-DOM text evidence.
 
-        Routing:
-          1. Each annotation's ``TargetSelector`` is resolved via
-             ``locate_across_nodes`` before any DOM mutation (pre-resolve pass).
-          2. ``None`` returns are classified as AMBIGUOUS_TARGET or MISSING_TARGET
-             via ``_epub_miss_reason``.
-          3. Resolved pairs whose char intervals overlap on any shared DOM node are
-             classified OVERLAPPING_TARGET (the later annotation in plan order).
-          4. Surviving annotations are applied sequentially with fresh
-             ``locate_across_nodes`` calls (re-resolve after each DOM mutation),
-             so non-overlapping annotations that share a text node each find their
-             target correctly after the first wrapping splits the node.
-          5. ``DegradationFlag.EPUB_NO_TARGET_GEOMETRY`` is always set: reflowable
-             EPUB content has no fixed geometry.
+        Every annotation receives a PlacementRecord before DOM mutation.
+        Refusals produce no markup. Later overlapping ranges are skipped;
+        accepted original ranges are isolated into dedicated nodes before
+        drawing, so wrapping cannot change later occurrence selection.
 
-        Args:
-            input_path: Source EPUB path.
-            plan: A validated V2 AnnotationPlan (halfblood.models.documents.AnnotationPlan).
-            output_path: Destination EPUB path (created or overwritten).
-
-        Returns:
-            RenderReport with a complete rendered/skipped partition covering every
-            annotation in the plan.
+        Fixed-layout EPUB is unsupported, not a source of guessed coordinates.
+        Reflowable results carry DOM text ranges and EPUB_NO_TARGET_GEOMETRY,
+        never reader positions. The destination must differ from every input
+        alias. Invalid duplicate plan identities raise ValueError before writing.
         """
         require_distinct_output(Path(output_path), (Path(input_path),))
+        plan = V2AnnotationPlan.model_validate(plan.model_dump())
         book = epub.read_epub(input_path)
         self._ensure_toc_uids(book.toc)
         is_epub3 = str(book.version).startswith("3")
         spine_docs: dict[int, epub.EpubHtml] = dict(self._iter_spine_documents(book))
+        fixed_layout_ids = self._fixed_layout_ids(input_path)
 
         placements: list[PlacementRecord] = []
         rendered_ids: list[str] = []
@@ -631,7 +645,7 @@ class EpubProcessor:
             skip_reason_for: dict[int, SkipReason] = {}
             for idx, ann in enumerate(annotations):
                 result = resolve_epub_quote(
-                    chapter_root, ann.target, fixed_layout=self._fixed_layout_item(book, item),
+                    chapter_root, ann.target, fixed_layout=item.get_id() in fixed_layout_ids,
                 )
                 placements.append(PlacementRecord(
                     annotation_id=ann.id, source_locator=unit.source_locator, result=result,

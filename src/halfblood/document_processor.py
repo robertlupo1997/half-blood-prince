@@ -93,18 +93,18 @@ from halfblood.models.rendering import (
     AnchorWarning,
     CompositionDegradation,
     DegradationFlag,
-    PlacementRecord,
-    ResolvedAnchor,
-    SurfaceQuad,
     OutputHash,
+    PlacementRecord,
     RenderReport,
+    ResolvedAnchor,
     ResolvedAnnotation,
     SkipReason,
     SkipRecord,
+    SurfaceQuad,
     SurfaceRect,
 )
-from halfblood.renderers import PdfRenderer
 from halfblood.placement import PlacementResult, PlacementStatus, resolve_pdf_quote
+from halfblood.renderers import PdfRenderer
 
 if TYPE_CHECKING:
     from halfblood.documents.pdf import PdfAnchor
@@ -1096,34 +1096,25 @@ class DocumentProcessor:
         plan: V2AnnotationPlan,
         output_path: str,
     ) -> RenderReport:
-        """Render a V2 AnnotationPlan onto a PDF using resolved anchors and layout.
+        """Render a V2 plan using the public whole-quote placement contract.
 
-        Pipeline per page:
-          1. Build PdfPageIndex for per-char geometry.
-          2. _resolve_annotation_to_anchor: each annotation → PdfAnchor or MISSING.
-          3. layout_page_annotations: assigns note_box and placement to each request.
-          4. For placed annotations: join the semantic Annotation, compose an InkScene
-             (InkComposer), render it as vectors (PdfRenderer.render_scene), and draw the
-             typeset note body (_draw_note_body). Highlights commit as an underlay.
-          5. Accumulate rendered IDs and SkipRecords into a RenderReport.
+        Every annotation receives a PlacementRecord before layout. Refusals
+        produce no ink. Resolved PDF display-space quads feed the layout solver
+        and vector ink renderer; a note can still be skipped by layout, with
+        its supported mark retained as marks_only. Composer diagnostics are
+        retained separately from the finite degradation summary flags.
 
-        Output is written atomically: fitz saves to a temp file in the same directory,
-        then os.replace to output_path.
-
-        This method does NOT touch render_annotations or add_margin_note.
-
-        Args:
-            input_path: Source PDF path.
-            plan: A validated V2 AnnotationPlan (halfblood.models.documents.AnnotationPlan).
-            output_path: Destination PDF path (created or overwritten atomically).
-
-        Returns:
-            RenderReport with rendered/skipped partition covering all input annotations.
+        The destination must differ from the input, including aliases. PDF
+        output is saved to a unique sibling temporary file and replaced
+        atomically. Invalid duplicate plan identities raise ValueError before
+        writing. See docs/placement-contract.md for outcome and offset semantics.
         """
         from halfblood.layout.anchors import fitz_rect_from_surf
+        from halfblood.models.documents import AnnotationPlan as V2AnnotationPlan
         from halfblood.models.documents import Unit
 
         require_distinct_output(Path(output_path), (Path(input_path),))
+        plan = V2AnnotationPlan.model_validate(plan.model_dump())
         composer = InkComposer(
             BuiltinRoughInkEngine(),
             P3T5NoGoHandwritingEngine(),

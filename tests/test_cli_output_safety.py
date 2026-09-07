@@ -7,6 +7,7 @@ No machine credentials or remote requests are needed.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -198,3 +199,75 @@ def test_resume_input_is_preserved_on_render_success(tmp_path: Path, book: Path)
     report = json.loads(sidecar_path_for(output).read_text())
     assert report["page_statuses"][0]["status"] == "resumed"
     assert output.read_bytes().startswith(b"%PDF")
+
+
+def test_checkpoint_redirect_aliases_input_is_rejected(
+    tmp_path: Path, book: Path
+) -> None:
+    """The ``<out>.resume.plan.json`` redirect path is also alias-checked.
+
+    When ``--resume-from`` aliases the default checkpoint, the CLI redirects
+    streaming to ``<out>.resume.plan.json`` instead of overwriting the
+    supplied resume. That redirected path must itself be checked against
+    every input — a redirected path that aliases a source is refused even
+    with ``--force``.
+    """
+    output = tmp_path / "out.pdf"
+    default_ckpt = _checkpoint_path_for(output)
+    redirect_ckpt = Path(str(output) + ".resume.plan.json")
+    persona = tmp_path / "persona.txt"
+    persona.write_text("An exacting editor", encoding="utf-8")
+    persona_bytes = persona.read_bytes()
+    # Hardlink the redirected destination to the persona so the redirect
+    # path aliases a source.
+    os.link(str(persona), str(redirect_ckpt))
+    # The CLI requires --resume-from to exist; supply a valid resume JSON
+    # at the default checkpoint path so the redirect is actually triggered.
+    default_ckpt.write_bytes(_resume_bytes())
+    result = CliRunner().invoke(main, [
+        "annotate", str(book), "-o", str(output), "--provider", "stub",
+        "--dry-run", "--pages", "1", "--persona-file", str(persona),
+        "--resume-from", str(default_ckpt), "--force",
+    ])
+    assert result.exit_code == 1, result.output
+    assert "same file" in result.output
+    assert persona.exists() and persona.read_bytes() == persona_bytes, (
+        "redirected checkpoint alias to source must not consume the source"
+    )
+
+
+def test_write_run_report_defense_in_depth_rejects_sidecar_aliasing_output(
+    tmp_path: Path,
+) -> None:
+    """``write_run_report`` itself refuses to overwrite its own artifact.
+
+    The CLI's ``_prepare_annotate_outputs`` already enforces this rule, but
+    the module-level check is the defense-in-depth for direct API callers
+    that bypass the CLI. Verify the module raises ValueError when its
+    sidecar alias-points at the artifact.
+    """
+    import os
+
+    from halfblood.generation.run_report import RunReport, write_run_report
+    artifact = tmp_path / "out.pdf"
+    artifact.write_bytes(b"%PDF-1.4 fake")
+    sidecar = sidecar_path_for(artifact)
+    # Hardlink the sidecar to the artifact so any overwrite would clobber it.
+    os.link(str(artifact), str(sidecar))
+    original = artifact.read_bytes()
+    report = RunReport(
+        output=str(artifact),
+        pages_total=1, pages_attempted=1, pages_annotated=0,
+        total_annotations=0,
+    )
+    try:
+        write_run_report(report, artifact)
+    except ValueError as exc:
+        assert "same file" in str(exc).lower()
+    else:
+        raise AssertionError(
+            "write_run_report must reject sidecar aliasing the artifact"
+        )
+    assert artifact.read_bytes() == original, (
+        "defense-in-depth must prevent sidecar write clobbering the artifact"
+    )

@@ -15,3 +15,17 @@ def test_migration_does_not_invent_first_occurrence_evidence():
     assert target.suffix is None
     assert target.start_offset is None
     assert target.end_offset is None
+
+
+def test_duplicate_unit_ordinals_cannot_silently_drop_annotations():
+    import pytest
+    from pydantic import ValidationError
+    from test_placement_rendering import make_plan
+
+    from halfblood.models.documents import AnnotationPlan
+    payload = make_plan("A quote").model_dump()
+    extra = dict(payload["units"][0], unit_id="second")
+    extra["annotations"] = [dict(extra["annotations"][0], id="second-annotation")]
+    payload["units"].append(extra)
+    with pytest.raises(ValidationError):
+        AnnotationPlan.model_validate(payload)

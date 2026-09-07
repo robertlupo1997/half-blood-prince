@@ -44,8 +44,10 @@ from halfblood.document_processor import DocumentProcessor, PageContent
 from halfblood.epub_processor import EpubProcessor
 from halfblood.file_safety import (
     atomic_write_text,
-    is_same_file as _is_same_file,
     require_distinct_output,
+)
+from halfblood.file_safety import (
+    is_same_file as _is_same_file,
 )
 from halfblood.generation.errors import ProviderConfigurationError, ProviderError
 from halfblood.generation.providers.base import GenerationRequest, LLMProvider

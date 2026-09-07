@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from halfblood.models.annotations import Placement
 from halfblood.models.documents import UnsupportedSchemaVersionError
-from halfblood.models.placement import PlacementResult
+from halfblood.models.placement import PlacementResult, PlacementStatus
 
 _HEX64 = re.compile(r"\A[0-9a-f]{64}\Z")
 _RESOLVED_PLAN_MAJOR = "1"
@@ -77,7 +77,7 @@ class SurfaceRect(_StrictModel):
 
 
 class ResolvedAnchor(_StrictModel):
-    """A half-open normalized-text range and its ordered per-line geometry."""
+    """A half-open raw source-text range and its ordered per-line geometry."""
 
     char_range: tuple[int, int]
     quads: tuple[SurfaceQuad, ...] = ()
@@ -228,6 +228,17 @@ class RenderReport(_StrictModel):
         if not set(self.marks_only).issubset(skipped_ids):
             raise ValueError("marks_only ids must be a subset of skipped ids")
 
+        if self.placements:
+            placement_ids = [record.annotation_id for record in self.placements]
+            if len(set(placement_ids)) != len(placement_ids):
+                raise ValueError("placement annotation ids must be unique")
+            if set(placement_ids) != set(self.rendered).union(skipped_ids):
+                raise ValueError("placements must cover rendered and skipped annotations")
+            visible_ids = set(self.rendered).union(self.marks_only)
+            if any(record.annotation_id in visible_ids
+                   and record.result.status is not PlacementStatus.RESOLVED
+                   for record in self.placements):
+                raise ValueError("refused placements must not produce ink")
         self.degradation_flags = tuple(dict.fromkeys(self.degradation_flags))
         return self
 

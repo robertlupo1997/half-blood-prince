@@ -158,17 +158,20 @@ class TestResumeMerge:
 
 class TestCliCheckpointLifecycle:
     def test_checkpoint_removed_after_successful_run(self, tmp_path: Path) -> None:
+        from halfblood.cli import _checkpoint_path_for
         result, out_path = _invoke_annotate(tmp_path, [])
         assert result.exit_code == 0, f"exit={result.exit_code}\n{result.output}"
-        assert not (tmp_path / "out.plan.json").exists(), (
+        checkpoint = _checkpoint_path_for(out_path)
+        assert not checkpoint.exists(), (
             "successful runs must consume their checkpoint"
         )
 
     def test_checkpoint_kept_when_generation_fails(self, tmp_path: Path) -> None:
+        from halfblood.cli import _checkpoint_path_for
         result, out_path = _invoke_annotate(tmp_path, ["--fail-pages", "1,2,3,4,5"])
         assert result.exit_code != 0
         assert not out_path.exists(), "no artifact may ship from a total failure"
-        checkpoint = tmp_path / "out.plan.json"
+        checkpoint = _checkpoint_path_for(out_path)
         assert checkpoint.exists(), "checkpoint must survive the failed run"
         assert "--resume-from" in result.output, (
             "the failure message must point at the resume command"
@@ -210,16 +213,26 @@ class TestCliResumeEndToEnd:
         assert report["pages_annotated"] == 5
         assert report["total_annotations"] == 5
 
-    def test_resume_consumes_the_checkpoint_on_success(self, tmp_path: Path) -> None:
+    def test_resume_preserves_input_and_consumes_its_own_checkpoint_on_success(
+        self, tmp_path: Path
+    ) -> None:
+        from halfblood.cli import _checkpoint_path_for
         result, out_path = _invoke_annotate(tmp_path, ["--dry-run"])
         assert result.exit_code == 0
         partial = json.loads(out_path.read_text(encoding="utf-8"))
         partial["pages"] = partial["pages"][:2]
-        checkpoint = tmp_path / "out.plan.json"
-        checkpoint.write_text(json.dumps(partial), encoding="utf-8")
+        supplied_resume = tmp_path / "out.plan.json"
+        supplied_resume_bytes = json.dumps(partial).encode("utf-8")
+        supplied_resume.write_bytes(supplied_resume_bytes)
 
         result2, _ = _invoke_annotate(
-            tmp_path, ["--dry-run", "--resume-from", str(checkpoint)]
+            tmp_path, ["--dry-run", "--resume-from", str(supplied_resume)]
         )
         assert result2.exit_code == 0, f"exit={result2.exit_code}\n{result2.output}"
-        assert not checkpoint.exists()
+        # Supplied resume is an input: it must never be overwritten, deleted,
+        # or mutated even with --force.
+        assert supplied_resume.exists()
+        assert supplied_resume.read_bytes() == supplied_resume_bytes
+        # The CLI's own streaming checkpoint is consumed on success.
+        own_checkpoint = _checkpoint_path_for(out_path)
+        assert not own_checkpoint.exists()
