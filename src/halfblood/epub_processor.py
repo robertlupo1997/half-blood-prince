@@ -314,13 +314,32 @@ class EpubProcessor:
             docs.append((index, item))
         return docs
 
+    #: Elements that end a line of rendered text. Everything else -- ``<em>``, ``<i>``,
+    #: ``<strong>``, ``<span>``, ``<a>`` -- is inline and must not break one.
+    _BLOCK_LEVEL_TAGS = (
+        "address", "article", "aside", "blockquote", "br", "dd", "div", "dl", "dt",
+        "figcaption", "figure", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header",
+        "hr", "li", "main", "nav", "ol", "p", "pre", "section", "table", "td", "th",
+        "tr", "ul",
+    )
+
     @staticmethod
     def _html_to_text(html: bytes | str) -> str:
-        """Strip tags from a chapter's HTML, returning clean, one-line-per-block text."""
+        """Strip tags from a chapter's HTML, returning clean, one-line-per-block text.
+
+        Inline markup must not become a line break. ``get_text(separator="\\n")`` inserts
+        one between *every* text node, so ``<i>hers</i>, <i>its</i>`` was shown to the model
+        as ``hers\\n,\\nits`` -- a string that does not exist as contiguous document text.
+        The model then quotes it faithfully and placement refuses it, which cost three of
+        eight annotations on a real book. Only block-level elements break a line.
+        """
         soup = BeautifulSoup(html, "lxml")
         for tag in soup(["script", "style"]):
             tag.decompose()
-        raw = soup.get_text(separator="\n")
+        for tag in soup.find_all(EpubProcessor._BLOCK_LEVEL_TAGS):
+            tag.insert_before("\n")
+            tag.insert_after("\n")
+        raw = soup.get_text()
         lines = [line.strip() for line in raw.splitlines()]
         lines = [line for line in lines if line]
         return "\n".join(lines)

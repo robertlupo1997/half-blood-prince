@@ -36,6 +36,7 @@ Run directly: ``python scripts/wheel_smoke.py``
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -194,6 +195,40 @@ def main() -> int:
             str(env_dir) not in combined,
             combined.strip()[:200],
         )
+
+        # A real book, not a fixture. Every EPUB fixture in this repo has a chapter
+        # under MAX_INPUT_CHARS; a real one does not, and the whole-chapter resolve
+        # that used to run refused every annotation on the bound while reporting
+        # `missing_target`. Nothing in the fixture corpus reaches that branch, so
+        # the artifact check has to carry the real book.
+        book = REPO / "tests" / "corpora" / "real" / "elements-of-style.epub"
+        if not book.is_file():
+            notes.append(f"real book corpus absent, skipped: {book}")
+        else:
+            out = workdir / "real-book-annotated.epub"
+            res = run([
+                "annotate", str(book), "-o", str(out),
+                "--provider", "stub", "--max-per-page", "4", "--force",
+            ])
+            combined = res.stdout + res.stderr
+            check(
+                "real book: installed CLI annotates it without error",
+                res.returncode == 0,
+                combined.strip()[-200:],
+            )
+            rendered = 0
+            report = Path(str(out) + ".report.json")
+            if report.is_file():
+                data = json.loads(report.read_text(encoding="utf-8"))
+                # `rendered` lives under the nested render report, not at top level.
+                render = data.get("render") or {}
+                rendered = len(render.get("rendered") or data.get("rendered") or ())
+            check(
+                "real book: at least one annotation is placed, not refused on a bound",
+                rendered > 0,
+                f"rendered={rendered}; a 0 here means every quote was refused, which is "
+                "what shipped before the bounded-root fix",
+            )
 
     print("\n" + "=" * 66)
     for note in notes:

@@ -73,27 +73,27 @@ automated, not as a control.
 
   **Met 2026-09-07.** A truthful reason code is what makes the next bug take an afternoon.
 
-## G3 — the reader's path works from a clean clone 🔴 UNMET
+## G3 — the reader's path works from a clean clone ✅ MET
 
-- [ ] **G3: an installed wheel annotates a real book with no source tree on `sys.path`.**
+- [x] **G3: an installed wheel annotates a real book with no source tree on `sys.path`.**
 
   CHECK: `.venv/bin/python scripts/wheel_smoke.py 2>&1 | grep -c "real book"`
   EXPECT: `/^[1-9]/`
 
-  ⛔ **Deliberately red, and the first draft of this gate was worse than red — it was a
-  false green.** It read `scripts/wheel_smoke.py --real-book` / EXPECT `WHEEL SMOKE PASSED`.
-  The script takes no such flag, ignored it silently, ran on fixtures, and printed
-  `wheel smoke test PASSED`. A gate that passes while measuring nothing is exactly the
-  failure `2026-08-31-unlazy-evaluated.md` §4 documents, and it was authored here by the
-  same agent that would have implemented the fix — which is the argument for that section
-  in one paragraph. The CHECK above instead counts evidence that the real book was actually
-  exercised, so it cannot pass until the capability exists.
+  **Met 2026-09-07.** `scripts/wheel_smoke.py` now builds the wheel, installs it into a
+  throwaway venv outside the repo with the repo off `sys.path`, and uses the **installed
+  CLI** to annotate the real book with `--provider stub`. It asserts the run exits 0 **and
+  that at least one annotation is placed** — a `rendered=0` there is exactly what shipped
+  before the bounded-root fix, so this guard has a failing state that really happened.
 
-  **What is missing.** `scripts/wheel_smoke.py` already builds a wheel and installs it into
-  a throwaway venv outside the repo, but it exercises fixtures. It needs to run the real book
-  and the frozen plan through the installed wheel and say so on stdout. That closes the exact
-  class `LESSONS.md` entries 1–3 are all instances of: the thing that verified was not the
-  thing that ships. Stub provider; no key, no spend.
+  No model, no network, no API key: the stub provider picks its target from the page text.
+
+  ⚠ **The first draft of this gate was worse than red — it was a false green.** It ran
+  `scripts/wheel_smoke.py --real-book` / EXPECT `WHEEL SMOKE PASSED`. The script took no
+  such flag, ignored it silently, ran on fixtures, and passed. That is precisely the failure
+  `2026-08-31-unlazy-evaluated.md` §4 documents, authored here by the same agent that then
+  implemented the fix — the argument for that section in one paragraph. Kept in the file
+  rather than quietly corrected.
 
 ## G4 — the notes are worth reading ⚠ PARTIAL
 
