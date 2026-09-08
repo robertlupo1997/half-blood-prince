@@ -131,14 +131,21 @@ automated, not as a control.
   **Partially satisfied 2026-09-07.** Sixteen notes across two personas were read and judged
   good — but read from a *plan*, because at the time nothing placed.
 
-  ✅ **The artifact now exists, and it cost nothing.** Generated 2026-09-08 at `0a35381`
-  from `tests/corpora/real/elements-of-style.epub`, default Snape persona, on
-  `nvidia/nemotron-3.5-lightning:free` with `HALFBLOOD_MAX_OUTPUT_TOKENS=32000`:
+  ✅ **The artifact now exists, and it cost nothing.** Generated 2026-09-08 against code at
+  **`85334d5`** with `HALFBLOOD_MAX_OUTPUT_TOKENS=32000` as an env override — the default was
+  still 16000 then, and was raised to 32000 in `ec9ae1a`, so **the command below reproduces it
+  without the override only from `ec9ae1a` forward.** From
+  `tests/corpora/real/elements-of-style.epub`, default Snape persona, on
+  `nvidia/nemotron-3.5-lightning:free`:
   **`Rendered 5 / Skipped 0`** — every generated annotation placed. 21,214 tokens in,
   7,660 out, 3m09s, **$0.00**. Run report frozen at
   `docs/evidence/2026-09-08-free-model-real-book-run.report.json`; the five note bodies were
   read out of the output EPUB itself, not inferred from the report. File handed to Trey as
-  `~/elements-of-style-annotated.epub`.
+  `~/elements-of-style-annotated.epub`, which is a loose copy in his home directory and is
+  not tracked by any repository.
+
+  ⚠ That JSON is the **run artifact**, not the gate evidence. G4's evidence is a written
+  verdict, and it is Trey's to write — an agent must not author it.
 
   ⚠ The earlier plan for this gate was a ~$0.10 paid generation, on the belief that no free
   model could generate. That belief was a hardcoded `max_tokens=2048` in this repository.
