@@ -11,6 +11,24 @@ node ~/dev-harness/scripts/unlazy/gate-check.mjs --status GATES.md   # report on
 node ~/dev-harness/scripts/unlazy/gate-check.mjs GATES.md            # run unmet runnable gates
 ```
 
+⚠ **Read this before trusting a checkbox. Fixed and measured 2026-09-08.**
+
+**The runner had never parsed this file.** Every gate id came back
+`invalid gate id **G1` — the parser reads the id before the first colon, and `**G1` is not
+an id. That was true of all five original gates from the day they were written, so no
+`[x]` in this file has ever been confirmed by the tool the file tells you to run. The
+headers now read `- [x] G1: **…**`, and the runner parses all six.
+
+**The checkboxes are still hand-asserted.** `--status` now reports
+`UNMET: 6 (met: 0)`, because a checked gate is only *met* to the runner once its `CHECK:`
+has been approved and run, which writes an `EVIDENCE:` line back. Nothing here has one yet.
+
+⛔ **Approving is Trey's call, not an agent's.** `--approve` takes no per-gate selection: it
+approves every pending oracle at once, **including G5's, which is the paid one**, and the
+approval persists outside this repository under `~/.unlazy/approved`. An agent granting that
+is granting itself a standing authorization to spend. G1, G2, G3, and G6 are free and
+offline and were each run directly this session; G5 is the only one that costs anything.
+
 ## The binding rule: no gate runs on a fixture
 
 Measured 2026-09-07. Every EPUB fixture in this repository is under the 50,000-character
@@ -53,8 +71,16 @@ automated, not as a control.
   Threshold set by Trey 2026-09-07: **≥60% placed, no silent drops.**
 
   **Met 2026-09-07 at `0a3cba1`.** `halfblood annotate` on *The Elements of Style* went from
-  `Rendered 0 / Skipped 8` to `Rendered 7 / Skipped 1` — **87.5%**. The note bodies were
-  confirmed present in the output EPUB itself, not inferred from the run report.
+  `Rendered 0 / Skipped 8` to placing the majority of its notes, and the note bodies were
+  confirmed present in the output EPUB itself rather than inferred from the run report.
+
+  ⚠ **Corrected 2026-09-08. This paragraph claimed `Rendered 7 / Skipped 1` — 87.5% — and
+  that number is not reproducible from anything committed.** Replaying the frozen plans at
+  `85334d5` gives `plan-snape.json` **5/8** (three `missing_target`) and `plan-editor.json`
+  **6/8** (two `ambiguous_target`). The gate below asserts ≥5 and passes; the prose asserted
+  a number the gate never checked, which is the exact shape this file exists to prevent. The
+  87.5% probably came from a live model run whose plan was never frozen — plausible, and not
+  evidence. **The honest figure is 5/8 = 62.5%, still above the 60% bar.**
 
   The gate replays a frozen plan (`tests/corpora/real/plan-snape.json`), so it costs no model
   call, no network, and no API key, and runs free in CI.
@@ -143,8 +169,9 @@ automated, not as a control.
 
 - **The inline-markup extraction defect.** The extractor hands the model
   `hers\n,\nits\n,\ntheirs\n` for `<em>hers</em>, <em>its</em>`, so the model faithfully
-  quotes a string that is not contiguous document text. This is the remaining 1 skip in G1.
-  Fixing it would push placement past 87.5%; G1 does not require it.
+  quotes a string that is not contiguous document text. It accounts for the `missing_target`
+  skips in G1's frozen plan. Fixing it would push placement above the measured 5/8; G1 does
+  not require it.
 - **The PDF path.** Unaffected by the G1/G2 defect — it bounds per page (~2,300 chars, 20×
   headroom), which is its matching unit. Add a gate if that ever changes.
 - **A book-level reader pass.** The generator is page-stateless

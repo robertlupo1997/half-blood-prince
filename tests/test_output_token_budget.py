@@ -10,8 +10,9 @@ its own 8192 ceiling, so a larger ask was never actually tried.
 
 Re-measured 2026-09-08 on `nvidia/nemotron-3.5-lightning:free`, one real page of
 *The Elements of Style*, `--structured-output function`, nothing else changed:
-2048 raised `IncompleteResponseError`; 16000 returned three schema-valid
-annotations in 141 seconds.
+2048 raised `IncompleteResponseError`; 8192 -- the seam's own escalation ceiling
+-- returned no tool call at all; 16000 returned three schema-valid annotations in
+141 seconds. So the default has to clear that ceiling, not merely meet it.
 
 These tests are offline. They pin the resolution rule, not the network result.
 """
@@ -31,7 +32,7 @@ from halfblood.generation.providers.stub import StubProvider
 
 
 def test_the_default_budget_clears_the_seams_own_escalation_ceiling() -> None:
-    """2048 escalates to 4096 and stops. The default must not sit under that.
+    """2048 escalates to 4096 and stops, and even 8192 was measured failing.
 
     If someone lowers this below 8192, the escalation path becomes the only
     thing standing between a reasoning model and a truncated payload — which is
@@ -41,10 +42,11 @@ def test_the_default_budget_clears_the_seams_own_escalation_ceiling() -> None:
         _INCOMPLETE_RESPONSE_MAX_TOKENS_CEILING,
     )
 
-    assert DEFAULT_MAX_OUTPUT_TOKENS >= _INCOMPLETE_RESPONSE_MAX_TOKENS_CEILING, (
-        f"default budget {DEFAULT_MAX_OUTPUT_TOKENS} is at or below the seam's "
-        f"escalation ceiling {_INCOMPLETE_RESPONSE_MAX_TOKENS_CEILING}; a reasoning "
-        "model will truncate before it emits the payload"
+    assert DEFAULT_MAX_OUTPUT_TOKENS > _INCOMPLETE_RESPONSE_MAX_TOKENS_CEILING, (
+        f"default budget {DEFAULT_MAX_OUTPUT_TOKENS} does not clear the seam's "
+        f"escalation ceiling {_INCOMPLETE_RESPONSE_MAX_TOKENS_CEILING}. Measured "
+        "2026-09-08: a budget *at* that ceiling still returned no tool call, so "
+        "meeting it is not enough."
     )
 
 

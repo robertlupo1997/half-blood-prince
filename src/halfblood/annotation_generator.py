@@ -176,8 +176,11 @@ RULES
 #: constant:
 #:
 #:     2048 tokens -> IncompleteResponseError, truncated after the escalated retry
-#:     8192 tokens -> see MEASURED_TOKEN_BOUNDARY below
+#:     8192 tokens -> StructuredOutputError, no tool call returned at all
 #:    16000 tokens -> 3 schema-valid annotations in 141s
+#:
+#: 8192 is the seam's own escalation ceiling and it still fails, so the default
+#: has to clear that ceiling rather than merely meet it.
 #:
 #: The conclusion this replaces -- "no free model on this account can generate
 #: annotations" -- was a defect in this constant, not a property of free models.

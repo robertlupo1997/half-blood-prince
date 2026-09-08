@@ -30,12 +30,32 @@ containing zero annotations while 2,071 tests stayed green.
 the reason code for "the model quoted loosely," and that mislabel aimed the diagnosis at the
 model for six weeks. If you add a skip path, keep the reason code truthful.
 
-**Free models cannot generate annotations here.** Measured 2026-09-08: two free models,
-all three `--structured-output` modes, large and small asks — every combination failed
-(truncated at max_tokens / "response was incomplete" / "contained no JSON object"). The same
-prompt on a paid model works. Free models are fine for reading, judging, review, and bulk
-analysis. ⛔ `.env` holds a **zero-spend key on purpose**: free returns 200, paid returns
-403. Do not "fix" the 403 by swapping in a paid key — ask first.
+**Free models CAN generate annotations. The earlier claim that they cannot was a defect in
+this repository.** `annotation_generator.py` asked for 2048 output tokens per page, and the
+provider seam escalates once to 4096 without ever reaching its own 8192 ceiling. A reasoning
+model spends that on reasoning tokens and the payload is cut off mid-object. Re-measured
+2026-09-08 on one real page, `--structured-output function`, nothing else changed:
+
+| budget | outcome |
+|---|---|
+| 2048 | `IncompleteResponseError`, truncated after the escalated retry |
+| 8192 | `StructuredOutputError`, no tool call returned |
+| **16000** | **3 schema-valid annotations, 141s** |
+
+`nvidia/nemotron-3.5-lightning:free` (3 annotations) and
+`nvidia/nemotron-3-super-120b-a12b:free` (1 annotation, 84s) both emit a schema-valid
+payload. ⚠ "Emits a payload" is not "is good enough" — one annotation for a page asked for
+five is a working transport and a weak generator. `nex-agi/nex-n2.5-pro:free` returns no choice; `google/gemma-4-31b-it:free` was
+rate-limited. Budget is `DEFAULT_MAX_OUTPUT_TOKENS`, overridable with
+`HALFBLOOD_MAX_OUTPUT_TOKENS`. Raising it costs nothing — providers bill actual output
+tokens and this is only an upper bound.
+
+⚠ **The lesson is bigger than the constant.** A measurement across two models and three
+modes was real, and the conclusion drawn from it named the wrong cause, because the one
+variable that mattered was never varied. Vary the local knob before blaming the vendor.
+
+⛔ `.env` still holds a **zero-spend key on purpose**: free returns 200, paid returns 403.
+Do not "fix" the 403 by swapping in a paid key — ask first.
 
 **Measured 2026-09-08, and no longer a risk in the ledger — it is a number.**
 `_resolve_bounded` searches many leaf blocks where there was one chapter search, so a quote

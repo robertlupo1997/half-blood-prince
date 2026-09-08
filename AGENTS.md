@@ -70,17 +70,30 @@ for six weeks. If you add a skip path, do not collapse a distinct reason into a 
 **403 "Key limit exceeded"**. That is the feature — it makes overspending structurally
 impossible. **Do not "fix" the 403 by swapping in a paid key.**
 
-⛔ **No free model on this account can generate annotations.** Measured 2026-09-08 across two
-models and all three `--structured-output` modes (`function`, `json-schema`, `prompt`):
-every combination failed — truncated at max_tokens, "response was incomplete", or "contained
-no JSON object". Cutting the ask from 8 annotations to 2 changed nothing, so it is not
-payload size. The same prompt on a paid model succeeds.
+✅ **RETRACTED 2026-09-08: free models CAN generate annotations.** The earlier entry here
+said no free model on this account could, measured across two models and all three
+`--structured-output` modes. The measurement was real; the conclusion named the wrong cause.
+`annotation_generator.py` asked for **2048** output tokens per page and the provider seam
+escalates once to 4096 without reaching its own 8192 ceiling. A reasoning model spends that
+budget on reasoning tokens, so the payload was cut off mid-object every time. Re-measured on
+one real page, `function` mode, nothing else changed:
 
-⇒ Free models are fine for reading, judging, review, and bulk analysis. **Budget a paid
-model for anything that must emit a schema-valid object, and say so before the run.**
+| budget | outcome |
+|---|---|
+| 2048 | `IncompleteResponseError`, truncated after the escalated retry |
+| 8192 | `StructuredOutputError`, no tool call returned |
+| **16000** | **3 schema-valid annotations, 141s** |
 
-⚠ **Probe with the task shape, not a ping.** A model that answers "reply with ALIVE" can
-still fail every page of structured generation. That exact gap cost a 13-minute run.
+`nvidia/nemotron-3.5-lightning:free` (3 annotations) and
+`nvidia/nemotron-3-super-120b-a12b:free` (1 annotation, 84s) both emit a schema-valid
+payload. ⚠ "Emits a payload" is not "is good enough" — one annotation for a page asked for
+five is a working transport and a weak generator. Budget lives in `DEFAULT_MAX_OUTPUT_TOKENS`, override with
+`HALFBLOOD_MAX_OUTPUT_TOKENS`. Raising it costs nothing: providers bill actual output tokens
+and this is only an upper bound.
+
+⚠ **Probe with the task shape, not a ping** — still true, and it is not the whole rule. A
+probe that holds the failing variable fixed measures the variable, not the cause. **Vary the
+local knob before blaming the vendor.**
 
 ## Verify by running
 
