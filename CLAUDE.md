@@ -40,7 +40,18 @@ model spends that on reasoning tokens and the payload is cut off mid-object. Re-
 |---|---|
 | 2048 | `IncompleteResponseError`, truncated after the escalated retry |
 | 8192 | `StructuredOutputError`, no tool call returned |
-| **16000** | **3 schema-valid annotations, 141s** |
+| 16000 | 3 schema-valid annotations, 141s |
+
+And on the whole book (one 82,383-char chapter, 4.5x that page):
+
+| budget | outcome |
+|---|---|
+| 16000 | `StructuredOutputError`, no tool call |
+| **32000** | **`Rendered 5 / Skipped 0`**, 21,214 in / 7,660 out, 3m09s |
+
+⚠ The successful run spent **fewer** output tokens (7,660) than the 8192 that failed, so
+this is not simply a payload that did not fit. `DEFAULT_MAX_OUTPUT_TOKENS` is set to the
+value measured working end to end, not to an isolated threshold.
 
 `nvidia/nemotron-3.5-lightning:free` (3 annotations) and
 `nvidia/nemotron-3-super-120b-a12b:free` (1 annotation, 84s) both emit a schema-valid

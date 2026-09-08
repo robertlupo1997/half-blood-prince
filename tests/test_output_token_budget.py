@@ -14,6 +14,12 @@ Re-measured 2026-09-08 on `nvidia/nemotron-3.5-lightning:free`, one real page of
 -- returned no tool call at all; 16000 returned three schema-valid annotations in
 141 seconds. So the default has to clear that ceiling, not merely meet it.
 
+On the whole book -- one 82,383-character chapter, 4.5x the probe page -- 16000
+returned no tool call and 32000 produced `Rendered 5 / Skipped 0` while spending
+only 7,660 output tokens. Fewer than the 8192 that failed, so the mechanism is
+not simply a payload that did not fit; the default is the value measured working
+end to end, not an isolated threshold.
+
 These tests are offline. They pin the resolution rule, not the network result.
 """
 

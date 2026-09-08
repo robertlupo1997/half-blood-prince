@@ -129,9 +129,22 @@ automated, not as a control.
   the personas, and the count of notes read.
 
   **Partially satisfied 2026-09-07.** Sixteen notes across two personas were read and judged
-  good — but read from a *plan*, because at the time nothing placed. Placement now works, so
-  G4 closes when he reads the artifact a reader would actually open:
-  `halfblood annotate tests/corpora/real/elements-of-style.epub -o out.epub`.
+  good — but read from a *plan*, because at the time nothing placed.
+
+  ✅ **The artifact now exists, and it cost nothing.** Generated 2026-09-08 at `0a35381`
+  from `tests/corpora/real/elements-of-style.epub`, default Snape persona, on
+  `nvidia/nemotron-3.5-lightning:free` with `HALFBLOOD_MAX_OUTPUT_TOKENS=32000`:
+  **`Rendered 5 / Skipped 0`** — every generated annotation placed. 21,214 tokens in,
+  7,660 out, 3m09s, **$0.00**. Run report frozen at
+  `docs/evidence/2026-09-08-free-model-real-book-run.report.json`; the five note bodies were
+  read out of the output EPUB itself, not inferred from the report. File handed to Trey as
+  `~/elements-of-style-annotated.epub`.
+
+  ⚠ The earlier plan for this gate was a ~$0.10 paid generation, on the belief that no free
+  model could generate. That belief was a hardcoded `max_tokens=2048` in this repository.
+
+  **G4 now waits only on Trey reading it.** Five notes is a thin read; if that is too few to
+  judge, raise `--max-per-page` and regenerate — still free.
 
   ⚠ This does **not** license a public quality claim.
   `~/project-ops/workstreams/portfolio/DECISIONS.md` (2026-08-22) restricts public claims
