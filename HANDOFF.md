@@ -17,18 +17,29 @@
 >
 > **The PDF path is unaffected** — it bounds per page (~2,300 chars, 20x headroom), not per
 > chapter. The defect is a choice of unit; the fix is making EPUB resolve against a bounded
-> unit the way PDF already does. The same engine places **5 of 8** given a block-level root.
+> unit the way PDF already does. **Fixed on this branch:** `_resolve_bounded` tries the
+> chapter first, so small chapters are unchanged, and only a bound refusal triggers a
+> block-scoped search. That search is fail-closed — leaf blocks only, and a quote found in
+> more than one leaf is AMBIGUOUS, never first-hit.
 >
-> ⚠ **Not yet isolated:** *why* a large root behaves differently. A crude probe got 1/3
-> against a body root, so it degrades with size rather than failing outright. Isolate before
-> fixing. **The risk in any fix:** 955 independent block searches where there was one, and the
-> contract has an `ambiguous` outcome for a reason. Untested.
+>  **Isolated:** the bound is applied to the *sum* of a chapter's inline runs, not to the run
+> a quote resolves within. That book's largest single run is 1,248 characters across 869 runs
+> — 40x under the limit — while the chapter totals 83,063.
+>
+> **Measured after the fix:** `Rendered 7 / Skipped 1` on the real book, up from
+> `Rendered 0 / Skipped 8`. Bare `pytest tests/ -q` → 2077 passed (2071 before). Ruff, mypy,
+> and `scripts/benchmark_placement.py` clean. The note bodies were confirmed present in the
+> output EPUB itself, not inferred from the run report.
 >
 > ⚠ The `401` that has blocked the frontier eval since ~session 31 is an **expired** key in
 > `.env`, not a budget. A working OpenRouter key sits in `~/.prime/agent/auth.json`.
 >
-> Also added: `LESSONS.md` (four entries, one shape) and `GATES.md` (**UNRATIFIED**, red on
-> purpose, every `CHECK:` line needs owner sign-off).
+> Also added: `LESSONS.md` (four entries, one shape) and `tests/test_real_book_placement.py`,
+> which drives a frozen plan so the regression costs no model call, no network, and no API key.
+>
+> ⚠ A separate defect remains, accounting for the 1 skip: the extractor hands the model
+> `hers\n,\nits\n,\ntheirs\n` for `<em>hers</em>, <em>its</em>`, so the model faithfully
+> quotes a string that is not contiguous document text. Not addressed here.
 >
 > Session handoff: `~/project-ops/thoughts/shared/handoffs/general/2026-09-07_23-55-00_general_real-book-run-and-the-site-is-last.md`
 
