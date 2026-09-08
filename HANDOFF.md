@@ -1,5 +1,51 @@
 # Latest Handoff
 
+> **2026-09-07 — the product was run on a real book for the first time. It produced a file
+> with zero annotations.**
+> Evidence: `docs/evidence/2026-09-07-real-book-placement-failure.md`.
+> Corpus and frozen plans: `tests/corpora/real/` — measurable with no model call, no network,
+> no API key.
+>
+> `MAX_INPUT_CHARS = 50_000` (`src/halfblood/documents/matching.py:35`) versus an
+> 83,063-character chapter. `epub_processor.py:641-648` resolves against a whole chapter, so
+> every quote is refused on the bound with `input_limit_exceeded` before matching is
+> attempted — and `:655-661` discards that reason code and reports `MISSING_TARGET`.
+>
+> ⛔ **`MISSING_TARGET` on a real book does not mean the model quoted loosely.** A prior
+> handoff records the wrong diagnosis that mislabel produced: *"6/50 all MISSING_TARGET from
+> non-verbatim model quoting."*
+>
+> **The PDF path is unaffected** — it bounds per page (~2,300 chars, 20x headroom), not per
+> chapter. The defect is a choice of unit; the fix is making EPUB resolve against a bounded
+> unit the way PDF already does. **Fixed on this branch:** `_resolve_bounded` tries the
+> chapter first, so small chapters are unchanged, and only a bound refusal triggers a
+> block-scoped search. That search is fail-closed — leaf blocks only, and a quote found in
+> more than one leaf is AMBIGUOUS, never first-hit.
+>
+>  **Isolated:** the bound is applied to the *sum* of a chapter's inline runs, not to the run
+> a quote resolves within. That book's largest single run is 1,248 characters across 869 runs
+> — 40x under the limit — while the chapter totals 83,063.
+>
+> **Measured after the fix:** `Rendered 7 / Skipped 1` on the real book, up from
+> `Rendered 0 / Skipped 8`. Bare `pytest tests/ -q` → 2077 passed (2071 before). Ruff, mypy,
+> and `scripts/benchmark_placement.py` clean. The note bodies were confirmed present in the
+> output EPUB itself, not inferred from the run report.
+>
+> ⚠ The `401` that has blocked the frontier eval since ~session 31 is an **expired** key in
+> `.env`, not a budget. A working OpenRouter key sits in `~/.prime/agent/auth.json`.
+>
+> Also added: `LESSONS.md` (four entries, one shape) and `tests/test_real_book_placement.py`,
+> which drives a frozen plan so the regression costs no model call, no network, and no API key.
+>
+> ⚠ A separate defect remains, accounting for the 1 skip: the extractor hands the model
+> `hers\n,\nits\n,\ntheirs\n` for `<em>hers</em>, <em>its</em>`, so the model faithfully
+> quotes a string that is not contiguous document text. Not addressed here.
+>
+> Session handoff: `~/project-ops/thoughts/shared/handoffs/general/2026-09-07_23-55-00_general_real-book-run-and-the-site-is-last.md`
+
+## Previous handoff
+
+
 > **Latest evidence packet:** `thoughts/shared/handoffs/general/2026-09-07_21-42-43_general_astra-evidence-placement-release.md`
 > Whole-quote placement contract and refusal benchmark verified at `79da678`.
 > Final root run: 2070 passed, 29 warnings in 24.65s; Ruff/mypy and wheel smoke pass; original input guard 8/8.

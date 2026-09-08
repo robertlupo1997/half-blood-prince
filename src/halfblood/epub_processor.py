@@ -590,6 +590,67 @@ class EpubProcessor:
                 fixed_ids.add(itemref.attrib["idref"])
         return fixed_ids
 
+
+    #: Block-level containers used to bound a resolve when a whole chapter exceeds
+    #: `MAX_INPUT_CHARS`. Only leaf blocks are searched, so a paragraph and its
+    #: enclosing div cannot both report the same quote and fake an ambiguity.
+    _BOUNDED_ROOT_TAGS = (
+        "p", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "dd", "dt", "td", "div",
+    )
+
+    def _resolve_bounded(
+        self, chapter_root: Tag, target: TargetSelector, *, fixed_layout: bool,
+    ) -> tuple[PlacementResult, Tag]:
+        """Resolve a quote, falling back to block-scoped roots when the chapter is too large.
+
+        `resolve_epub_quote` is contracted to resolve "within one reflowable EPUB inline DOM
+        run", and `docs/placement-contract.md` bounds source text at MAX_INPUT_CHARS counting
+        **all** descendant text. A whole chapter exceeds that on any real book -- The Elements
+        of Style's main document is 83,063 characters -- so every annotation was refused on
+        the bound before matching was attempted, while no single inline run in it came within
+        40x of the limit.
+
+        The chapter is still tried first, so small chapters behave exactly as before. Only a
+        bound refusal triggers the block-scoped search, and that search stays fail-closed: a
+        quote found in more than one block is ambiguous, never first-hit.
+
+        Returns the result and the root it was resolved against. The caller must pass that
+        same root to `epub_match_from_placement`, which re-derives runs from it.
+        """
+        whole = resolve_epub_quote(chapter_root, target, fixed_layout=fixed_layout)
+        if whole.reason != "input_limit_exceeded":
+            return whole, chapter_root
+
+        blocks = chapter_root.find_all(self._BOUNDED_ROOT_TAGS)
+        leaves = [b for b in blocks if not b.find(self._BOUNDED_ROOT_TAGS)]
+
+        hits: list[tuple[PlacementResult, Tag]] = []
+        for block in leaves:
+            result = resolve_epub_quote(block, target, fixed_layout=fixed_layout)
+            if result.status is PlacementStatus.AMBIGUOUS:
+                return result, block
+            if result.status is PlacementStatus.RESOLVED:
+                hits.append((result, block))
+                if len(hits) > 1:
+                    break
+
+        if len(hits) == 1:
+            return hits[0]
+        if len(hits) > 1:
+            return (
+                PlacementResult(
+                    renderer="epub", status=PlacementStatus.AMBIGUOUS,
+                    reason="ambiguous_quote", candidate_count=len(hits),
+                ),
+                chapter_root,
+            )
+        return (
+            PlacementResult(
+                renderer="epub", status=PlacementStatus.UNRESOLVED, reason="quote_not_found",
+            ),
+            chapter_root,
+        )
+
     def render_plan(
         self,
         input_path: str,
@@ -644,13 +705,14 @@ class EpubProcessor:
             pre_resolved: list[CrossNodeMatch | None] = []
             skip_reason_for: dict[int, SkipReason] = {}
             for idx, ann in enumerate(annotations):
-                result = resolve_epub_quote(
-                    chapter_root, ann.target, fixed_layout=item.get_id() in fixed_layout_ids,
+                result, resolved_root = self._resolve_bounded(
+                    chapter_root, ann.target,
+                    fixed_layout=item.get_id() in fixed_layout_ids,
                 )
                 placements.append(PlacementRecord(
                     annotation_id=ann.id, source_locator=unit.source_locator, result=result,
                 ))
-                pre_resolved.append(epub_match_from_placement(chapter_root, result))
+                pre_resolved.append(epub_match_from_placement(resolved_root, result))
                 if result.status is not PlacementStatus.RESOLVED:
                     skip_reason_for[idx] = (
                         SkipReason.AMBIGUOUS_TARGET
