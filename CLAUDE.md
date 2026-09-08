@@ -1,5 +1,46 @@
 # Half-Blood Prince — Engineering Guide
 
+## Read this first (2026-09-08)
+
+⛔ **Every count and claim below is re-derivable. Run the command; do not carry the number.**
+This file has been stale before and cost a full investigation cycle.
+
+**What done means:** [`GATES.md`](GATES.md). Five gates; three are met. That file is the
+definition of done this project ran 34 sessions without.
+
+**The binding rule for any placement or rendering change: no gate runs on a fixture.**
+Every EPUB fixture here is under the 50,000-character `MAX_INPUT_CHARS` bound. A real book
+is not. `tests/corpora/real/` holds *The Elements of Style* (83,063-character chapter, 1,089
+blocks) plus two frozen annotation plans, so placement is measurable with **no model call,
+no network, and no API key**. Before this corpus existed, `annotate` shipped a book
+containing zero annotations while 2,071 tests stayed green.
+
+**Two defects fixed 2026-09-08** — read
+[`docs/evidence/2026-09-07-real-book-placement-failure.md`](docs/evidence/2026-09-07-real-book-placement-failure.md):
+
+1. `render_plan` resolved quotes against a whole chapter, but `resolve_epub_quote` is
+   contracted to one inline run and the bound counts **all** descendant text. Every
+   annotation on a real book was refused before matching. `_resolve_bounded` now tries the
+   chapter first and falls back to leaf blocks, failing closed on more than one hit.
+2. `_html_to_text` inserted a newline between every *text node*, so `<i>hers</i>, <i>its</i>`
+   reached the model as `hers\n,\nits`. The model quoted it faithfully and placement
+   refused a string that does not exist. Only block-level elements break a line now.
+
+⚠ **`MISSING_TARGET` used to mean two different things.** A bound refusal was reported under
+the reason code for "the model quoted loosely," and that mislabel aimed the diagnosis at the
+model for six weeks. If you add a skip path, keep the reason code truthful.
+
+**Free models cannot generate annotations here.** Measured 2026-09-08: two free models,
+all three `--structured-output` modes, large and small asks — every combination failed
+(truncated at max_tokens / "response was incomplete" / "contained no JSON object"). The same
+prompt on a paid model works. Free models are fine for reading, judging, review, and bulk
+analysis. ⛔ `.env` holds a **zero-spend key on purpose**: free returns 200, paid returns
+403. Do not "fix" the 403 by swapping in a paid key — ask first.
+
+**Untested risk:** `_resolve_bounded` searches many leaf blocks where there was one search.
+It returns `AMBIGUOUS` on more than one hit, so it fails closed, but whether real books
+surface collisions the chapter-scoped call never faced is unmeasured.
+
 ## Current placement work
 
 For changes to quote resolution, rendering, or public guarantees, read
