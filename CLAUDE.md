@@ -5,7 +5,7 @@
 ⛔ **Every count and claim below is re-derivable. Run the command; do not carry the number.**
 This file has been stale before and cost a full investigation cycle.
 
-**What done means:** [`GATES.md`](GATES.md). Five gates; three are met. That file is the
+**What done means:** [`GATES.md`](GATES.md). Six gates; four are met. That file is the
 definition of done this project ran 34 sessions without.
 
 **The binding rule for any placement or rendering change: no gate runs on a fixture.**
@@ -37,9 +37,14 @@ prompt on a paid model works. Free models are fine for reading, judging, review,
 analysis. ⛔ `.env` holds a **zero-spend key on purpose**: free returns 200, paid returns
 403. Do not "fix" the 403 by swapping in a paid key — ask first.
 
-**Untested risk:** `_resolve_bounded` searches many leaf blocks where there was one search.
-It returns `AMBIGUOUS` on more than one hit, so it fails closed, but whether real books
-surface collisions the chapter-scoped call never faced is unmeasured.
+**Measured 2026-09-08, and no longer a risk in the ledger — it is a number.**
+`_resolve_bounded` searches many leaf blocks where there was one chapter search, so a quote
+unique inside a chapter can collide across blocks. It fails closed (`AMBIGUOUS`, never a
+first hit), so it cannot misplace a note; what it costs is notes the reader does not get.
+Replaying both frozen plans: `plan-snape.json` places 5/8 with three `missing_target` skips,
+`plan-editor.json` places 6/8 with **two `ambiguous_target` skips**. **Two of sixteen — 12.5%
+— are lost to collisions.** Gate G6 pins that ceiling together with the placement floor, so
+neither number can move without the suite saying so.
 
 ## Current placement work
 

@@ -21,7 +21,7 @@ placement contract, deterministic, testable offline) and **generating a note wor
 
 ## What done means
 
-[`GATES.md`](GATES.md). Five gates, three met as of 2026-09-08. Read it before proposing
+[`GATES.md`](GATES.md). Six gates, four met as of 2026-09-08. Read it before proposing
 work; it is the definition of done this project ran 34 sessions without.
 
 ```sh
@@ -100,19 +100,24 @@ All offline, no key required:
 do not remove it. See [`LESSONS.md`](LESSONS.md), which records four defects that all share
 one shape: **the thing that verified was not the thing that ships.**
 
-## Known-untested risk
+## The ambiguity cost, measured
 
-`_resolve_bounded` performs many leaf-block searches where there was one chapter search. It
-fails closed on multiple hits, but whether real books surface collisions the chapter-scoped
-call never had to disambiguate is **unmeasured**. A gate counting `ambiguous_target` skips
-would close it.
+`_resolve_bounded` performs many leaf-block searches where there was one chapter search, so a
+quote unique inside a chapter can collide across blocks. It fails closed on multiple hits and
+cannot misplace a note; the cost is notes the reader never sees. **Measured 2026-09-08:**
+`plan-snape.json` places 5/8 (three `missing_target`), `plan-editor.json` places 6/8 with
+**two `ambiguous_target`** — two of sixteen, 12.5%. Gate **G6** pins that ceiling alongside
+the placement floor. The ceiling is a measurement, not a target: if it rises, fix the
+resolver rather than the number.
 
 ## Boundaries
 
 - **Do not reopen** `HBP-ROADMAP-OX.md`'s decision to drop the persona-voiced study tool as
   a product ambition. Notes read by their author are n≈1, the same shape that decision
   discounted.
-- **Public claims describe engineering, not output quality** (`DECISIONS.md`, 2026-08-22).
+- **Public claims describe engineering, not output quality**
+  (`~/project-ops/workstreams/portfolio/DECISIONS.md`, 2026-08-22 — that file is in the ops
+  hub, not in this repo).
   Output quality is unproven at n≈1.
 - The repository is **private**. Making it public is the owner's call alone.
 - `.pdf` and `.epub` only (`cli.py`). HTML is out of scope by decision, not by defect.

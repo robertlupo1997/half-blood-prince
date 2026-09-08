@@ -45,7 +45,7 @@ automated, not as a control.
 
 ## G1 — a real book gets its notes placed ✅ MET
 
-- [x] **G1: at least 60% of generated annotations are placed on a real book.**
+- [x] G1: **at least 60% of generated annotations are placed on a real book.**
 
   CHECK: `.venv/bin/pytest tests/test_real_book_placement.py::test_the_processor_places_notes_on_a_real_book -q`
   EXPECT: `/1 passed/`
@@ -61,7 +61,7 @@ automated, not as a control.
 
 ## G2 — the pipeline tells the truth about why it skipped ✅ MET
 
-- [x] **G2: `input_limit_exceeded` is never reported to a user as `missing_target`.**
+- [x] G2: **`input_limit_exceeded` is never reported to a user as `missing_target`.**
 
   CHECK: `.venv/bin/pytest tests/test_real_book_placement.py::test_a_bound_refusal_is_never_reported_as_a_missing_target -q`
   EXPECT: `/1 passed/`
@@ -75,7 +75,7 @@ automated, not as a control.
 
 ## G3 — the reader's path works from a clean clone ✅ MET
 
-- [x] **G3: an installed wheel annotates a real book with no source tree on `sys.path`.**
+- [x] G3: **an installed wheel annotates a real book with no source tree on `sys.path`.**
 
   CHECK: `.venv/bin/python scripts/wheel_smoke.py 2>&1 | grep -c "real book"`
   EXPECT: `/^[1-9]/`
@@ -97,7 +97,7 @@ automated, not as a control.
 
 ## G4 — the notes are worth reading ⚠ PARTIAL
 
-- [ ] **G4: Trey reads a fully placed real book and judges the notes good.**
+- [ ] G4: **Trey reads a fully placed real book and judges the notes good.**
 
   Manual. Evidence: his written verdict under `docs/evidence/`, naming the book, the commit,
   the personas, and the count of notes read.
@@ -107,14 +107,15 @@ automated, not as a control.
   G4 closes when he reads the artifact a reader would actually open:
   `halfblood annotate tests/corpora/real/elements-of-style.epub -o out.epub`.
 
-  ⚠ This does **not** license a public quality claim. `DECISIONS.md` (2026-08-22) restricts
-  public claims about this project to engineering, not output quality, and n≈1 read by the
+  ⚠ This does **not** license a public quality claim.
+  `~/project-ops/workstreams/portfolio/DECISIONS.md` (2026-08-22) restricts public claims
+  about this project to engineering, not output quality, and n≈1 read by the
   author is the same shape `HBP-ROADMAP-OX.md` discounted when it dropped the study-tool
   product. G4 is an internal bar, not marketing.
 
 ## G5 — quality does not silently regress 🔴 UNMET, now unblocked
 
-- [ ] **G5: the eval harness runs with an independent judge and no `--allow-self-judge`.**
+- [ ] G5: **the eval harness runs with an independent judge and no `--allow-self-judge`.**
 
   CHECK: `.venv/bin/python eval/eval_harness.py --judge-model <independent> --json-out eval-result.json`
   EXPECT: `/"self_judged":\s*false/`
@@ -122,10 +123,19 @@ automated, not as a control.
   Costs money and needs a key, so this is a release gate, not a CI gate. Budgeted under $5
   by `HBP-ROADMAP-OX.md:14-16`.
 
-  ⚠ **The blocker was never a budget.** Recorded as "Blocked: rejected credential (HTTP 401)"
-  since roughly session 31, it is an **expired** key in `.env` — `401 API key expired` — while
-  a working OpenRouter key with credit sits in `~/.prime/agent/auth.json`. Verified 2026-09-07
-  by `curl .../auth/key` against both. **Rotating the key in `.env` is the whole fix.**
+  ⚠ **Corrected 2026-09-08. The instruction that stood here was to rotate the key in `.env`,
+  and following it now would break a standing decision.** `.env` holds a **deliberate
+  zero-spend key** — free models return 200, paid return 403 — so that overspending is
+  structurally impossible rather than a matter of an agent remembering (`.env`'s own comment,
+  2026-09-07; `AGENTS.md` "Cost rules"). The earlier note described the key that was there
+  before that decision, an expired one returning `401`.
+
+  **The fix is to pass a paid key for that single command, after asking the owner** — never
+  to write one into `.env`:
+
+  ```sh
+  OPENROUTER_API_KEY=<paid key> .venv/bin/python eval/eval_harness.py --judge-model <independent> ...
+  ```
 
 ---
 
@@ -144,13 +154,39 @@ automated, not as a control.
 - **HTML and other input types.** `cli.py:69` routes `.pdf` and `.epub` only. A deliberate
   scope decision, not a defect.
 
-## The risk this ledger does not retire
+## G6 — safety has a price, and the price is counted ✅ MET
 
-Block-scoped resolution means many independent searches where there was one. `_resolve_bounded`
-searches **leaf** blocks only and returns `AMBIGUOUS` on more than one hit, so it fails closed
-— but whether real books surface collisions the chapter-scoped call never had to disambiguate
-is **untested**. If G1's rate climbs while ambiguity climbs with it, this gate is measuring
-the wrong thing and needs a companion counting `ambiguous_target` skips.
+- [x] G6: **`ambiguous_target` skips on a real book stay at or below the measured ceiling,
+  and placement stays at or above the measured floor.**
+
+  CHECK: `.venv/bin/pytest tests/test_real_book_placement.py -q -k "ambiguity or ambiguous_refusal"`
+  EXPECT: `/3 passed/`
+
+  **The risk this ledger carried as untested is now measured, and it is not zero.**
+  Block-scoped resolution means many independent leaf-block searches where there was one
+  chapter search. `_resolve_bounded` fails closed, returning `AMBIGUOUS` rather than a first
+  hit, so it cannot place a note in the wrong spot — but a quote that was unique inside one
+  large chapter root can match several small blocks, and each collision is a note the reader
+  does not get. Measured 2026-09-08 across both frozen plans:
+
+  | frozen plan | rendered | skipped | reasons |
+  |---|---|---|---|
+  | `plan-snape.json` | 5/8 | 3 | all `missing_target` |
+  | `plan-editor.json` | 6/8 | 2 | both **`ambiguous_target`** |
+
+  **Two of sixteen annotations — 12.5% — are lost to collisions the chapter-scoped call
+  never had to disambiguate.** Real books surface them. The answer to the open question is
+  yes.
+
+  The gate pins both numbers together, because a gate counting only ambiguity would pass
+  vacuously the day every quote started failing for some other reason. Its failing state was
+  demonstrated, not assumed: tightening the ceiling to 1 fails with the two colliding
+  annotation ids named.
+
+  Free — replays the frozen plans, no model call, no network, no key.
+
+  ⚠ The ceiling is a **measurement, not a target**. If a future change pushes ambiguity up,
+  the honest move is to report it and fix the resolver, not to raise the number here.
 
 ## ABANDON
 
