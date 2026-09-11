@@ -12,19 +12,19 @@ definition of done this project ran 34 sessions without.
 
 Methodology: `~/dev-harness/core/HARNESS.md`. ⛔ A fact belongs in exactly one layer: doctrine there, this repo's gotchas here.
 
-**The gate**, stop at the first red — identical to `.github/workflows/ci.yml`, so a local green is a CI green:
+**The gate**, stop at the first red — the same three commands `.github/workflows/ci.yml` runs, on one interpreter. CI runs them on a 3.11/3.12/3.13 matrix and adds a separate `wheel` job, so a local green is necessary, not sufficient:
 
 ```sh
 .venv/bin/ruff check src tests eval scripts && .venv/bin/mypy src/halfblood && .venv/bin/pytest tests/ -q
 ```
 
-**What the gate does not cover.** `tests/test_real_book_placement.py` and `tests/test_epub_inline_extraction.py` skip *silently* when `tests/corpora/real/` is absent — a green with the corpus missing has proven nothing about placement; run with `-rs` and read the skip lines. `test_web_preview_editing_js.py` skips without `node`. The eval harness's real-pipeline path is exercised by hand only. `scripts/benchmark_placement.py` and `scripts/wheel_smoke.py` run in CI but are not in the gate. A count with no selector is not a count: run from the repo root, `tests/`, nothing narrower.
+**What the gate does not cover.** The other two interpreters and the `wheel` job (`scripts/wheel_smoke.py`), which CI runs and this does not; `scripts/benchmark_placement.py`, which CI runs after the tests; the eval harness's real-pipeline path, exercised by hand only. `ci.yml` records the one case where a full-checkout green went red in CI (`tests/test_stress_evidence.py` needs `fetch-depth: 0`). Skips: `tests/test_real_book_placement.py` (module-level) and one test in `test_epub_inline_extraction.py` skip when `tests/corpora/real/` is absent — the corpus is tracked, so a clean clone has zero skips, but a green from a partial checkout has proven nothing about placement; `test_web_preview_editing_js.py` skips without `node`. Run with `-rs` and read the skip lines. A count with no selector is not a count: run from the repo root, `tests/`, nothing narrower.
 
 **Pre-commit ladder:** the gate → secrets grep on the staged diff (`git diff --cached | grep -inE 'sk-or-v1|api[_-]?key|secret'`) → `git diff --cached --stat` read by eye.
 
-**Shared checkout** (`git worktree list` shows lanes on the Windows side and under `~/prime-agent-lab`): one writer at a time, no `git stash`, no `git checkout -- <file>`, no formatter-wide runs (`core/HARNESS.md` §6).
+**Shared checkout** (`git worktree list`: two live peers under `~/prime-agent-lab/wt/`, plus five stale Windows-side registrations whose checkout is gone — prune when you choose): one writer at a time, no `git stash`, no `git checkout -- <file>`, no formatter-wide runs (`core/HARNESS.md` §6).
 
-**Money path — where a wrong number reaches a person:** `docs/evidence/**` (frozen run reports, `receipts.json` cost accounting), `examples/*.report.json`, `eval/eval_harness.py` metrics, `scripts/benchmark_placement.py` output. Edit/Write on the first two is denied in `.claude/settings.json`; regenerating them is a deliberate act with a reviewer on the diff, whatever the tier.
+**Money path — where a wrong number reaches a person:** `docs/evidence/**` (frozen run reports, `receipts.json` cost accounting), `examples/*.report.json`, `eval/eval_harness.py` metrics, `scripts/benchmark_placement.py` output. The first two are `Edit(...)`-denied in `.claude/settings.json`, which covers the Edit and Write tools (measured) but not a script that writes them — `Bash(python -c:*)` is allowed. Regenerating them is a deliberate act with a reviewer on the diff, whatever the tier.
 
 **Layout, deliberately not the harness default:** `GATES.md` is committed project state — the definition of done — not the harness's gitignored task ledger. Do not gitignore it. Handoffs live in `HANDOFF.md` at root; plans in `docs/plans/`.
 
@@ -316,7 +316,7 @@ pip install -e ".[dev]"
 # Run tests
 pytest tests/ -v
 
-# Lint (if you add ruff/mypy)
+# Lint and typecheck — both configured, both part of the gate (see Build & verify)
 ruff check src/ tests/ eval/
 mypy src/halfblood/
 

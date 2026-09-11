@@ -28,9 +28,7 @@
       "Bash(curl:*)",
       "Bash(wget:*)",
       "Edit(./docs/evidence/**)",
-      "Write(./docs/evidence/**)",
-      "Edit(./examples/*.report.json)",
-      "Write(./examples/*.report.json)"
+      "Edit(./examples/*.report.json)"
     ]
   },
   "hooks": {
