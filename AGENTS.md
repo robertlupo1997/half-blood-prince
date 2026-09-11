@@ -28,6 +28,22 @@ work; it is the definition of done this project ran 34 sessions without.
 node ~/dev-harness/scripts/unlazy/gate-check.mjs --status GATES.md   # report only
 ```
 
+## Build & verify — recorded 2026-09-11 by `setup-harness`
+
+Methodology: `~/dev-harness/core/HARNESS.md`; Codex mechanism: `~/dev-harness/adapters/cross-harness.md`. ⛔ A fact belongs in exactly one layer: doctrine there, this repo's gotchas here.
+
+**The gate**, stop at the first red: the first three commands under "Verify by running" below — `ruff`, then `mypy`, then `pytest tests/ -q` — the same three `.github/workflows/ci.yml` runs, on one interpreter. CI runs them on a 3.11/3.12/3.13 matrix and adds a separate `wheel` job, so a local green is necessary, not sufficient. The commands are spelled once, there, with the `pytest` vs `python -m pytest` trap beside them.
+
+**What the gate does not cover.** The other two interpreters and the `wheel` job (`scripts/wheel_smoke.py`), which CI runs and this does not; `scripts/benchmark_placement.py`, which CI runs after the tests; the eval harness's real-pipeline path, exercised by hand only. `ci.yml` records the one case where a full-checkout green went red in CI (`tests/test_stress_evidence.py` needs `fetch-depth: 0`). Skips: `tests/test_real_book_placement.py` (module-level) and one test in `test_epub_inline_extraction.py` skip when `tests/corpora/real/` is absent — the corpus is tracked, so a clean clone has zero skips, but a green from a partial checkout has proven nothing about placement; `test_web_preview_editing_js.py` skips without `node`. Run with `-rs` and read the skip lines. A count with no selector is not a count: run from the repo root, `tests/`, nothing narrower.
+
+**Pre-commit ladder:** the gate → secrets grep on the staged diff (`git diff --cached | grep -inE 'sk-or-v1|api[_-]?key|secret'`) → `git diff --cached --stat` read by eye.
+
+**Shared checkout** (`git worktree list`: two live peers under `~/prime-agent-lab/wt/`, plus five stale Windows-side registrations whose checkout is gone — prune when you choose): one writer at a time, no `git stash`, no `git checkout -- <file>`, no formatter-wide runs (`core/HARNESS.md` §6).
+
+**Money path — where a wrong number reaches a person:** `docs/evidence/**` (frozen run reports, `receipts.json` cost accounting), `examples/*.report.json`, `eval/eval_harness.py` metrics, `scripts/benchmark_placement.py` output. The first two are `Edit(...)`-denied in `.claude/settings.json`, which covers the Edit and Write tools (measured) but not a script that writes them — `Bash(python -c:*)` is allowed. Regenerating them is a deliberate act with a reviewer on the diff, whatever the tier.
+
+**Layout, deliberately not the harness default:** `GATES.md` is committed project state — the definition of done — not the harness's gitignored task ledger. Do not gitignore it. Handoffs live in `HANDOFF.md` at root; plans in `docs/plans/`.
+
 ## The rule that matters most
 
 ⛔ **No gate, benchmark, or acceptance test runs on a fixture.**
@@ -111,9 +127,9 @@ local knob before blaming the vendor.**
 All offline, no key required:
 
 ```sh
-.venv/bin/pytest tests/ -q                      # CI runs bare pytest, not python -m pytest
 .venv/bin/ruff check src tests eval scripts     # CI lints scripts/ too
 .venv/bin/mypy src/halfblood
+.venv/bin/pytest tests/ -q                      # CI runs bare pytest, not python -m pytest
 .venv/bin/python scripts/benchmark_placement.py # the guarantee, not a render count
 .venv/bin/python scripts/wheel_smoke.py         # builds a wheel, installs it outside the
                                                 # repo, annotates the REAL book
