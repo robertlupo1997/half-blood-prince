@@ -26,7 +26,11 @@
       "Read(./.env)",
       "Read(./secrets/**)",
       "Bash(curl:*)",
-      "Bash(wget:*)"
+      "Bash(wget:*)",
+      "Edit(./docs/evidence/**)",
+      "Write(./docs/evidence/**)",
+      "Edit(./examples/*.report.json)",
+      "Write(./examples/*.report.json)"
     ]
   },
   "hooks": {
@@ -48,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Session paused — remember to run pytest before committing'",
+            "command": "echo 'Session paused \u2014 remember to run pytest before committing'",
             "timeout": 3000
           }
         ]

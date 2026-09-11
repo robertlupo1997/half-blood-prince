@@ -8,6 +8,28 @@ This file has been stale before and cost a full investigation cycle.
 **What done means:** [`GATES.md`](GATES.md). Six gates; four are met. That file is the
 definition of done this project ran 34 sessions without.
 
+## Build & verify — recorded 2026-09-11 by `setup-harness`
+
+Methodology: `~/dev-harness/core/HARNESS.md`. ⛔ A fact belongs in exactly one layer: doctrine there, this repo's gotchas here.
+
+**The gate**, stop at the first red — identical to `.github/workflows/ci.yml`, so a local green is a CI green:
+
+```sh
+.venv/bin/ruff check src tests eval scripts && .venv/bin/mypy src/halfblood && .venv/bin/pytest tests/ -q
+```
+
+**What the gate does not cover.** `tests/test_real_book_placement.py` and `tests/test_epub_inline_extraction.py` skip *silently* when `tests/corpora/real/` is absent — a green with the corpus missing has proven nothing about placement; run with `-rs` and read the skip lines. `test_web_preview_editing_js.py` skips without `node`. The eval harness's real-pipeline path is exercised by hand only. `scripts/benchmark_placement.py` and `scripts/wheel_smoke.py` run in CI but are not in the gate. A count with no selector is not a count: run from the repo root, `tests/`, nothing narrower.
+
+**Pre-commit ladder:** the gate → secrets grep on the staged diff (`git diff --cached | grep -inE 'sk-or-v1|api[_-]?key|secret'`) → `git diff --cached --stat` read by eye.
+
+**Shared checkout** (`git worktree list` shows lanes on the Windows side and under `~/prime-agent-lab`): one writer at a time, no `git stash`, no `git checkout -- <file>`, no formatter-wide runs (`core/HARNESS.md` §6).
+
+**Money path — where a wrong number reaches a person:** `docs/evidence/**` (frozen run reports, `receipts.json` cost accounting), `examples/*.report.json`, `eval/eval_harness.py` metrics, `scripts/benchmark_placement.py` output. Edit/Write on the first two is denied in `.claude/settings.json`; regenerating them is a deliberate act with a reviewer on the diff, whatever the tier.
+
+**Layout, deliberately not the harness default:** `GATES.md` is committed project state — the definition of done — not the harness's gitignored task ledger. Do not gitignore it. Handoffs live in `HANDOFF.md` at root; plans in `docs/plans/`.
+
+**Bash output is compacted by RTK** (global hook, `~/dev-harness/adapters/claude-code.md` "Shell-output compaction"). When completeness is the claim — the final staged diff, "no line matches" — prefix `RTK_DISABLED=1 ` on every command in the chain.
+
 **The binding rule for any placement or rendering change: no gate runs on a fixture.**
 Every EPUB fixture here is under the 50,000-character `MAX_INPUT_CHARS` bound. A real book
 is not. `tests/corpora/real/` holds *The Elements of Style* (83,063-character chapter, 1,089
