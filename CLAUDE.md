@@ -313,14 +313,10 @@ When reviewing, check each module for:
 # Install
 pip install -e ".[dev]"
 
-# Run tests
-pytest tests/ -v
+# The gate (ruff -> mypy -> pytest, exact selectors) is spelled ONCE, under
+# "Build & verify" at the top of this file. Do not lint or test from here.
 
-# Lint and typecheck — both configured, both part of the gate (see Build & verify)
-ruff check src/ tests/ eval/
-mypy src/halfblood/
-
-# Type check
+# Import smoke
 python -c "from halfblood.cli import main; print('imports ok')"
 
 # Quick smoke test (no API key needed)

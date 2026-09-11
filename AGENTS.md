@@ -127,9 +127,9 @@ local knob before blaming the vendor.**
 All offline, no key required:
 
 ```sh
-.venv/bin/pytest tests/ -q                      # CI runs bare pytest, not python -m pytest
 .venv/bin/ruff check src tests eval scripts     # CI lints scripts/ too
 .venv/bin/mypy src/halfblood
+.venv/bin/pytest tests/ -q                      # CI runs bare pytest, not python -m pytest
 .venv/bin/python scripts/benchmark_placement.py # the guarantee, not a render count
 .venv/bin/python scripts/wheel_smoke.py         # builds a wheel, installs it outside the
                                                 # repo, annotates the REAL book
