@@ -5,8 +5,30 @@
 ⛔ **Every count and claim below is re-derivable. Run the command; do not carry the number.**
 This file has been stale before and cost a full investigation cycle.
 
-**What done means:** [`GATES.md`](GATES.md). Five gates; three are met. That file is the
+**What done means:** [`GATES.md`](GATES.md). Six gates; four are met. That file is the
 definition of done this project ran 34 sessions without.
+
+## Build & verify — recorded 2026-09-11 by `setup-harness`
+
+Methodology: `~/dev-harness/core/HARNESS.md`. ⛔ A fact belongs in exactly one layer: doctrine there, this repo's gotchas here.
+
+**The gate**, stop at the first red — the same three commands `.github/workflows/ci.yml` runs, on one interpreter. CI runs them on a 3.11/3.12/3.13 matrix and adds a separate `wheel` job, so a local green is necessary, not sufficient:
+
+```sh
+.venv/bin/ruff check src tests eval scripts && .venv/bin/mypy src/halfblood && .venv/bin/pytest tests/ -q
+```
+
+**What the gate does not cover.** The other two interpreters and the `wheel` job (`scripts/wheel_smoke.py`), which CI runs and this does not; `scripts/benchmark_placement.py`, which CI runs after the tests; the eval harness's real-pipeline path, exercised by hand only. `ci.yml` records the one case where a full-checkout green went red in CI (`tests/test_stress_evidence.py` needs `fetch-depth: 0`). Skips: `tests/test_real_book_placement.py` (module-level) and one test in `test_epub_inline_extraction.py` skip when `tests/corpora/real/` is absent — the corpus is tracked, so a clean clone has zero skips, but a green from a partial checkout has proven nothing about placement; `test_web_preview_editing_js.py` skips without `node`. Run with `-rs` and read the skip lines. A count with no selector is not a count: run from the repo root, `tests/`, nothing narrower.
+
+**Pre-commit ladder:** the gate → secrets grep on the staged diff (`git diff --cached | grep -inE 'sk-or-v1|api[_-]?key|secret'`) → `git diff --cached --stat` read by eye.
+
+**Shared checkout** (`git worktree list`: two live peers under `~/prime-agent-lab/wt/`, plus five stale Windows-side registrations whose checkout is gone — prune when you choose): one writer at a time, no `git stash`, no `git checkout -- <file>`, no formatter-wide runs (`core/HARNESS.md` §6).
+
+**Money path — where a wrong number reaches a person:** `docs/evidence/**` (frozen run reports, `receipts.json` cost accounting), `examples/*.report.json`, `eval/eval_harness.py` metrics, `scripts/benchmark_placement.py` output. The first two are `Edit(...)`-denied in `.claude/settings.json`, which covers the Edit and Write tools (measured) but not a script that writes them — `Bash(python -c:*)` is allowed. Regenerating them is a deliberate act with a reviewer on the diff, whatever the tier.
+
+**Layout, deliberately not the harness default:** `GATES.md` is committed project state — the definition of done — not the harness's gitignored task ledger. Do not gitignore it. Handoffs live in `HANDOFF.md` at root; plans in `docs/plans/`.
+
+**Bash output is compacted by RTK** (global hook, `~/dev-harness/adapters/claude-code.md` "Shell-output compaction"). When completeness is the claim — the final staged diff, "no line matches" — prefix `RTK_DISABLED=1 ` on every command in the chain.
 
 **The binding rule for any placement or rendering change: no gate runs on a fixture.**
 Every EPUB fixture here is under the 50,000-character `MAX_INPUT_CHARS` bound. A real book
@@ -30,16 +52,52 @@ containing zero annotations while 2,071 tests stayed green.
 the reason code for "the model quoted loosely," and that mislabel aimed the diagnosis at the
 model for six weeks. If you add a skip path, keep the reason code truthful.
 
-**Free models cannot generate annotations here.** Measured 2026-09-08: two free models,
-all three `--structured-output` modes, large and small asks — every combination failed
-(truncated at max_tokens / "response was incomplete" / "contained no JSON object"). The same
-prompt on a paid model works. Free models are fine for reading, judging, review, and bulk
-analysis. ⛔ `.env` holds a **zero-spend key on purpose**: free returns 200, paid returns
-403. Do not "fix" the 403 by swapping in a paid key — ask first.
+**Free models CAN generate annotations. The earlier claim that they cannot was a defect in
+this repository.** `annotation_generator.py` asked for 2048 output tokens per page, and the
+provider seam escalates once to 4096 without ever reaching its own 8192 ceiling. A reasoning
+model spends that on reasoning tokens and the payload is cut off mid-object. Re-measured
+2026-09-08 on one real page, `--structured-output function`, nothing else changed:
 
-**Untested risk:** `_resolve_bounded` searches many leaf blocks where there was one search.
-It returns `AMBIGUOUS` on more than one hit, so it fails closed, but whether real books
-surface collisions the chapter-scoped call never faced is unmeasured.
+| budget | outcome |
+|---|---|
+| 2048 | `IncompleteResponseError`, truncated after the escalated retry |
+| 8192 | `StructuredOutputError`, no tool call returned |
+| 16000 | 3 schema-valid annotations, 141s |
+
+And on the whole book (one 82,383-char chapter, 4.5x that page):
+
+| budget | outcome |
+|---|---|
+| 16000 | `StructuredOutputError`, no tool call |
+| **32000** | **`Rendered 5 / Skipped 0`**, 21,214 in / 7,660 out, 3m09s |
+
+⚠ The successful run spent **fewer** output tokens (7,660) than the 8192 that failed, so
+this is not simply a payload that did not fit. `DEFAULT_MAX_OUTPUT_TOKENS` is set to the
+value measured working end to end, not to an isolated threshold.
+
+`nvidia/nemotron-3.5-lightning:free` (3 annotations) and
+`nvidia/nemotron-3-super-120b-a12b:free` (1 annotation, 84s) both emit a schema-valid
+payload. ⚠ "Emits a payload" is not "is good enough" — one annotation for a page asked for
+five is a working transport and a weak generator. `nex-agi/nex-n2.5-pro:free` returns no choice; `google/gemma-4-31b-it:free` was
+rate-limited. Budget is `DEFAULT_MAX_OUTPUT_TOKENS`, overridable with
+`HALFBLOOD_MAX_OUTPUT_TOKENS`. Raising it costs nothing — providers bill actual output
+tokens and this is only an upper bound.
+
+⚠ **The lesson is bigger than the constant.** A measurement across two models and three
+modes was real, and the conclusion drawn from it named the wrong cause, because the one
+variable that mattered was never varied. Vary the local knob before blaming the vendor.
+
+⛔ `.env` still holds a **zero-spend key on purpose**: free returns 200, paid returns 403.
+Do not "fix" the 403 by swapping in a paid key — ask first.
+
+**Measured 2026-09-08, and no longer a risk in the ledger — it is a number.**
+`_resolve_bounded` searches many leaf blocks where there was one chapter search, so a quote
+unique inside a chapter can collide across blocks. It fails closed (`AMBIGUOUS`, never a
+first hit), so it cannot misplace a note; what it costs is notes the reader does not get.
+Replaying both frozen plans: `plan-snape.json` places 5/8 with three `missing_target` skips,
+`plan-editor.json` places 6/8 with **two `ambiguous_target` skips**. **Two of sixteen — 12.5%
+— are lost to collisions.** Gate G6 pins that ceiling together with the placement floor, so
+neither number can move without the suite saying so.
 
 ## Current placement work
 
@@ -255,14 +313,10 @@ When reviewing, check each module for:
 # Install
 pip install -e ".[dev]"
 
-# Run tests
-pytest tests/ -v
+# The gate (ruff -> mypy -> pytest, exact selectors) is spelled ONCE, under
+# "Build & verify" at the top of this file. Do not lint or test from here.
 
-# Lint (if you add ruff/mypy)
-ruff check src/ tests/ eval/
-mypy src/halfblood/
-
-# Type check
+# Import smoke
 python -c "from halfblood.cli import main; print('imports ok')"
 
 # Quick smoke test (no API key needed)

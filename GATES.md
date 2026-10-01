@@ -11,6 +11,24 @@ node ~/dev-harness/scripts/unlazy/gate-check.mjs --status GATES.md   # report on
 node ~/dev-harness/scripts/unlazy/gate-check.mjs GATES.md            # run unmet runnable gates
 ```
 
+⚠ **Read this before trusting a checkbox. Fixed and measured 2026-09-08.**
+
+**The runner had never parsed this file.** Every gate id came back
+`invalid gate id **G1` — the parser reads the id before the first colon, and `**G1` is not
+an id. That was true of all five original gates from the day they were written, so no
+`[x]` in this file has ever been confirmed by the tool the file tells you to run. The
+headers now read `- [x] G1: **…**`, and the runner parses all six.
+
+**The checkboxes are still hand-asserted.** `--status` now reports
+`UNMET: 6 (met: 0)`, because a checked gate is only *met* to the runner once its `CHECK:`
+has been approved and run, which writes an `EVIDENCE:` line back. Nothing here has one yet.
+
+⛔ **Approving is Trey's call, not an agent's.** `--approve` takes no per-gate selection: it
+approves every pending oracle at once, **including G5's, which is the paid one**, and the
+approval persists outside this repository under `~/.unlazy/approved`. An agent granting that
+is granting itself a standing authorization to spend. G1, G2, G3, and G6 are free and
+offline and were each run directly this session; G5 is the only one that costs anything.
+
 ## The binding rule: no gate runs on a fixture
 
 Measured 2026-09-07. Every EPUB fixture in this repository is under the 50,000-character
@@ -45,7 +63,7 @@ automated, not as a control.
 
 ## G1 — a real book gets its notes placed ✅ MET
 
-- [x] **G1: at least 60% of generated annotations are placed on a real book.**
+- [x] G1: **at least 60% of generated annotations are placed on a real book.**
 
   CHECK: `.venv/bin/pytest tests/test_real_book_placement.py::test_the_processor_places_notes_on_a_real_book -q`
   EXPECT: `/1 passed/`
@@ -53,15 +71,23 @@ automated, not as a control.
   Threshold set by Trey 2026-09-07: **≥60% placed, no silent drops.**
 
   **Met 2026-09-07 at `0a3cba1`.** `halfblood annotate` on *The Elements of Style* went from
-  `Rendered 0 / Skipped 8` to `Rendered 7 / Skipped 1` — **87.5%**. The note bodies were
-  confirmed present in the output EPUB itself, not inferred from the run report.
+  `Rendered 0 / Skipped 8` to placing the majority of its notes, and the note bodies were
+  confirmed present in the output EPUB itself rather than inferred from the run report.
+
+  ⚠ **Corrected 2026-09-08. This paragraph claimed `Rendered 7 / Skipped 1` — 87.5% — and
+  that number is not reproducible from anything committed.** Replaying the frozen plans at
+  `85334d5` gives `plan-snape.json` **5/8** (three `missing_target`) and `plan-editor.json`
+  **6/8** (two `ambiguous_target`). The gate below asserts ≥5 and passes; the prose asserted
+  a number the gate never checked, which is the exact shape this file exists to prevent. The
+  87.5% probably came from a live model run whose plan was never frozen — plausible, and not
+  evidence. **The honest figure is 5/8 = 62.5%, still above the 60% bar.**
 
   The gate replays a frozen plan (`tests/corpora/real/plan-snape.json`), so it costs no model
   call, no network, and no API key, and runs free in CI.
 
 ## G2 — the pipeline tells the truth about why it skipped ✅ MET
 
-- [x] **G2: `input_limit_exceeded` is never reported to a user as `missing_target`.**
+- [x] G2: **`input_limit_exceeded` is never reported to a user as `missing_target`.**
 
   CHECK: `.venv/bin/pytest tests/test_real_book_placement.py::test_a_bound_refusal_is_never_reported_as_a_missing_target -q`
   EXPECT: `/1 passed/`
@@ -75,7 +101,7 @@ automated, not as a control.
 
 ## G3 — the reader's path works from a clean clone ✅ MET
 
-- [x] **G3: an installed wheel annotates a real book with no source tree on `sys.path`.**
+- [x] G3: **an installed wheel annotates a real book with no source tree on `sys.path`.**
 
   CHECK: `.venv/bin/python scripts/wheel_smoke.py 2>&1 | grep -c "real book"`
   EXPECT: `/^[1-9]/`
@@ -97,24 +123,45 @@ automated, not as a control.
 
 ## G4 — the notes are worth reading ⚠ PARTIAL
 
-- [ ] **G4: Trey reads a fully placed real book and judges the notes good.**
+- [ ] G4: **Trey reads a fully placed real book and judges the notes good.**
 
   Manual. Evidence: his written verdict under `docs/evidence/`, naming the book, the commit,
   the personas, and the count of notes read.
 
   **Partially satisfied 2026-09-07.** Sixteen notes across two personas were read and judged
-  good — but read from a *plan*, because at the time nothing placed. Placement now works, so
-  G4 closes when he reads the artifact a reader would actually open:
-  `halfblood annotate tests/corpora/real/elements-of-style.epub -o out.epub`.
+  good — but read from a *plan*, because at the time nothing placed.
 
-  ⚠ This does **not** license a public quality claim. `DECISIONS.md` (2026-08-22) restricts
-  public claims about this project to engineering, not output quality, and n≈1 read by the
+  ✅ **The artifact now exists, and it cost nothing.** Generated 2026-09-08 against code at
+  **`85334d5`** with `HALFBLOOD_MAX_OUTPUT_TOKENS=32000` as an env override — the default was
+  still 16000 then, and was raised to 32000 in `ec9ae1a`, so **the command below reproduces it
+  without the override only from `ec9ae1a` forward.** From
+  `tests/corpora/real/elements-of-style.epub`, default Snape persona, on
+  `nvidia/nemotron-3.5-lightning:free`:
+  **`Rendered 5 / Skipped 0`** — every generated annotation placed. 21,214 tokens in,
+  7,660 out, 3m09s, **$0.00**. Run report frozen at
+  `docs/evidence/2026-09-08-free-model-real-book-run.report.json`; the five note bodies were
+  read out of the output EPUB itself, not inferred from the report. File handed to Trey as
+  `~/elements-of-style-annotated.epub`, which is a loose copy in his home directory and is
+  not tracked by any repository.
+
+  ⚠ That JSON is the **run artifact**, not the gate evidence. G4's evidence is a written
+  verdict, and it is Trey's to write — an agent must not author it.
+
+  ⚠ The earlier plan for this gate was a ~$0.10 paid generation, on the belief that no free
+  model could generate. That belief was a hardcoded `max_tokens=2048` in this repository.
+
+  **G4 now waits only on Trey reading it.** Five notes is a thin read; if that is too few to
+  judge, raise `--max-per-page` and regenerate — still free.
+
+  ⚠ This does **not** license a public quality claim.
+  `~/project-ops/workstreams/portfolio/DECISIONS.md` (2026-08-22) restricts public claims
+  about this project to engineering, not output quality, and n≈1 read by the
   author is the same shape `HBP-ROADMAP-OX.md` discounted when it dropped the study-tool
   product. G4 is an internal bar, not marketing.
 
 ## G5 — quality does not silently regress 🔴 UNMET, now unblocked
 
-- [ ] **G5: the eval harness runs with an independent judge and no `--allow-self-judge`.**
+- [ ] G5: **the eval harness runs with an independent judge and no `--allow-self-judge`.**
 
   CHECK: `.venv/bin/python eval/eval_harness.py --judge-model <independent> --json-out eval-result.json`
   EXPECT: `/"self_judged":\s*false/`
@@ -122,10 +169,19 @@ automated, not as a control.
   Costs money and needs a key, so this is a release gate, not a CI gate. Budgeted under $5
   by `HBP-ROADMAP-OX.md:14-16`.
 
-  ⚠ **The blocker was never a budget.** Recorded as "Blocked: rejected credential (HTTP 401)"
-  since roughly session 31, it is an **expired** key in `.env` — `401 API key expired` — while
-  a working OpenRouter key with credit sits in `~/.prime/agent/auth.json`. Verified 2026-09-07
-  by `curl .../auth/key` against both. **Rotating the key in `.env` is the whole fix.**
+  ⚠ **Corrected 2026-09-08. The instruction that stood here was to rotate the key in `.env`,
+  and following it now would break a standing decision.** `.env` holds a **deliberate
+  zero-spend key** — free models return 200, paid return 403 — so that overspending is
+  structurally impossible rather than a matter of an agent remembering (`.env`'s own comment,
+  2026-09-07; `AGENTS.md` "Cost rules"). The earlier note described the key that was there
+  before that decision, an expired one returning `401`.
+
+  **The fix is to pass a paid key for that single command, after asking the owner** — never
+  to write one into `.env`:
+
+  ```sh
+  OPENROUTER_API_KEY=<paid key> .venv/bin/python eval/eval_harness.py --judge-model <independent> ...
+  ```
 
 ---
 
@@ -133,8 +189,9 @@ automated, not as a control.
 
 - **The inline-markup extraction defect.** The extractor hands the model
   `hers\n,\nits\n,\ntheirs\n` for `<em>hers</em>, <em>its</em>`, so the model faithfully
-  quotes a string that is not contiguous document text. This is the remaining 1 skip in G1.
-  Fixing it would push placement past 87.5%; G1 does not require it.
+  quotes a string that is not contiguous document text. It accounts for the `missing_target`
+  skips in G1's frozen plan. Fixing it would push placement above the measured 5/8; G1 does
+  not require it.
 - **The PDF path.** Unaffected by the G1/G2 defect — it bounds per page (~2,300 chars, 20×
   headroom), which is its matching unit. Add a gate if that ever changes.
 - **A book-level reader pass.** The generator is page-stateless
@@ -144,13 +201,39 @@ automated, not as a control.
 - **HTML and other input types.** `cli.py:69` routes `.pdf` and `.epub` only. A deliberate
   scope decision, not a defect.
 
-## The risk this ledger does not retire
+## G6 — safety has a price, and the price is counted ✅ MET
 
-Block-scoped resolution means many independent searches where there was one. `_resolve_bounded`
-searches **leaf** blocks only and returns `AMBIGUOUS` on more than one hit, so it fails closed
-— but whether real books surface collisions the chapter-scoped call never had to disambiguate
-is **untested**. If G1's rate climbs while ambiguity climbs with it, this gate is measuring
-the wrong thing and needs a companion counting `ambiguous_target` skips.
+- [x] G6: **`ambiguous_target` skips on a real book stay at or below the measured ceiling,
+  and placement stays at or above the measured floor.**
+
+  CHECK: `.venv/bin/pytest tests/test_real_book_placement.py -q -k "ambiguity or ambiguous_refusal"`
+  EXPECT: `/3 passed/`
+
+  **The risk this ledger carried as untested is now measured, and it is not zero.**
+  Block-scoped resolution means many independent leaf-block searches where there was one
+  chapter search. `_resolve_bounded` fails closed, returning `AMBIGUOUS` rather than a first
+  hit, so it cannot place a note in the wrong spot — but a quote that was unique inside one
+  large chapter root can match several small blocks, and each collision is a note the reader
+  does not get. Measured 2026-09-08 across both frozen plans:
+
+  | frozen plan | rendered | skipped | reasons |
+  |---|---|---|---|
+  | `plan-snape.json` | 5/8 | 3 | all `missing_target` |
+  | `plan-editor.json` | 6/8 | 2 | both **`ambiguous_target`** |
+
+  **Two of sixteen annotations — 12.5% — are lost to collisions the chapter-scoped call
+  never had to disambiguate.** Real books surface them. The answer to the open question is
+  yes.
+
+  The gate pins both numbers together, because a gate counting only ambiguity would pass
+  vacuously the day every quote started failing for some other reason. Its failing state was
+  demonstrated, not assumed: tightening the ceiling to 1 fails with the two colliding
+  annotation ids named.
+
+  Free — replays the frozen plans, no model call, no network, no key.
+
+  ⚠ The ceiling is a **measurement, not a target**. If a future change pushes ambiguity up,
+  the honest move is to report it and fix the resolver, not to raise the number here.
 
 ## ABANDON
 

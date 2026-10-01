@@ -202,3 +202,113 @@ def test_a_bound_refusal_is_never_reported_as_a_missing_target(tmp_path: Path) -
         f"{len(mislabelled)} annotation(s) refused on the input bound were reported to the "
         "user as `missing_target`, which names a different cause entirely"
     )
+
+
+# ---------------------------------------------------------------------------
+# G6 — the cost of block-scoped resolution
+#
+# `_resolve_bounded` falls back from one chapter-scoped search to many
+# leaf-block searches. It fails closed, returning `AMBIGUOUS` rather than a
+# first hit, so it cannot place a note in the wrong spot. What was never
+# measured is the *price* of that safety: a quote that was unique inside one
+# large chapter root can match several small blocks, and every such collision
+# is a note the reader does not get.
+#
+# `GATES.md` recorded this as the risk the ledger does not retire. It is no
+# longer untested. Measured 2026-09-08 against both frozen plans:
+#
+#     plan-snape.json   rendered 5/8   skipped 3   all `missing_target`
+#     plan-editor.json  rendered 6/8   skipped 2   both `ambiguous_target`
+#
+# So real books *do* surface collisions the chapter-scoped call never had to
+# disambiguate — two of sixteen annotations, 12.5%. The number is a ceiling,
+# not a target: these tests fail if ambiguity climbs above what was measured,
+# and they fail just as loudly if placement drops, so a future change cannot
+# buy a lower ambiguity count by refusing more quotes for some other reason.
+# ---------------------------------------------------------------------------
+
+EDITOR_PLAN = CORPUS / "plan-editor.json"
+
+#: Per plan: (rendered floor, ambiguous_target ceiling). Both measured, not chosen.
+AMBIGUITY_BASELINE: dict[str, tuple[int, int]] = {
+    "plan-snape.json": (5, 0),
+    "plan-editor.json": (6, 2),
+}
+
+
+def _render_frozen_plan(plan_path: Path, output: Path):
+    from halfblood.epub_processor import EpubProcessor
+    from halfblood.models.documents import migrate_v1_to_v2
+
+    plan = migrate_v1_to_v2(json.loads(plan_path.read_text(encoding="utf-8")))
+    return EpubProcessor().render_plan(str(BOOK), plan, str(output))
+
+
+@pytest.mark.skipif(not EDITOR_PLAN.exists(), reason="second frozen plan not present")
+@pytest.mark.parametrize("plan_name", sorted(AMBIGUITY_BASELINE))
+def test_block_scoped_resolution_does_not_lose_more_notes_to_ambiguity(
+    plan_name: str, tmp_path: Path
+) -> None:
+    """Count `ambiguous_target` skips on a real book, and pin placement with them.
+
+    Two assertions, deliberately. A gate that counted only ambiguity would pass
+    vacuously the day every quote starts failing for a different reason.
+    """
+    rendered_floor, ambiguous_ceiling = AMBIGUITY_BASELINE[plan_name]
+    report = _render_frozen_plan(CORPUS / plan_name, tmp_path / "annotated.epub")
+
+    ambiguous = [
+        record.annotation_id
+        for record in report.skipped
+        if record.reason.value == "ambiguous_target"
+    ]
+    total = len(report.rendered) + len(report.skipped)
+
+    assert len(ambiguous) <= ambiguous_ceiling, (
+        f"{plan_name}: {len(ambiguous)} of {total} annotations were refused as "
+        f"`ambiguous_target`, above the measured ceiling of {ambiguous_ceiling}. "
+        "Block-scoped resolution searches many leaf blocks where there was one "
+        "chapter search, so a quote unique in a chapter can collide across blocks. "
+        f"Ambiguous ids: {ambiguous}"
+    )
+    assert len(report.rendered) >= rendered_floor, (
+        f"{plan_name}: placed {len(report.rendered)}/{total}, below the measured "
+        f"floor of {rendered_floor}. Ambiguity did not rise, so this is a "
+        "different regression — read the skip reasons: "
+        f"{sorted(record.reason.value for record in report.skipped)}"
+    )
+
+
+@pytest.mark.skipif(not EDITOR_PLAN.exists(), reason="second frozen plan not present")
+def test_an_ambiguous_refusal_is_never_reported_as_a_missing_target(
+    tmp_path: Path,
+) -> None:
+    """The G2 mislabel, checked on the other reason code.
+
+    `ambiguous_target` means the quote matched several places and the resolver
+    refused rather than guessed. `missing_target` means the quote is not in the
+    document at all. Collapsing the first into the second would aim the next
+    diagnosis at the model, which is exactly the six-week detour G2 records.
+    """
+    report = _render_frozen_plan(EDITOR_PLAN, tmp_path / "annotated.epub")
+
+    ambiguous_placements = {
+        record.annotation_id
+        for record in report.placements
+        if record.result.reason == "ambiguous_quote"
+    }
+    assert ambiguous_placements, (
+        "plan-editor.json no longer produces an ambiguous placement, so this test "
+        "proves nothing — re-measure the baseline in AMBIGUITY_BASELINE"
+    )
+
+    mislabelled = sorted(
+        record.annotation_id
+        for record in report.skipped
+        if record.annotation_id in ambiguous_placements
+        and record.reason.value != "ambiguous_target"
+    )
+    assert not mislabelled, (
+        f"{len(mislabelled)} annotation(s) refused as ambiguous were reported to the "
+        f"user under a different reason code: {mislabelled}"
+    )

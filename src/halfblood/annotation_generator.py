@@ -162,6 +162,75 @@ RULES
 """
 
 
+#: Output-token budget for one page of annotations.
+#:
+#: This was 2048, and that number was read as a model limitation for a full
+#: session. It is not. A reasoning model spends its budget on reasoning tokens
+#: before it emits a single character of the payload, so the JSON is cut off
+#: mid-object and the provider reports `IncompleteResponseError`. The seam
+#: escalates once (2048 -> 4096) and never reaches its own 8192 ceiling, so
+#: raising the ask was never actually attempted.
+#:
+#: Measured 2026-09-08 on `nvidia/nemotron-3.5-lightning:free`, one real page of
+#: *The Elements of Style*, `--structured-output function`, everything else held
+#: constant:
+#:
+#:     2048 tokens -> IncompleteResponseError, truncated after the escalated retry
+#:     8192 tokens -> StructuredOutputError, no tool call returned at all
+#:    16000 tokens -> 3 schema-valid annotations in 141s
+#:
+#: 8192 is the seam's own escalation ceiling and it still fails, so the default
+#: has to clear that ceiling rather than merely meet it.
+#:
+#: Then the whole book, `halfblood annotate` on the same model, one 82,383-char
+#: chapter -- 4.5x the probe page:
+#:
+#:    16000 tokens -> StructuredOutputError, no tool call
+#:    32000 tokens -> Rendered 5 / Skipped 0, 21,214 in / 7,660 out, 3m09s
+#:
+#: ⚠ Be careful what you conclude from that ladder. The successful run spent
+#: **7,660** output tokens -- fewer than the 8192 that failed. So this is not
+#: simply "the payload did not fit." The ask appears to change how the model
+#: budgets its own reasoning, and there is run-to-run variance on top. The
+#: default is therefore set to the value measured working end to end on a real
+#: book, not to a threshold anyone has isolated. Treat a smaller number as
+#: unmeasured rather than as known-bad.
+#:
+#: This is only an upper bound and providers bill actual output tokens, so the
+#: headroom is free.
+#:
+#: The conclusion this replaces -- "no free model on this account can generate
+#: annotations" -- was a defect in this constant, not a property of free models.
+#:
+#: Raising the cap does not raise cost: providers bill actual output tokens, and
+#: this is only an upper bound. Override with `HALFBLOOD_MAX_OUTPUT_TOKENS`.
+DEFAULT_MAX_OUTPUT_TOKENS = 32000
+
+
+def _max_output_tokens() -> int:
+    """Resolve the per-page output-token budget, honouring the env override."""
+    raw = os.environ.get("HALFBLOOD_MAX_OUTPUT_TOKENS")
+    if raw is None or not raw.strip():
+        return DEFAULT_MAX_OUTPUT_TOKENS
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "HALFBLOOD_MAX_OUTPUT_TOKENS=%r is not an integer; using %d",
+            raw,
+            DEFAULT_MAX_OUTPUT_TOKENS,
+        )
+        return DEFAULT_MAX_OUTPUT_TOKENS
+    if value < 1:
+        logger.warning(
+            "HALFBLOOD_MAX_OUTPUT_TOKENS=%d is not positive; using %d",
+            value,
+            DEFAULT_MAX_OUTPUT_TOKENS,
+        )
+        return DEFAULT_MAX_OUTPUT_TOKENS
+    return value
+
+
 class AnnotationGenerator:
     """Generates Half-Blood-Prince-style margin annotations via Claude.
 
@@ -360,7 +429,7 @@ class AnnotationGenerator:
             user_prompt=user_prompt,
             schema=generate_annotation_schema(),
             model=self.model,
-            max_tokens=2048,
+            max_tokens=_max_output_tokens(),
         )
 
         try:
