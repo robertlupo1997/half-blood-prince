@@ -37,9 +37,9 @@
         "matcher": "Bash",
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "Block this command only if it would: (1) delete the .env file or the secrets directory, (2) run git reset --hard on main/master, (3) run rm -rf on the project root or home directory, or (4) put the literal value of an API key or token in the command text (for example a string that starts with sk-). An environment variable name such as $OPENROUTER_API_KEY, a file path such as .env.example, or a script or test that merely mentions API keys is NOT an exposure: allow it. If you are unsure, allow the command.",
-            "timeout": 5000
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_bash.py\"",
+            "timeout": 10
           }
         ]
       }
