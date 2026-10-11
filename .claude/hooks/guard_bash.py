@@ -30,6 +30,7 @@ LITERAL_SECRET = re.compile(
 )
 SEPARATORS = re.compile(r"\|\||&&|[;|\n&]")
 DELETERS = {"rm", "unlink", "shred"}
+EVERYTHING = {"*", ".*", ".[!.]*", "{*,.*}"}
 WRAPPERS = {"sudo", "command", "env", "time", "nohup", "exec"}
 
 
@@ -80,6 +81,10 @@ def verdict(command: str, cwd: Path, project: Path, home: Path) -> str | None:
             recursive = "r" in flags or "R" in flags or "--recursive" in argv
             for arg in (a for a in argv[1:] if not a.startswith("-")):
                 target = resolve(arg, cwd)
+                if (
+                    recursive and Path(arg).name in EVERYTHING
+                ):  # `rm -rf *` empties the directory it names
+                    target = resolve(str(Path(arg).parent), cwd)
                 if target.name == ".env" or target == project / "secrets":
                     return f"deleting {arg} is not allowed"
                 if recursive and (
