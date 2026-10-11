@@ -37,9 +37,9 @@
         "matcher": "Bash",
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "Block this command if it would: (1) delete the .env file or secrets directory, (2) run git reset --hard on main/master, (3) run rm -rf on the project root or home directory, (4) expose API keys in command arguments. Otherwise allow it.",
-            "timeout": 5000
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_bash.py\"",
+            "timeout": 10
           }
         ]
       }
@@ -50,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Session paused \u2014 remember to run pytest before committing'",
+            "command": "echo 'Session paused — remember to run pytest before committing'",
             "timeout": 3000
           }
         ]
