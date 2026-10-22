@@ -231,6 +231,39 @@ def _max_output_tokens() -> int:
     return value
 
 
+#: Longest stretch of text sent to the model in one call. A reflowable EPUB
+#: chapter is one "page" here and can run past 80,000 characters; asked about
+#: all of it at once, a model returns a handful of notes for the whole chapter
+#: (measured 2026-10-19: 3 notes for the 83,063-character Elements of Style
+#: chapter with the cap at 15). A page longer than this is generated in windows
+#: and its notes are merged, so a long chapter gets about as many notes as the
+#: same text split across printed pages. Each window is an exact slice of the
+#: page text, so every quote the model returns is still a substring of the page.
+PAGE_WINDOW_CHARS = 12_000
+
+
+def _split_page_text(text: str, limit: int = PAGE_WINDOW_CHARS) -> list[str]:
+    """Split ``text`` into exact, contiguous slices of at most ``limit`` chars.
+
+    Cuts at the last newline before the limit, else the last space, else hard
+    at the limit. Joining the slices reproduces ``text`` exactly.
+    """
+    if len(text) <= limit:
+        return [text]
+    windows: list[str] = []
+    start = 0
+    while len(text) - start > limit:
+        end = start + limit
+        cut = text.rfind("\n", start + 1, end)
+        if cut == -1:
+            cut = text.rfind(" ", start + 1, end)
+        cut = end if cut == -1 else cut + 1
+        windows.append(text[start:cut])
+        start = cut
+    windows.append(text[start:])
+    return windows
+
+
 class AnnotationGenerator:
     """Generates Half-Blood-Prince-style margin annotations via Claude.
 
@@ -421,6 +454,10 @@ class AnnotationGenerator:
             logger.debug("Page %d has no text; skipping annotation.", page_number)
             return [], False, False, None, None
 
+        windows = _split_page_text(page_text)
+        if len(windows) > 1:
+            return self._generate_windowed(windows, page_number, book_context)
+
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(page_text, page_number, book_context)
 
@@ -447,6 +484,44 @@ class AnnotationGenerator:
 
         annotations = self._to_annotations(result, page_number)
         return annotations, True, False, None, result.usage
+
+    def _generate_windowed(
+        self, windows: list[str], page_number: int, book_context: str
+    ) -> tuple[
+        list[Annotation],
+        bool,
+        bool,
+        ProviderError | None,
+        GenerationUsage | None,
+    ]:
+        """Generate a long page window by window and merge the results.
+
+        A failed window fails the whole page, so a resumed run regenerates it
+        rather than keeping a page with a silent gap.
+        """
+        annotations: list[Annotation] = []
+        input_tokens = output_tokens = 0
+        usage_complete = True
+        for window in windows:
+            found, attempted, failed, error, usage = self._generate_for_page_tracked(
+                window, page_number, book_context
+            )
+            if failed:
+                return [], True, True, error, None
+            if not attempted:
+                continue
+            annotations.extend(found)
+            if usage is None:
+                usage_complete = False
+            else:
+                input_tokens += usage.input_tokens
+                output_tokens += usage.output_tokens
+        usage_total = (
+            GenerationUsage(input_tokens=input_tokens, output_tokens=output_tokens)
+            if usage_complete
+            else None
+        )
+        return annotations, True, False, None, usage_total
 
     def _to_annotations(self, result: GenerationResult, page_number: int) -> list[Annotation]:
         return [
@@ -736,10 +811,13 @@ class AnnotationGenerator:
                     else:
                         pages_missing_usage += 1
 
-                if len(page_annotations) > max_annotations_per_page:
+                # The cap is per window, so a long chapter is not held to the
+                # same count as one printed page.
+                page_cap = max_annotations_per_page * len(_split_page_text(page.text))
+                if len(page_annotations) > page_cap:
                     page_annotations = sorted(
                         page_annotations, key=lambda a: a.confidence, reverse=True
-                    )[:max_annotations_per_page]
+                    )[:page_cap]
 
                 for ann in page_annotations:
                     if ann.annotation_type in (
