@@ -8,6 +8,24 @@ quoted passage** from **generating a useful note** from **drawing a
 readable annotation**. Those are three different checks. A resolved
 quote does not prove that an LLM's comment is correct.
 
+## What it does
+
+Give it a PDF or EPUB and a persona. A model writes margin notes, each
+quoting the passage it reacts to. A note is drawn only when its complete
+quote resolves to one place in the text; every refusal is listed in the
+run report. One note from a free-model run on *The Elements of Style*
+(2026-10-19, unscored; an example of the output, not a quality claim):
+
+> **the question as to whether**
+>
+> *Purple prose disguised as precept. 'Whether' alone bears the burden;
+> 'as to' is empty ornamental padding, the sign of a hand that lacks
+> confidence. Prune it and write with spine.*
+
+Long reflowable chapters are generated in windows of at most 12,000
+characters, so a long chapter is annotated throughout rather than
+getting a handful of notes for the whole chapter.
+
 ## Evidence-to-placement contract
 
 `halfblood.placement` accepts a quote and optional context or offsets.

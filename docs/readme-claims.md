@@ -21,6 +21,13 @@ contract requirements and are tested by the named commands, not universal proofs
 | `render_plan` is the CLI path; legacy compatibility methods are outside the guarantee | `.venv/bin/python -m pytest tests/test_cli_end_to_end.py -q`; `.venv/bin/python docs/evidence/placement-release/legacy_probe.py` | Observed CLI integration; the legacy probe deliberately still reproduces unsafe prefix selection in excluded helpers. Derived scope distinction, not a claim those helpers were fixed. |
 | Resolution, generation, and drawing are separate checks | `.venv/bin/python -m pytest tests/test_degradation_mapping.py tests/test_pdf_render_report.py -q`; `.venv/bin/python docs/evidence/placement-release/composition_probe.py` | Observed omitted caret/doodle diagnostics remain in reports. A rendered note can have a missing optional mark or degraded connector. |
 
+## Example output
+
+| README claim | Falsifying check | Evidence class and limit |
+| --- | --- | --- |
+| The quoted Elements of Style note came from one free-model run | `halfblood annotate tests/corpora/real/elements-of-style.epub --provider openrouter --model nvidia/nemotron-3.5-lightning:free` at `99bca2c`, then read the `aside.hbp-note` elements of the output | Observed once on 2026-10-19 (`Rendered 3 / Skipped 0`). Model output is not reproducible byte for byte, and no quality measurement stands behind it. |
+| Long pages are generated in windows of at most 12,000 characters | `.venv/bin/python -m pytest tests/test_page_windowing.py -q` | Observed with a scripted provider: exact slices, one call per window, cap scaled per window, a failed window fails the page. How many notes a real model returns per window is Unknown until rerun. |
+
 ## Benchmark
 
 | README claim | Falsifying check | Evidence class and limit |
