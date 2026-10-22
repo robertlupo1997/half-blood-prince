@@ -96,14 +96,20 @@ class TestDefaultPromptIsUnchanged:
         assert "VOICE AND TEMPERAMENT" in DEFAULT_PERSONA
         assert "WHAT YOUR ANNOTATIONS DO" in ANNOTATION_CRAFT
 
-    def test_default_prompt_is_byte_identical_to_the_pre_split_prompt(self) -> None:
-        """4779 characters, captured from HEAD before ANNOTATION_CRAFT was extracted.
+    def test_default_prompt_length_is_pinned(self) -> None:
+        """5891 characters: the 2026-10-22 revision, changed deliberately.
+
+        The pre-split prompt was 4779 characters. It was rewritten after the first
+        real-model run on public-domain books (``examples/real/NOTES-REVIEW.md``):
+        notes drifted into the wizarding world on books that are not about it, made
+        claims the page did not support, and repeated the same insult page after page.
+        Any further change must be just as deliberate, so the length stays pinned.
 
         Structural rather than a golden file: reassembling voice + craft + task with the
-        recorded spacing must reproduce the original exactly.
+        recorded spacing must reproduce the prompt exactly.
         """
         prompt = _prompt(None)
-        assert len(prompt) == 4779
+        assert len(prompt) == 5891
         assert prompt.startswith(DEFAULT_PERSONA.rstrip())
         assert f"{DEFAULT_PERSONA.rstrip()}\n\n{ANNOTATION_CRAFT.rstrip()}\n\n\nTASK\n" in prompt
 

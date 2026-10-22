@@ -254,12 +254,34 @@ def test_readme_example_artifacts_exist() -> None:
         "examples/hbp-example.epub.report.json",
         "examples/screenshot.png",
         "scripts/build_example_book.py",
+        "examples/real/alice-page-02.png",
+        "examples/real/alice-page-06.png",
+        "examples/real/NOTES-REVIEW.md",
     ]
     for rel in cited:
         assert rel in readme, f"README no longer cites {rel}"
         assert (_ROOT / rel).is_file(), f"README cites {rel} but it does not exist"
     assert "--provider stub" in readme
     assert "--resume-from" in readme
+
+
+def test_real_model_showcase_counts_match_its_reports() -> None:
+    """The README's real-model counts must be the ones the committed reports record."""
+    import json
+
+    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    real = _ROOT / "examples" / "real"
+    for name, generated in (
+        ("alice-annotated.pdf.report.json", 60),
+        ("elements-of-style-annotated.epub.report.json", 35),
+    ):
+        report = json.loads((real / name).read_text(encoding="utf-8"))
+        assert report["total_annotations"] == generated
+        assert len(report["render"]["rendered"]) == generated
+        assert report["render"]["skipped"] == []
+    assert "60 notes generated, 60 placed, 0 refused" in readme
+    assert "35 generated, 35" in readme
+    assert "not been\nindependently judged" in readme
 
 
 def test_committed_example_sidecars_report_full_success() -> None:

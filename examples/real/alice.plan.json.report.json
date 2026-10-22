@@ -1,0 +1,85 @@
+{
+  "report_version": "1.0",
+  "output": "examples/real/alice.plan.json",
+  "pages_total": 12,
+  "pages_attempted": 12,
+  "pages_annotated": 12,
+  "total_annotations": 60,
+  "failed_pages": [],
+  "skipped_pages": [],
+  "page_statuses": [
+    {
+      "page_number": 1,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 2,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 3,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 4,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 5,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 6,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 7,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 8,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 9,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 10,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 11,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    },
+    {
+      "page_number": 12,
+      "status": "success",
+      "attempts": 1,
+      "error": ""
+    }
+  ],
+  "render": null
+}

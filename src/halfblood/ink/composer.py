@@ -410,8 +410,12 @@ class BuiltinRoughInkEngine:
                     "doodle_geometry_unavailable",
                     "No note or target geometry was resolved for doodle placement.",
                 )
-            center = LocalPoint(x=(box.x0 + box.x1) / 2.0, y=(box.y0 + box.y1) / 2.0)
-            size = max(1.0, min(box.x1 - box.x0, box.y1 - box.y0) * 0.18)
+            # The doodle sits just above the note's top-left corner, not on the
+            # box centre: centred, it was drawn straight across the note's own
+            # handwriting (observed on real-model renders of Alice, 2026-10-22).
+            # Small and capped so it fits the gap between stacked notes.
+            size = max(1.0, min(5.5, min(box.x1 - box.x0, box.y1 - box.y0) * 0.12))
+            center = LocalPoint(x=box.x0 + size * 1.2, y=box.y0 - size * 1.3)
             group = make_doodle(
                 rng,
                 request.doodle_kind,
