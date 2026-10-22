@@ -22,6 +22,10 @@ run report. One note from a free-model run on *The Elements of Style*
 > 'as to' is empty ornamental padding, the sign of a hand that lacks
 > confidence. Prune it and write with spine.*
 
+<p align="center">
+  <img src="docs/img/pipeline.svg" width="900" alt="A page goes to a model that writes notes with verbatim quotes; the placement resolver checks each complete quote and returns resolved (drawn in the margin), ambiguous, unresolved, or unsupported_renderer (refused and listed in the run report).">
+</p>
+
 Long reflowable chapters are generated in windows of at most 12,000
 characters, so a long chapter is annotated throughout rather than
 getting a handful of notes for the whole chapter.
