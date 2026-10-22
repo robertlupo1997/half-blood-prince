@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from halfblood.generation.errors import ProviderConfigurationError
 from halfblood.generation.providers.anthropic import AnthropicProvider
 from halfblood.generation.providers.base import LLMProvider, ProviderCapabilities
+from halfblood.generation.providers.claude_cli import ClaudeCliProvider
 from halfblood.generation.providers.openai_compat import OpenAICompatibleProvider
 from halfblood.generation.providers.stub import StubProvider
 
@@ -107,6 +108,11 @@ def build_provider(
     """Construct an adapter from already-resolved, nonsecret configuration."""
     if config.provider == "stub":
         return StubProvider()
+    if config.provider == "claude-cli":
+        return ClaudeCliProvider(
+            timeout_seconds=config.timeout_seconds,
+            max_retries=config.max_retries,
+        )
     profile = get_profile(config.provider)
     if profile.adapter is AdapterKind.ANTHROPIC:
         if api_key is None:

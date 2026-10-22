@@ -123,6 +123,7 @@ def _provider_options(command: _CommandFunction) -> _CommandFunction:
                     "ollama",
                     "lmstudio",
                     "openai-compatible",
+                    "claude-cli",
                     "stub",
                 )
             ),
