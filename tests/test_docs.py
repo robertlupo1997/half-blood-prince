@@ -265,7 +265,7 @@ def test_readme_example_artifacts_exist() -> None:
 def test_committed_example_sidecars_report_full_success() -> None:
     """The committed sidecars must match what the README claims about them.
 
-    The README table asserts 78/78 annotated pages with no failures on the PDF
+    The README table asserted 78/78 before the 2026-10-22 italics fix; it is now 77/77 annotated pages with no failures on the PDF
     and a skipped cover page on the EPUB. If the pipeline changes and the
     artifacts are regenerated differently, this test forces the README table
     to be updated in the same commit.
@@ -275,8 +275,8 @@ def test_committed_example_sidecars_report_full_success() -> None:
     pdf_report = json.loads(
         (_ROOT / "examples" / "hbp-example.pdf.report.json").read_text(encoding="utf-8")
     )
-    assert pdf_report["pages_total"] == 78
-    assert pdf_report["pages_annotated"] == 78
+    assert pdf_report["pages_total"] == 77
+    assert pdf_report["pages_annotated"] == 77
     assert pdf_report["failed_pages"] == []
 
     epub_report = json.loads(
