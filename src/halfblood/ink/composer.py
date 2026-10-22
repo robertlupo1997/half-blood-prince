@@ -506,13 +506,69 @@ def _closest_rect_points(first: LocalRect, second: LocalRect) -> tuple[LocalPoin
     return LocalPoint(x=first_x, y=first_y), LocalPoint(x=second_x, y=second_y)
 
 
+#: How far (page points) a same-line text obstacle must extend past the target
+#: quad's note-facing edge before it counts as text in the connector's way. The
+#: occupancy provider pads each line run by 1.5pt, so a target that ends flush
+#: with its line must not register as blocked.
+_SAME_LINE_SLACK = 3.0
+
+#: Inset (page points) from the target's note-facing end at which a connector
+#: lands when it has to arrive on the quad's top or bottom edge.
+_EDGE_LANDING_INSET = 3.0
+
+
+def _text_continues_toward_note(
+    quad: LocalRect,
+    note_box: LocalRect,
+    obstacles: tuple[LocalRect, ...],
+) -> bool:
+    """True when body text sits on the quad's own line between it and the note.
+
+    A quote that ends mid-line (``... she`` followed by ``opened it,``) has its
+    note-facing side edge pressed against the next word. A connector landing on
+    that edge must run back through the rest of the line to reach it.
+    """
+    mid_y = (quad.y0 + quad.y1) / 2.0
+    for obstacle in obstacles:
+        if not obstacle.y0 <= mid_y <= obstacle.y1:
+            continue
+        note_right = note_box.x0 >= quad.x1
+        note_left = note_box.x1 <= quad.x0
+        if note_right and quad.x1 + _SAME_LINE_SLACK < obstacle.x1 and obstacle.x0 < note_box.x0:
+            return True
+        if note_left and obstacle.x0 < quad.x0 - _SAME_LINE_SLACK and obstacle.x1 > note_box.x1:
+            return True
+    return False
+
+
+def _line_edge_points(note_box: LocalRect, quad: LocalRect) -> tuple[LocalPoint, LocalPoint]:
+    """Land on the quad's top or bottom edge near its note-facing end.
+
+    The connector then runs along the gap between lines instead of across the
+    words that follow the quote on its line.
+    """
+    # Top edge unless the note sits wholly below the quote's line.
+    target_y = quad.y1 if note_box.y0 >= quad.y1 else quad.y0
+    inset = min(_EDGE_LANDING_INSET, (quad.x1 - quad.x0) / 2.0)
+    if note_box.x0 >= quad.x1:
+        target_x, note_x = quad.x1 - inset, note_box.x0
+    else:
+        target_x, note_x = quad.x0 + inset, note_box.x1
+    note_y = _clamp(target_y, note_box.y0, note_box.y1)
+    return LocalPoint(x=note_x, y=note_y), LocalPoint(x=target_x, y=target_y)
+
+
 def _connector_edges(
     note_box: LocalRect,
     target_quads: tuple[LocalRect, ...],
+    obstacles: tuple[LocalRect, ...] = (),
 ) -> tuple[LocalPoint, LocalPoint]:
     candidates: list[tuple[float, int, LocalPoint, LocalPoint]] = []
     for index, quad in enumerate(target_quads):
-        note_point, target_point = _closest_rect_points(note_box, quad)
+        if _text_continues_toward_note(quad, note_box, obstacles):
+            note_point, target_point = _line_edge_points(note_box, quad)
+        else:
+            note_point, target_point = _closest_rect_points(note_box, quad)
         distance = math.hypot(note_point.x - target_point.x, note_point.y - target_point.y)
         candidates.append((distance, index, note_point, target_point))
     _, _, note_edge, target_edge = min(candidates, key=lambda candidate: candidate[:2])
@@ -565,7 +621,10 @@ class InkComposer:
         note_edge: LocalPoint | None = None
         target_edge: LocalPoint | None = None
         if note_box is not None and target_quads:
-            note_edge, target_edge = _connector_edges(note_box, target_quads)
+            local_obstacles = tuple(
+                _surface_rect_to_local(rect, page) for rect in request.obstacles
+            )
+            note_edge, target_edge = _connector_edges(note_box, target_quads, local_obstacles)
 
         degradations: list[InkDegradation] = []
         doodle_kind: DoodleKind | None = None

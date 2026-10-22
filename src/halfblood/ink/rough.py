@@ -123,8 +123,9 @@ def _linear_mark_endpoints(
     bounds: LocalRect,
 ) -> tuple[tuple[float, float], tuple[float, float]]:
     width = quad.x1 - quad.x0
-    left = rng.uniform(0.3, 1.0) * style.rough.overshoot_ratio * width
-    right = rng.uniform(0.3, 1.0) * style.rough.overshoot_ratio * width
+    reach = min(style.rough.overshoot_ratio * width, style.rough.overshoot_max)
+    left = rng.uniform(0.3, 1.0) * reach
+    right = rng.uniform(0.3, 1.0) * reach
     start = _point(quad.x0 - left, y, bounds)
     end = _point(quad.x1 + right, y, bounds)
     return start, end

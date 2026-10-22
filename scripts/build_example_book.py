@@ -47,6 +47,17 @@ def paragraphs(body: str) -> list[str]:
     return out
 
 
+#: Project Gutenberg plain text marks italics as ``_word_``. The closing marker
+#: may sit inside a word (``_Un_important``), so only the opening one is
+#: required to start a word.
+GUTENBERG_ITALIC = re.compile(r"(?<![\w_])_(?=\S)([^_]+?)(?<=\S)_")
+
+
+def italicize(escaped: str) -> str:
+    """Turn Gutenberg ``_..._`` italic markers into ``<i>`` on escaped text."""
+    return GUTENBERG_ITALIC.sub(r"<i>\1</i>", escaped)
+
+
 def to_html(paras: list[str]) -> str:
     parts = [
         "<html><head><style>",
@@ -54,7 +65,7 @@ def to_html(paras: list[str]) -> str:
         "p { margin: 0 0 9pt 0; }",
         "</style></head><body>",
     ]
-    parts.extend(f"<p>{html.escape(p)}</p>" for p in paras)
+    parts.extend(f"<p>{italicize(html.escape(p))}</p>" for p in paras)
     parts.append("</body></html>")
     return "\n".join(parts)
 
