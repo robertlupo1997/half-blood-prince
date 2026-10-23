@@ -85,7 +85,7 @@
     "report_version": "1.1",
     "placements": [
       {
-        "annotation_id": "dc0d402c-4f61-500e-87c0-356c8f38ea00",
+        "annotation_id": "0212318d-576a-5883-b63b-60ba896f8641",
         "source_locator": "page:1",
         "result": {
           "schema_version": "1.0",
@@ -94,56 +94,56 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1787,
-            1852
+            1370,
+            1434
           ],
-          "matched_text": "never once considering how in the\nworld she was to get out again.",
+          "matched_text": "never once considering how in the\nworld she was to get out again",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
                 "x": 328.508056640625,
-                "y": 610.6370239257812
+                "y": 469.037109375
               },
               "ur": {
                 "x": 527.0440063476562,
-                "y": 610.6370239257812
+                "y": 469.037109375
               },
               "lr": {
                 "x": 527.0440063476562,
-                "y": 629.7340087890625
+                "y": 488.1341247558594
               },
               "ll": {
                 "x": 328.508056640625,
-                "y": 629.7340087890625
+                "y": 488.1341247558594
               }
             },
             {
               "ul": {
                 "x": 67.0,
-                "y": 632.7369995117188
+                "y": 491.1371154785156
               },
               "ur": {
-                "x": 247.05001831054688,
-                "y": 632.7369995117188
+                "x": 243.4230194091797,
+                "y": 491.1371154785156
               },
               "lr": {
-                "x": 247.05001831054688,
-                "y": 651.833984375
+                "x": 243.4230194091797,
+                "y": 510.234130859375
               },
               "ll": {
                 "x": 67.0,
-                "y": 651.833984375
+                "y": 510.234130859375
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "4799c2256fa62be940091589bb2427aa59d019ba6535a08ae20b303abb155eeb"
+          "source_digest": "0f060c0395b1fc7291b5d3d301008babd5cac423ade676460ebf6ea4cc8615f7"
         }
       },
       {
-        "annotation_id": "633ec24e-4c97-5daa-ae74-32bd4c169249",
+        "annotation_id": "1f921b9e-4a40-5b54-b9d2-22a7f4d01c3f",
         "source_locator": "page:1",
         "result": {
           "schema_version": "1.0",
@@ -152,8 +152,88 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1011,
-            1055
+            381,
+            417
+          ],
+          "matched_text": "made her feel very sleepy and stupid",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 185.83700561523438
+              },
+              "ur": {
+                "x": 278.7049865722656,
+                "y": 185.83700561523438
+              },
+              "lr": {
+                "x": 278.7049865722656,
+                "y": 204.9340057373047
+              },
+              "ll": {
+                "x": 67.0,
+                "y": 204.9340057373047
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "0f060c0395b1fc7291b5d3d301008babd5cac423ade676460ebf6ea4cc8615f7"
+        }
+      },
+      {
+        "annotation_id": "e5b9c5ec-2501-510b-a5bc-6c6a6d9fa3d5",
+        "source_locator": "page:1",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            176,
+            217
+          ],
+          "matched_text": "it had no pictures or conversations in it",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 140.71002197265625,
+                "y": 110.53699493408203
+              },
+              "ur": {
+                "x": 367.33905029296875,
+                "y": 110.53699493408203
+              },
+              "lr": {
+                "x": 367.33905029296875,
+                "y": 129.6339874267578
+              },
+              "ll": {
+                "x": 140.71002197265625,
+                "y": 129.6339874267578
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "0f060c0395b1fc7291b5d3d301008babd5cac423ade676460ebf6ea4cc8615f7"
+        }
+      },
+      {
+        "annotation_id": "e744eec2-2a6b-5f9f-953b-9672a4ebcc7a",
+        "source_locator": "page:1",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            594,
+            638
           ],
           "matched_text": "There was nothing so very remarkable in that",
           "candidate_count": 1,
@@ -162,28 +242,28 @@
             {
               "ul": {
                 "x": 67.0,
-                "y": 402.737060546875
+                "y": 261.1370544433594
               },
               "ur": {
                 "x": 327.6973571777344,
-                "y": 402.737060546875
+                "y": 261.1370544433594
               },
               "lr": {
                 "x": 327.6973571777344,
-                "y": 421.8340759277344
+                "y": 280.23406982421875
               },
               "ll": {
                 "x": 67.0,
-                "y": 421.8340759277344
+                "y": 280.23406982421875
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "4799c2256fa62be940091589bb2427aa59d019ba6535a08ae20b303abb155eeb"
+          "source_digest": "0f060c0395b1fc7291b5d3d301008babd5cac423ade676460ebf6ea4cc8615f7"
         }
       },
       {
-        "annotation_id": "86f09cd6-5470-5046-9c86-d96ac009ecee",
+        "annotation_id": "51b72a3e-42b5-570c-af73-688777f15050",
         "source_locator": "page:1",
         "result": {
           "schema_version": "1.0",
@@ -192,136 +272,38 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            2042,
-            2071
+            1656,
+            1710
           ],
-          "matched_text": "falling down a very deep well",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 251.7300262451172,
-                "y": 708.0369262695312
-              },
-              "ur": {
-                "x": 422.64093017578125,
-                "y": 708.0369262695312
-              },
-              "lr": {
-                "x": 422.64093017578125,
-                "y": 727.1339111328125
-              },
-              "ll": {
-                "x": 251.7300262451172,
-                "y": 727.1339111328125
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "4799c2256fa62be940091589bb2427aa59d019ba6535a08ae20b303abb155eeb"
-        }
-      },
-      {
-        "annotation_id": "132afc86-ba90-5725-98d8-fc25bdac9e74",
-        "source_locator": "page:1",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            636,
-            719
-          ],
-          "matched_text": "\u201cand what is the use of a\nbook,\u201d thought Alice \u201cwithout pictures or conversations?\u201d",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 374.7620544433594,
-                "y": 252.13702392578125
-              },
-              "ur": {
-                "x": 517.5150146484375,
-                "y": 252.13702392578125
-              },
-              "lr": {
-                "x": 517.5150146484375,
-                "y": 271.2340393066406
-              },
-              "ll": {
-                "x": 374.7620544433594,
-                "y": 271.2340393066406
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
-                "y": 274.2370300292969
-              },
-              "ur": {
-                "x": 400.6970520019531,
-                "y": 274.2370300292969
-              },
-              "lr": {
-                "x": 400.6970520019531,
-                "y": 293.33404541015625
-              },
-              "ll": {
-                "x": 67.0,
-                "y": 293.33404541015625
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "4799c2256fa62be940091589bb2427aa59d019ba6535a08ae20b303abb155eeb"
-        }
-      },
-      {
-        "annotation_id": "503905c3-6daf-51a0-bdb6-99a1980afcaf",
-        "source_locator": "page:1",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            1179,
-            1235
-          ],
-          "matched_text": "(when she thought it over afterwards, it occurred to her",
+          "matched_text": "Either the well was very deep, or she fell very slowly",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
                 "x": 67.0,
-                "y": 446.93707275390625
+                "y": 597.5370483398438
               },
               "ur": {
-                "x": 388.9060974121094,
-                "y": 446.93707275390625
+                "x": 371.9800109863281,
+                "y": 597.5370483398438
               },
               "lr": {
-                "x": 388.9060974121094,
-                "y": 466.0340881347656
+                "x": 371.9800109863281,
+                "y": 616.634033203125
               },
               "ll": {
                 "x": 67.0,
-                "y": 466.0340881347656
+                "y": 616.634033203125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "4799c2256fa62be940091589bb2427aa59d019ba6535a08ae20b303abb155eeb"
+          "source_digest": "0f060c0395b1fc7291b5d3d301008babd5cac423ade676460ebf6ea4cc8615f7"
         }
       },
       {
-        "annotation_id": "ea4d8418-8239-582f-90c0-75d09906b455",
+        "annotation_id": "945ac46f-cb04-5dde-a2e8-50808c6c22f9",
         "source_locator": "page:2",
         "result": {
           "schema_version": "1.0",
@@ -330,8 +312,8 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            944,
-            973
+            461,
+            490
           ],
           "matched_text": "(Which was very\nlikely true.)",
           "candidate_count": 1,
@@ -340,46 +322,46 @@
             {
               "ul": {
                 "x": 417.7139892578125,
-                "y": 305.4370422363281
+                "y": 172.8369903564453
               },
               "ur": {
                 "x": 514.3300170898438,
-                "y": 305.4370422363281
+                "y": 172.8369903564453
               },
               "lr": {
                 "x": 514.3300170898438,
-                "y": 324.5340576171875
+                "y": 191.93399047851562
               },
               "ll": {
                 "x": 417.7139892578125,
-                "y": 324.5340576171875
+                "y": 191.93399047851562
               }
             },
             {
               "ul": {
                 "x": 67.0,
-                "y": 327.53704833984375
+                "y": 194.93699645996094
               },
               "ur": {
                 "x": 134.3660125732422,
-                "y": 327.53704833984375
+                "y": 194.93699645996094
               },
               "lr": {
                 "x": 134.3660125732422,
-                "y": 346.6340637207031
+                "y": 214.03399658203125
               },
               "ll": {
                 "x": 67.0,
-                "y": 346.6340637207031
+                "y": 214.03399658203125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "c31cc1fcb04ace5bf54d1877d10aedd91bf814acfb7fa408ad99caf0650113ff"
+          "source_digest": "61a2cbec0665e84502a57d1f7b9599336b1488050df87c77d8e8871ee23b7391"
         }
       },
       {
-        "annotation_id": "891992d0-31fd-5842-a24b-6f3976be7d76",
+        "annotation_id": "2a2274a7-fde5-5aa7-ae25-8ca5c042c17e",
         "source_locator": "page:2",
         "result": {
           "schema_version": "1.0",
@@ -388,88 +370,8 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1841,
-            1856
-          ],
-          "matched_text": "The Antipathies",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 136.27700805664062,
-                "y": 610.7369995117188
-              },
-              "ur": {
-                "x": 227.35499572753906,
-                "y": 610.7369995117188
-              },
-              "lr": {
-                "x": 227.35499572753906,
-                "y": 629.833984375
-              },
-              "ll": {
-                "x": 136.27700805664062,
-                "y": 629.833984375
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "c31cc1fcb04ace5bf54d1877d10aedd91bf814acfb7fa408ad99caf0650113ff"
-        }
-      },
-      {
-        "annotation_id": "eaefb656-781b-5363-ab38-cc93fd8fe707",
-        "source_locator": "page:2",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            573,
-            634
-          ],
-          "matched_text": "she did not like to drop the jar for fear of killing somebody",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 148.27601623535156,
-                "y": 208.03700256347656
-              },
-              "ur": {
-                "x": 487.991943359375,
-                "y": 208.03700256347656
-              },
-              "lr": {
-                "x": 487.991943359375,
-                "y": 227.13400268554688
-              },
-              "ll": {
-                "x": 148.27601623535156,
-                "y": 227.13400268554688
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "c31cc1fcb04ace5bf54d1877d10aedd91bf814acfb7fa408ad99caf0650113ff"
-        }
-      },
-      {
-        "annotation_id": "2e464f90-f109-53e9-98ad-656be451a5f8",
-        "source_locator": "page:2",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            1168,
-            1206
+            685,
+            723
           ],
           "matched_text": "that would be four thousand miles down",
           "candidate_count": 1,
@@ -478,28 +380,28 @@
             {
               "ul": {
                 "x": 270.94403076171875,
-                "y": 402.8370666503906
+                "y": 270.2370300292969
               },
               "ur": {
                 "x": 504.7749938964844,
-                "y": 402.8370666503906
+                "y": 270.2370300292969
               },
               "lr": {
                 "x": 504.7749938964844,
-                "y": 421.93408203125
+                "y": 289.33404541015625
               },
               "ll": {
                 "x": 270.94403076171875,
-                "y": 421.93408203125
+                "y": 289.33404541015625
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "c31cc1fcb04ace5bf54d1877d10aedd91bf814acfb7fa408ad99caf0650113ff"
+          "source_digest": "61a2cbec0665e84502a57d1f7b9599336b1488050df87c77d8e8871ee23b7391"
         }
       },
       {
-        "annotation_id": "ffb9f4a4-bd1c-5cb3-8200-475e0a2b3074",
+        "annotation_id": "8a3b62f2-ed4f-53c8-9ab8-6cf3ffbe31ad",
         "source_locator": "page:2",
         "result": {
           "schema_version": "1.0",
@@ -508,57 +410,39 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1510,
-            1567
+            1358,
+            1383
           ],
-          "matched_text": "but then I wonder what\nLatitude or Longitude I\u2019ve got to?",
+          "matched_text": "The Antipathies, I think\u2014",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 365.5970458984375,
-                "y": 491.2370910644531
+                "x": 136.27700805664062,
+                "y": 478.1370849609375
               },
               "ur": {
-                "x": 501.694091796875,
-                "y": 491.2370910644531
+                "x": 285.97198486328125,
+                "y": 478.1370849609375
               },
               "lr": {
-                "x": 501.694091796875,
-                "y": 510.3341064453125
+                "x": 285.97198486328125,
+                "y": 497.2341003417969
               },
               "ll": {
-                "x": 365.5970458984375,
-                "y": 510.3341064453125
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
-                "y": 513.3370971679688
-              },
-              "ur": {
-                "x": 259.7640075683594,
-                "y": 513.3370971679688
-              },
-              "lr": {
-                "x": 259.7640075683594,
-                "y": 532.43408203125
-              },
-              "ll": {
-                "x": 67.0,
-                "y": 532.43408203125
+                "x": 136.27700805664062,
+                "y": 497.2341003417969
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "c31cc1fcb04ace5bf54d1877d10aedd91bf814acfb7fa408ad99caf0650113ff"
+          "source_digest": "61a2cbec0665e84502a57d1f7b9599336b1488050df87c77d8e8871ee23b7391"
         }
       },
       {
-        "annotation_id": "be650285-05db-5b70-a3cc-d98803aea92a",
-        "source_locator": "page:3",
+        "annotation_id": "0d1bc85f-2757-547c-9463-b45ecfe2c6a0",
+        "source_locator": "page:2",
         "result": {
           "schema_version": "1.0",
           "status": "resolved",
@@ -566,57 +450,39 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            49,
-            120
+            90,
+            151
           ],
-          "matched_text": "No, it\u2019ll never do to ask: perhaps I\nshall see it written up somewhere.",
+          "matched_text": "she did not like to drop the jar for fear of killing somebody",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 327.4940490722656,
-                "y": 53.336997985839844
-              },
-              "ur": {
-                "x": 523.10498046875,
-                "y": 53.336997985839844
-              },
-              "lr": {
-                "x": 523.10498046875,
-                "y": 72.43399810791016
-              },
-              "ll": {
-                "x": 327.4940490722656,
-                "y": 72.43399810791016
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
+                "x": 148.27601623535156,
                 "y": 75.43700408935547
               },
               "ur": {
-                "x": 264.2750244140625,
+                "x": 487.991943359375,
                 "y": 75.43700408935547
               },
               "lr": {
-                "x": 264.2750244140625,
+                "x": 487.991943359375,
                 "y": 94.53400421142578
               },
               "ll": {
-                "x": 67.0,
+                "x": 148.27601623535156,
                 "y": 94.53400421142578
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "42f082840de11bb283c964696af46839f40ca115442b25a9ad6329ede263a66d"
+          "source_digest": "61a2cbec0665e84502a57d1f7b9599336b1488050df87c77d8e8871ee23b7391"
         }
       },
       {
-        "annotation_id": "bad02c5a-8fb8-5670-9931-6de9df6bf263",
-        "source_locator": "page:3",
+        "annotation_id": "e6b1b299-6b61-5b17-b042-c46927dd0581",
+        "source_locator": "page:2",
         "result": {
           "schema_version": "1.0",
           "status": "resolved",
@@ -624,96 +490,56 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            260,
-            280
+            1036,
+            1084
           ],
-          "matched_text": "(Dinah was the cat.)",
+          "matched_text": "I wonder what\nLatitude or Longitude I\u2019ve got to?",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 423.08306884765625,
-                "y": 128.63699340820312
+                "x": 417.79205322265625,
+                "y": 358.6370544433594
               },
               "ur": {
-                "x": 539.4850463867188,
-                "y": 128.63699340820312
+                "x": 501.694091796875,
+                "y": 358.6370544433594
               },
               "lr": {
-                "x": 539.4850463867188,
-                "y": 147.73399353027344
+                "x": 501.694091796875,
+                "y": 377.73406982421875
               },
               "ll": {
-                "x": 423.08306884765625,
-                "y": 147.73399353027344
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "42f082840de11bb283c964696af46839f40ca115442b25a9ad6329ede263a66d"
-        }
-      },
-      {
-        "annotation_id": "1aa86ab7-3e16-56f0-aa54-387708e5281f",
-        "source_locator": "page:3",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            716,
-            799
-          ],
-          "matched_text": "as she couldn\u2019t answer either\nquestion, it didn\u2019t much matter which way she put it.",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 321.5790710449219,
-                "y": 261.2370300292969
-              },
-              "ur": {
-                "x": 488.5380859375,
-                "y": 261.2370300292969
-              },
-              "lr": {
-                "x": 488.5380859375,
-                "y": 280.33404541015625
-              },
-              "ll": {
-                "x": 321.5790710449219,
-                "y": 280.33404541015625
+                "x": 417.79205322265625,
+                "y": 377.73406982421875
               }
             },
             {
               "ul": {
                 "x": 67.0,
-                "y": 283.3370361328125
+                "y": 380.737060546875
               },
               "ur": {
-                "x": 374.1250915527344,
-                "y": 283.3370361328125
+                "x": 259.7640075683594,
+                "y": 380.737060546875
               },
               "lr": {
-                "x": 374.1250915527344,
-                "y": 302.4340515136719
+                "x": 259.7640075683594,
+                "y": 399.8340759277344
               },
               "ll": {
                 "x": 67.0,
-                "y": 302.4340515136719
+                "y": 399.8340759277344
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "42f082840de11bb283c964696af46839f40ca115442b25a9ad6329ede263a66d"
+          "source_digest": "61a2cbec0665e84502a57d1f7b9599336b1488050df87c77d8e8871ee23b7391"
         }
       },
       {
-        "annotation_id": "9e1cdacb-6d02-50f8-bbb6-1e501b5f243b",
+        "annotation_id": "f422789f-1b89-5430-ac3a-4474e41ccd2b",
         "source_locator": "page:3",
         "result": {
           "schema_version": "1.0",
@@ -722,56 +548,96 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1315,
-            1349
+            244,
+            307
           ],
-          "matched_text": "There was not a moment to\nbe lost:",
+          "matched_text": "\u201cDo bats eat cats?\u201d for, you see, as she couldn\u2019t answer either",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 375.0220642089844,
-                "y": 447.0370788574219
+                "x": 134.99002075195312,
+                "y": 119.63700103759766
               },
               "ur": {
-                "x": 533.2059936523438,
-                "y": 447.0370788574219
+                "x": 488.5380859375,
+                "y": 119.63700103759766
               },
               "lr": {
-                "x": 533.2059936523438,
-                "y": 466.13409423828125
+                "x": 488.5380859375,
+                "y": 138.73399353027344
               },
               "ll": {
-                "x": 375.0220642089844,
-                "y": 466.13409423828125
+                "x": 134.99002075195312,
+                "y": 138.73399353027344
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "0ba3b070c8148d1915d8c50decbec8012b0623cfd5ff01b7df28054368de6f9c"
+        }
+      },
+      {
+        "annotation_id": "a17e0352-7381-55f4-9ea2-42d8d776629c",
+        "source_locator": "page:3",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            1693,
+            1750
+          ],
+          "matched_text": "either the locks were too\nlarge, or the key was too small",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 382.51007080078125,
+                "y": 566.5370483398438
+              },
+              "ur": {
+                "x": 525.1461181640625,
+                "y": 566.5370483398438
+              },
+              "lr": {
+                "x": 525.1461181640625,
+                "y": 585.634033203125
+              },
+              "ll": {
+                "x": 382.51007080078125,
+                "y": 585.634033203125
               }
             },
             {
               "ul": {
                 "x": 67.0,
-                "y": 469.1370849609375
+                "y": 588.6370239257812
               },
               "ur": {
-                "x": 108.48299407958984,
-                "y": 469.1370849609375
+                "x": 243.67002868652344,
+                "y": 588.6370239257812
               },
               "lr": {
-                "x": 108.48299407958984,
-                "y": 488.2341003417969
+                "x": 243.67002868652344,
+                "y": 607.7340087890625
               },
               "ll": {
                 "x": 67.0,
-                "y": 488.2341003417969
+                "y": 607.7340087890625
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "42f082840de11bb283c964696af46839f40ca115442b25a9ad6329ede263a66d"
+          "source_digest": "0ba3b070c8148d1915d8c50decbec8012b0623cfd5ff01b7df28054368de6f9c"
         }
       },
       {
-        "annotation_id": "9d5a208d-5b79-5291-9cfb-d3faef41ae47",
+        "annotation_id": "3004a359-99ea-5cfa-b6c9-29eb7c9d1fa4",
         "source_locator": "page:3",
         "result": {
           "schema_version": "1.0",
@@ -780,38 +646,136 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1102,
-            1172
+            664,
+            688
           ],
-          "matched_text": "Alice was not a bit hurt, and she jumped up on to her feet in a moment",
+          "matched_text": "Alice was not a bit hurt",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
                 "x": 67.0,
-                "y": 402.8370666503906
+                "y": 261.2370300292969
               },
               "ur": {
-                "x": 477.0589294433594,
-                "y": 402.8370666503906
+                "x": 202.2000274658203,
+                "y": 261.2370300292969
               },
               "lr": {
-                "x": 477.0589294433594,
-                "y": 421.93408203125
+                "x": 202.2000274658203,
+                "y": 280.33404541015625
               },
               "ll": {
                 "x": 67.0,
-                "y": 421.93408203125
+                "y": 280.33404541015625
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "42f082840de11bb283c964696af46839f40ca115442b25a9ad6329ede263a66d"
+          "source_digest": "0ba3b070c8148d1915d8c50decbec8012b0623cfd5ff01b7df28054368de6f9c"
         }
       },
       {
-        "annotation_id": "6b7b786d-b698-5917-80e3-1fbcc8fb4f54",
+        "annotation_id": "23587040-f1be-5ea2-bb7b-b2c569620a85",
+        "source_locator": "page:3",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            1808,
+            1888
+          ],
+          "matched_text": "on the second time round, she came upon a low curtain she had not\nnoticed before",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 126.00699615478516,
+                "y": 610.7369995117188
+              },
+              "ur": {
+                "x": 516.7609252929688,
+                "y": 610.7369995117188
+              },
+              "lr": {
+                "x": 516.7609252929688,
+                "y": 629.833984375
+              },
+              "ll": {
+                "x": 126.00699615478516,
+                "y": 629.833984375
+              }
+            },
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 632.8369750976562
+              },
+              "ur": {
+                "x": 149.62799072265625,
+                "y": 632.8369750976562
+              },
+              "lr": {
+                "x": 149.62799072265625,
+                "y": 651.9339599609375
+              },
+              "ll": {
+                "x": 67.0,
+                "y": 651.9339599609375
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "0ba3b070c8148d1915d8c50decbec8012b0623cfd5ff01b7df28054368de6f9c"
+        }
+      },
+      {
+        "annotation_id": "c49c1d48-b2b9-5289-9dd5-8172ed8639b3",
+        "source_locator": "page:3",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            1427,
+            1470
+          ],
+          "matched_text": "wondering how she was ever to get out again",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 205.61900329589844,
+                "y": 491.2370910644531
+              },
+              "ur": {
+                "x": 467.0099792480469,
+                "y": 491.2370910644531
+              },
+              "lr": {
+                "x": 467.0099792480469,
+                "y": 510.3341064453125
+              },
+              "ll": {
+                "x": 205.61900329589844,
+                "y": 510.3341064453125
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "0ba3b070c8148d1915d8c50decbec8012b0623cfd5ff01b7df28054368de6f9c"
+        }
+      },
+      {
+        "annotation_id": "256b9b6f-996c-55b0-a51d-8c49b439a587",
         "source_locator": "page:4",
         "result": {
           "schema_version": "1.0",
@@ -820,8 +784,8 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            2143,
-            2218
+            1672,
+            1747
           ],
           "matched_text": "However, this bottle was not marked \u201cpoison,\u201d so Alice ventured to taste it",
           "candidate_count": 1,
@@ -830,28 +794,28 @@
             {
               "ul": {
                 "x": 67.0,
-                "y": 708.1369018554688
+                "y": 566.5370483398438
               },
               "ur": {
                 "x": 497.2467956542969,
-                "y": 708.1369018554688
+                "y": 566.5370483398438
               },
               "lr": {
                 "x": 497.2467956542969,
-                "y": 727.23388671875
+                "y": 585.634033203125
               },
               "ll": {
                 "x": 67.0,
-                "y": 727.23388671875
+                "y": 585.634033203125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "78f53d3450ad656510cfbfbd71d15d9b3d5b36967a493b81ac0a96eff3a904d7"
+          "source_digest": "fdd1cfbb45c6bdb9383d28b0ac6e228422bf26a5d6e03aad768c5439ad163ac3"
         }
       },
       {
-        "annotation_id": "54f84043-6ba8-5cf7-8996-97dc9048cc0a",
+        "annotation_id": "de67b0ed-22bc-59d2-8edb-0e1a2853a3bf",
         "source_locator": "page:4",
         "result": {
           "schema_version": "1.0",
@@ -860,8 +824,106 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1275,
-            1327
+            1898,
+            1926
+          ],
+          "matched_text": "she very soon \ufb01nished it\no\ufb00.",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 391.63604736328125,
+                "y": 610.7369995117188
+              },
+              "ur": {
+                "x": 531.7631225585938,
+                "y": 610.7369995117188
+              },
+              "lr": {
+                "x": 531.7631225585938,
+                "y": 629.833984375
+              },
+              "ll": {
+                "x": 391.63604736328125,
+                "y": 629.833984375
+              }
+            },
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 632.8369750976562
+              },
+              "ur": {
+                "x": 86.14899444580078,
+                "y": 632.8369750976562
+              },
+              "lr": {
+                "x": 86.14899444580078,
+                "y": 651.9339599609375
+              },
+              "ll": {
+                "x": 67.0,
+                "y": 651.9339599609375
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "fdd1cfbb45c6bdb9383d28b0ac6e228422bf26a5d6e03aad768c5439ad163ac3"
+        }
+      },
+      {
+        "annotation_id": "bc53e636-6789-56ef-995c-6629223ff80b",
+        "source_locator": "page:4",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            480,
+            555
+          ],
+          "matched_text": "Alice had begun to think that very few things indeed were really impossible",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 185.93699645996094
+              },
+              "ur": {
+                "x": 503.9169921875,
+                "y": 185.93699645996094
+              },
+              "lr": {
+                "x": 503.9169921875,
+                "y": 205.03399658203125
+              },
+              "ll": {
+                "x": 67.0,
+                "y": 205.03399658203125
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "fdd1cfbb45c6bdb9383d28b0ac6e228422bf26a5d6e03aad768c5439ad163ac3"
+        }
+      },
+      {
+        "annotation_id": "020b3c97-63d9-574c-855b-e87720c66742",
+        "source_locator": "page:4",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            804,
+            856
           ],
           "matched_text": "(\u201cwhich certainly was not here before,\u201d said Alice,)",
           "candidate_count": 1,
@@ -870,28 +932,28 @@
             {
               "ul": {
                 "x": 67.0,
-                "y": 424.93707275390625
+                "y": 283.3370361328125
               },
               "ur": {
                 "x": 362.33404541015625,
-                "y": 424.93707275390625
+                "y": 283.3370361328125
               },
               "lr": {
                 "x": 362.33404541015625,
-                "y": 444.0340881347656
+                "y": 302.4340515136719
               },
               "ll": {
                 "x": 67.0,
-                "y": 444.0340881347656
+                "y": 302.4340515136719
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "78f53d3450ad656510cfbfbd71d15d9b3d5b36967a493b81ac0a96eff3a904d7"
+          "source_digest": "fdd1cfbb45c6bdb9383d28b0ac6e228422bf26a5d6e03aad768c5439ad163ac3"
         }
       },
       {
-        "annotation_id": "7c65aaee-aec6-5d83-829b-754746bed9df",
+        "annotation_id": "a93acade-5767-5f66-8d42-81777fb7327f",
         "source_locator": "page:4",
         "result": {
           "schema_version": "1.0",
@@ -900,88 +962,8 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            89,
-            142
-          ],
-          "matched_text": "on the second time round, she came upon a low curtain",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 126.00699615478516,
-                "y": 75.43700408935547
-              },
-              "ur": {
-                "x": 446.17095947265625,
-                "y": 75.43700408935547
-              },
-              "lr": {
-                "x": 446.17095947265625,
-                "y": 94.53400421142578
-              },
-              "ll": {
-                "x": 126.00699615478516,
-                "y": 94.53400421142578
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "78f53d3450ad656510cfbfbd71d15d9b3d5b36967a493b81ac0a96eff3a904d7"
-        }
-      },
-      {
-        "annotation_id": "4e5055d0-ee24-56b2-81fa-787d25f5b219",
-        "source_locator": "page:4",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            1981,
-            1998
-          ],
-          "matched_text": "it usually bleeds",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 212.0681915283203,
-                "y": 632.8369750976562
-              },
-              "ur": {
-                "x": 305.39520263671875,
-                "y": 632.8369750976562
-              },
-              "lr": {
-                "x": 305.39520263671875,
-                "y": 651.9339599609375
-              },
-              "ll": {
-                "x": 212.0681915283203,
-                "y": 651.9339599609375
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "78f53d3450ad656510cfbfbd71d15d9b3d5b36967a493b81ac0a96eff3a904d7"
-        }
-      },
-      {
-        "annotation_id": "7666feac-d566-5e7c-85a7-46c6d044473e",
-        "source_locator": "page:4",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            732,
-            783
+            261,
+            312
           ],
           "matched_text": "it would be of very little use without my shoulders",
           "candidate_count": 1,
@@ -990,377 +972,29 @@
             {
               "ul": {
                 "x": 247.29705810546875,
-                "y": 261.2370300292969
+                "y": 119.63700103759766
               },
               "ur": {
                 "x": 539.0169677734375,
-                "y": 261.2370300292969
+                "y": 119.63700103759766
               },
               "lr": {
                 "x": 539.0169677734375,
-                "y": 280.33404541015625
+                "y": 138.73399353027344
               },
               "ll": {
                 "x": 247.29705810546875,
-                "y": 280.33404541015625
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "78f53d3450ad656510cfbfbd71d15d9b3d5b36967a493b81ac0a96eff3a904d7"
-        }
-      },
-      {
-        "annotation_id": "5f335dbe-94f8-5a6c-8cd2-678d53a97c7a",
-        "source_locator": "page:5",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            1012,
-            1051
-          ],
-          "matched_text": "she\nhad forgotten the little golden key",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 510.625,
-                "y": 367.6370544433594
-              },
-              "ur": {
-                "x": 529.6179809570312,
-                "y": 367.6370544433594
-              },
-              "lr": {
-                "x": 529.6179809570312,
-                "y": 386.73406982421875
-              },
-              "ll": {
-                "x": 510.625,
-                "y": 386.73406982421875
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
-                "y": 389.737060546875
-              },
-              "ur": {
-                "x": 264.1710205078125,
-                "y": 389.737060546875
-              },
-              "lr": {
-                "x": 264.1710205078125,
-                "y": 408.8340759277344
-              },
-              "ll": {
-                "x": 67.0,
-                "y": 408.8340759277344
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "5d23e45b0efd65558c1d12014eb60ff8014f5081458951b14518b84a6134a39d"
-        }
-      },
-      {
-        "annotation_id": "d48e1e27-c9e9-5557-b3df-5a085d494d60",
-        "source_locator": "page:5",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            796,
-            852
-          ],
-          "matched_text": "for she could not remember ever\nhaving seen such a thing",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 318.62799072265625,
-                "y": 292.3370361328125
-              },
-              "ur": {
-                "x": 506.7379455566406,
-                "y": 292.3370361328125
-              },
-              "lr": {
-                "x": 506.7379455566406,
-                "y": 311.4340515136719
-              },
-              "ll": {
-                "x": 318.62799072265625,
-                "y": 311.4340515136719
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
-                "y": 314.4370422363281
-              },
-              "ur": {
-                "x": 209.11602783203125,
-                "y": 314.4370422363281
-              },
-              "lr": {
-                "x": 209.11602783203125,
-                "y": 333.5340576171875
-              },
-              "ll": {
-                "x": 67.0,
-                "y": 333.5340576171875
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "5d23e45b0efd65558c1d12014eb60ff8014f5081458951b14518b84a6134a39d"
-        }
-      },
-      {
-        "annotation_id": "03725cff-ae96-5189-9d72-a77816935a28",
-        "source_locator": "page:5",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            1493,
-            1574
-          ],
-          "matched_text": "She generally gave herself very good advice,\n(though she very seldom followed it)",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 279.9400329589844,
-                "y": 531.3370971679688
-              },
-              "ur": {
-                "x": 535.87109375,
-                "y": 531.3370971679688
-              },
-              "lr": {
-                "x": 535.87109375,
-                "y": 550.43408203125
-              },
-              "ll": {
-                "x": 279.9400329589844,
-                "y": 550.43408203125
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
-                "y": 553.4370727539062
-              },
-              "ur": {
-                "x": 279.5760498046875,
-                "y": 553.4370727539062
-              },
-              "lr": {
-                "x": 279.5760498046875,
-                "y": 572.5340576171875
-              },
-              "ll": {
-                "x": 67.0,
-                "y": 572.5340576171875
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "5d23e45b0efd65558c1d12014eb60ff8014f5081458951b14518b84a6134a39d"
-        }
-      },
-      {
-        "annotation_id": "3fec4f42-905d-5e4b-86e1-b4f565658209",
-        "source_locator": "page:5",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            65,
-            142
-          ],
-          "matched_text": "cherry-tart, custard,\npine-apple, roast turkey, to\ufb00ee, and hot buttered toast",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 423.72003173828125,
-                "y": 53.336997985839844
-              },
-              "ur": {
-                "x": 538.3411254882812,
-                "y": 53.336997985839844
-              },
-              "lr": {
-                "x": 538.3411254882812,
-                "y": 72.43399810791016
-              },
-              "ll": {
-                "x": 423.72003173828125,
-                "y": 72.43399810791016
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
-                "y": 75.43700408935547
-              },
-              "ur": {
-                "x": 379.3380432128906,
-                "y": 75.43700408935547
-              },
-              "lr": {
-                "x": 379.3380432128906,
-                "y": 94.53400421142578
-              },
-              "ll": {
-                "x": 67.0,
-                "y": 94.53400421142578
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "5d23e45b0efd65558c1d12014eb60ff8014f5081458951b14518b84a6134a39d"
-        }
-      },
-      {
-        "annotation_id": "7f029e2c-1e43-5d15-93de-3006bf81870f",
-        "source_locator": "page:5",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            459,
-            533
-          ],
-          "matched_text": "she waited for a few minutes to see if she\nwas going to shrink any further",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 295.7220153808594,
-                "y": 203.93699645996094
-              },
-              "ur": {
-                "x": 533.6739501953125,
-                "y": 203.93699645996094
-              },
-              "lr": {
-                "x": 533.6739501953125,
-                "y": 223.03399658203125
-              },
-              "ll": {
-                "x": 295.7220153808594,
-                "y": 223.03399658203125
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
-                "y": 226.03700256347656
-              },
-              "ur": {
-                "x": 248.18106079101562,
-                "y": 226.03700256347656
-              },
-              "lr": {
-                "x": 248.18106079101562,
-                "y": 245.13400268554688
-              },
-              "ll": {
-                "x": 67.0,
-                "y": 245.13400268554688
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "5d23e45b0efd65558c1d12014eb60ff8014f5081458951b14518b84a6134a39d"
-        }
-      },
-      {
-        "annotation_id": "8766a3e0-b5d0-5f46-94da-185d50ee1d37",
-        "source_locator": "page:6",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            248,
-            286
-          ],
-          "matched_text": "so\neither way I\u2019ll get into the garden",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 528.5650024414062,
-                "y": 97.53699493408203
-              },
-              "ur": {
-                "x": 540.7850341796875,
-                "y": 97.53699493408203
-              },
-              "lr": {
-                "x": 540.7850341796875,
-                "y": 116.63399505615234
-              },
-              "ll": {
-                "x": 528.5650024414062,
-                "y": 116.63399505615234
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
-                "y": 119.63700103759766
-              },
-              "ur": {
-                "x": 260.4010314941406,
-                "y": 119.63700103759766
-              },
-              "lr": {
-                "x": 260.4010314941406,
-                "y": 138.73399353027344
-              },
-              "ll": {
-                "x": 67.0,
                 "y": 138.73399353027344
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "3f7c04faaf8f920c90dd3e261abdd2b7ed82675fbf411e99081b1240dac3132e"
+          "source_digest": "fdd1cfbb45c6bdb9383d28b0ac6e228422bf26a5d6e03aad768c5439ad163ac3"
         }
       },
       {
-        "annotation_id": "a2e7b9eb-2c8e-5942-934c-d0eabaa21f72",
-        "source_locator": "page:6",
+        "annotation_id": "dd913fc2-a213-5995-8788-83e1edaaa43b",
+        "source_locator": "page:5",
         "result": {
           "schema_version": "1.0",
           "status": "resolved",
@@ -1368,39 +1002,57 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1473,
-            1524
+            842,
+            891
           ],
-          "matched_text": "I\u2019ll give them a new pair of boots every Christmas.",
+          "matched_text": "she found she\nhad forgotten the little golden key",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 92.32400512695312,
-                "y": 500.2370910644531
+                "x": 450.6820068359375,
+                "y": 323.4370422363281
               },
               "ur": {
-                "x": 382.7571105957031,
-                "y": 500.2370910644531
+                "x": 529.6179809570312,
+                "y": 323.4370422363281
               },
               "lr": {
-                "x": 382.7571105957031,
-                "y": 519.3341064453125
+                "x": 529.6179809570312,
+                "y": 342.5340576171875
               },
               "ll": {
-                "x": 92.32400512695312,
-                "y": 519.3341064453125
+                "x": 450.6820068359375,
+                "y": 342.5340576171875
+              }
+            },
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 345.53704833984375
+              },
+              "ur": {
+                "x": 264.1710205078125,
+                "y": 345.53704833984375
+              },
+              "lr": {
+                "x": 264.1710205078125,
+                "y": 364.6340637207031
+              },
+              "ll": {
+                "x": 67.0,
+                "y": 364.6340637207031
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "3f7c04faaf8f920c90dd3e261abdd2b7ed82675fbf411e99081b1240dac3132e"
+          "source_digest": "79e8aef026bb91e60fcc631d0246dee9e253cdd285d8aa7641011b680576bea3"
         }
       },
       {
-        "annotation_id": "7b7f3d4c-8bf6-5100-ac0f-a2f614a8c7e3",
-        "source_locator": "page:6",
+        "annotation_id": "e2a88c53-fb18-5496-bef9-a166459391ec",
+        "source_locator": "page:5",
         "result": {
           "schema_version": "1.0",
           "status": "resolved",
@@ -1408,39 +1060,39 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            767,
-            821
+            1378,
+            1414
           ],
-          "matched_text": "So she set to work, and very soon \ufb01nished o\ufb00 the cake.",
+          "matched_text": "(though she very seldom followed it)",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
                 "x": 67.0,
-                "y": 292.3370361328125
+                "y": 509.2370910644531
               },
               "ur": {
-                "x": 384.09600830078125,
-                "y": 292.3370361328125
+                "x": 279.5760498046875,
+                "y": 509.2370910644531
               },
               "lr": {
-                "x": 384.09600830078125,
-                "y": 311.4340515136719
+                "x": 279.5760498046875,
+                "y": 528.3341064453125
               },
               "ll": {
                 "x": 67.0,
-                "y": 311.4340515136719
+                "y": 528.3341064453125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "3f7c04faaf8f920c90dd3e261abdd2b7ed82675fbf411e99081b1240dac3132e"
+          "source_digest": "79e8aef026bb91e60fcc631d0246dee9e253cdd285d8aa7641011b680576bea3"
         }
       },
       {
-        "annotation_id": "c45d8b52-bff2-50ab-982c-f5ff1491438f",
-        "source_locator": "page:6",
+        "annotation_id": "f1438920-4186-5ff0-b225-642b4e0d50b9",
+        "source_locator": "page:5",
         "result": {
           "schema_version": "1.0",
           "status": "resolved",
@@ -1448,8 +1100,8 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            44,
-            98
+            1971,
+            2025
           ],
           "matched_text": "the words \u201cEAT ME\u201d were beautifully\nmarked in currants",
           "candidate_count": 1,
@@ -1458,46 +1110,144 @@
             {
               "ul": {
                 "x": 320.6430358886719,
-                "y": 53.336997985839844
+                "y": 672.9369506835938
               },
               "ur": {
                 "x": 537.6260986328125,
-                "y": 53.336997985839844
+                "y": 672.9369506835938
               },
               "lr": {
                 "x": 537.6260986328125,
-                "y": 72.43399810791016
+                "y": 692.033935546875
               },
               "ll": {
                 "x": 320.6430358886719,
-                "y": 72.43399810791016
+                "y": 692.033935546875
               }
             },
             {
               "ul": {
                 "x": 67.0,
-                "y": 75.43700408935547
+                "y": 695.0369262695312
               },
               "ur": {
                 "x": 176.38201904296875,
-                "y": 75.43700408935547
+                "y": 695.0369262695312
               },
               "lr": {
                 "x": 176.38201904296875,
-                "y": 94.53400421142578
+                "y": 714.1339111328125
               },
               "ll": {
                 "x": 67.0,
-                "y": 94.53400421142578
+                "y": 714.1339111328125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "3f7c04faaf8f920c90dd3e261abdd2b7ed82675fbf411e99081b1240dac3132e"
+          "source_digest": "79e8aef026bb91e60fcc631d0246dee9e253cdd285d8aa7641011b680576bea3"
         }
       },
       {
-        "annotation_id": "56172b9c-2ac5-5dce-bf5b-2ff1a7b353c6",
+        "annotation_id": "3cc765e0-a54f-5519-9189-2190b4e25d1e",
+        "source_locator": "page:5",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            283,
+            373
+          ],
+          "matched_text": "First, however, she waited for a few minutes to see if she\nwas going to shrink any further",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 205.86599731445312,
+                "y": 159.73699951171875
+              },
+              "ur": {
+                "x": 533.6739501953125,
+                "y": 159.73699951171875
+              },
+              "lr": {
+                "x": 533.6739501953125,
+                "y": 178.83399963378906
+              },
+              "ll": {
+                "x": 205.86599731445312,
+                "y": 178.83399963378906
+              }
+            },
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 181.83700561523438
+              },
+              "ur": {
+                "x": 248.18106079101562,
+                "y": 181.83700561523438
+              },
+              "lr": {
+                "x": 248.18106079101562,
+                "y": 200.9340057373047
+              },
+              "ll": {
+                "x": 67.0,
+                "y": 200.9340057373047
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "79e8aef026bb91e60fcc631d0246dee9e253cdd285d8aa7641011b680576bea3"
+        }
+      },
+      {
+        "annotation_id": "e1b429da-2dff-5066-8f12-a28d47ee3a65",
+        "source_locator": "page:5",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            2060,
+            2094
+          ],
+          "matched_text": "\u201cand if it makes me grow larger, I",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 348.30706787109375,
+                "y": 695.0369262695312
+              },
+              "ur": {
+                "x": 542.9690551757812,
+                "y": 695.0369262695312
+              },
+              "lr": {
+                "x": 542.9690551757812,
+                "y": 714.1339111328125
+              },
+              "ll": {
+                "x": 348.30706787109375,
+                "y": 714.1339111328125
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "79e8aef026bb91e60fcc631d0246dee9e253cdd285d8aa7641011b680576bea3"
+        }
+      },
+      {
+        "annotation_id": "e0461e56-4add-59a8-b642-486fe3b35b51",
         "source_locator": "page:6",
         "result": {
           "schema_version": "1.0",
@@ -1506,39 +1256,39 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            321,
-            397
+            599,
+            653
           ],
-          "matched_text": "She ate a little bit, and said anxiously to herself, \u201cWhich way? Which way?\u201d",
+          "matched_text": "So she set to work, and very soon \ufb01nished o\ufb00 the cake.",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
                 "x": 67.0,
-                "y": 150.7369842529297
+                "y": 248.13702392578125
               },
               "ur": {
-                "x": 505.4380798339844,
-                "y": 150.7369842529297
+                "x": 384.09600830078125,
+                "y": 248.13702392578125
               },
               "lr": {
-                "x": 505.4380798339844,
-                "y": 169.833984375
+                "x": 384.09600830078125,
+                "y": 267.2340393066406
               },
               "ll": {
                 "x": 67.0,
-                "y": 169.833984375
+                "y": 267.2340393066406
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "3f7c04faaf8f920c90dd3e261abdd2b7ed82675fbf411e99081b1240dac3132e"
+          "source_digest": "853ae7204638d72ce1209e1fd0c7f33e34a7c473b9c8fccfad0709fc28bc7f38"
         }
       },
       {
-        "annotation_id": "c8039bd8-0b7b-5b92-b89c-47179afda45f",
-        "source_locator": "page:7",
+        "annotation_id": "fb8e5259-378c-5a1a-9a49-6d241a17a7d4",
+        "source_locator": "page:6",
         "result": {
           "schema_version": "1.0",
           "status": "resolved",
@@ -1546,39 +1296,57 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1952,
-            1981
+            80,
+            152
           ],
-          "matched_text": "she knows such a very little!",
+          "matched_text": "so\neither way I\u2019ll get into the garden, and I don\u2019t care which happens!\u201d",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 183.75302124023438,
-                "y": 641.8369750976562
+                "x": 528.5650024414062,
+                "y": 53.336997985839844
               },
               "ur": {
-                "x": 347.4750671386719,
-                "y": 641.8369750976562
+                "x": 540.7850341796875,
+                "y": 53.336997985839844
               },
               "lr": {
-                "x": 347.4750671386719,
-                "y": 660.9339599609375
+                "x": 540.7850341796875,
+                "y": 72.43399810791016
               },
               "ll": {
-                "x": 183.75302124023438,
-                "y": 660.9339599609375
+                "x": 528.5650024414062,
+                "y": 72.43399810791016
+              }
+            },
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 75.43700408935547
+              },
+              "ur": {
+                "x": 458.6770935058594,
+                "y": 75.43700408935547
+              },
+              "lr": {
+                "x": 458.6770935058594,
+                "y": 94.53400421142578
+              },
+              "ll": {
+                "x": 67.0,
+                "y": 94.53400421142578
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "d4c2ec6726667e0953cfcfb762950c58896bcaaeadbd8c999eb816b011998007"
+          "source_digest": "853ae7204638d72ce1209e1fd0c7f33e34a7c473b9c8fccfad0709fc28bc7f38"
         }
       },
       {
-        "annotation_id": "da61358d-3280-51b9-b280-d4447867f5b0",
-        "source_locator": "page:7",
+        "annotation_id": "557120d2-b8e3-5aad-b61a-5883fb3c8ebb",
+        "source_locator": "page:6",
         "result": {
           "schema_version": "1.0",
           "status": "resolved",
@@ -1586,38 +1354,118 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            317,
-            367
+            1604,
+            1657
           ],
-          "matched_text": "shedding gallons of tears, until there was a large",
+          "matched_text": "Alice\u2019s Right Foot, Esq., Hearthrug, near the Fender,",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 240.2900390625,
-                "y": 150.73699951171875
+                "x": 67.0,
+                "y": 655.75
               },
               "ur": {
-                "x": 519.530029296875,
-                "y": 150.73699951171875
+                "x": 349.2430114746094,
+                "y": 655.75
               },
               "lr": {
-                "x": 519.530029296875,
-                "y": 169.83399963378906
+                "x": 349.2430114746094,
+                "y": 674.833984375
               },
               "ll": {
-                "x": 240.2900390625,
-                "y": 169.83399963378906
+                "x": 67.0,
+                "y": 674.833984375
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "d4c2ec6726667e0953cfcfb762950c58896bcaaeadbd8c999eb816b011998007"
+          "source_digest": "853ae7204638d72ce1209e1fd0c7f33e34a7c473b9c8fccfad0709fc28bc7f38"
         }
       },
       {
-        "annotation_id": "ccb5f0fe-923b-54fb-a135-fbf378a54141",
+        "annotation_id": "5e37990c-ffa1-5530-ba92-125e7ffba8dd",
+        "source_locator": "page:6",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            781,
+            823
+          ],
+          "matched_text": "she quite forgot how to speak good English",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 118.09000396728516,
+                "y": 394.6370544433594
+              },
+              "ur": {
+                "x": 366.4550476074219,
+                "y": 394.6370544433594
+              },
+              "lr": {
+                "x": 366.4550476074219,
+                "y": 413.73406982421875
+              },
+              "ll": {
+                "x": 118.09000396728516,
+                "y": 413.73406982421875
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "853ae7204638d72ce1209e1fd0c7f33e34a7c473b9c8fccfad0709fc28bc7f38"
+        }
+      },
+      {
+        "annotation_id": "1454bf6c-1634-51f8-a80a-c820ee3f1160",
+        "source_locator": "page:6",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            1284,
+            1332
+          ],
+          "matched_text": "or perhaps they won\u2019t walk the way I want to go!",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 200.65301513671875,
+                "y": 527.2371215820312
+              },
+              "ur": {
+                "x": 485.3270263671875,
+                "y": 527.2371215820312
+              },
+              "lr": {
+                "x": 485.3270263671875,
+                "y": 546.3341064453125
+              },
+              "ll": {
+                "x": 200.65301513671875,
+                "y": 546.3341064453125
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "853ae7204638d72ce1209e1fd0c7f33e34a7c473b9c8fccfad0709fc28bc7f38"
+        }
+      },
+      {
+        "annotation_id": "5ede89b7-6b24-523e-a7da-7b33b061838b",
         "source_locator": "page:7",
         "result": {
           "schema_version": "1.0",
@@ -1626,8 +1474,48 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            199,
-            224
+            106,
+            147
+          ],
+          "matched_text": "she at once took up the little golden key",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 208.80401611328125,
+                "y": 75.43700408935547
+              },
+              "ur": {
+                "x": 440.1389465332031,
+                "y": 75.43700408935547
+              },
+              "lr": {
+                "x": 440.1389465332031,
+                "y": 94.53400421142578
+              },
+              "ll": {
+                "x": 208.80401611328125,
+                "y": 94.53400421142578
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "810a5f0ed588b8acb1349077fa8449eca60d2734d024cb37b7f8c623b940ee5b"
+        }
+      },
+      {
+        "annotation_id": "548d4a4d-4c69-5327-9d4e-db303022ff81",
+        "source_locator": "page:7",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            458,
+            483
           ],
           "matched_text": "(she\nmight well say this)",
           "candidate_count": 1,
@@ -1636,46 +1524,46 @@
             {
               "ul": {
                 "x": 493.1660461425781,
-                "y": 106.53699493408203
+                "y": 203.93699645996094
               },
               "ur": {
                 "x": 517.0340576171875,
-                "y": 106.53699493408203
+                "y": 203.93699645996094
               },
               "lr": {
                 "x": 517.0340576171875,
-                "y": 125.63399505615234
+                "y": 223.03399658203125
               },
               "ll": {
                 "x": 493.1660461425781,
-                "y": 125.63399505615234
+                "y": 223.03399658203125
               }
             },
             {
               "ul": {
                 "x": 67.0,
-                "y": 128.63699340820312
+                "y": 226.03700256347656
               },
               "ur": {
                 "x": 180.7890167236328,
-                "y": 128.63699340820312
+                "y": 226.03700256347656
               },
               "lr": {
                 "x": 180.7890167236328,
-                "y": 147.73399353027344
+                "y": 245.13400268554688
               },
               "ll": {
                 "x": 67.0,
-                "y": 147.73399353027344
+                "y": 245.13400268554688
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "d4c2ec6726667e0953cfcfb762950c58896bcaaeadbd8c999eb816b011998007"
+          "source_digest": "810a5f0ed588b8acb1349077fa8449eca60d2734d024cb37b7f8c623b940ee5b"
         }
       },
       {
-        "annotation_id": "86182348-29a7-5048-aa72-98b9aa939def",
+        "annotation_id": "31f46dfb-a0f7-5076-92ce-52a4f064fe63",
         "source_locator": "page:7",
         "result": {
           "schema_version": "1.0",
@@ -1684,8 +1572,204 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            2051,
-            2100
+            1465,
+            1522
+          ],
+          "matched_text": "she kept fanning\nherself all the time she went on talking",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 433.04107666015625,
+                "y": 509.2370910644531
+              },
+              "ur": {
+                "x": 528.279052734375,
+                "y": 509.2370910644531
+              },
+              "lr": {
+                "x": 528.279052734375,
+                "y": 528.3341064453125
+              },
+              "ll": {
+                "x": 433.04107666015625,
+                "y": 528.3341064453125
+              }
+            },
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 531.3370971679688
+              },
+              "ur": {
+                "x": 292.04302978515625,
+                "y": 531.3370971679688
+              },
+              "lr": {
+                "x": 292.04302978515625,
+                "y": 550.43408203125
+              },
+              "ll": {
+                "x": 67.0,
+                "y": 550.43408203125
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "810a5f0ed588b8acb1349077fa8449eca60d2734d024cb37b7f8c623b940ee5b"
+        }
+      },
+      {
+        "annotation_id": "ed0932e6-607d-5127-8269-630df789a8d2",
+        "source_locator": "page:7",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            1268,
+            1338
+          ],
+          "matched_text": "The Rabbit started violently, dropped the white kid gloves and the fan",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 103.86800384521484,
+                "y": 456.0370788574219
+              },
+              "ur": {
+                "x": 508.9089660644531,
+                "y": 456.0370788574219
+              },
+              "lr": {
+                "x": 508.9089660644531,
+                "y": 475.13409423828125
+              },
+              "ll": {
+                "x": 103.86800384521484,
+                "y": 475.13409423828125
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "810a5f0ed588b8acb1349077fa8449eca60d2734d024cb37b7f8c623b940ee5b"
+        }
+      },
+      {
+        "annotation_id": "ab7fa3ca-a8d0-5837-be28-f4eb731bc6e1",
+        "source_locator": "page:7",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            1964,
+            2017
+          ],
+          "matched_text": "to see\nif she could have been changed for any of them",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 510.6510009765625,
+                "y": 641.8369750976562
+              },
+              "ur": {
+                "x": 543.8140258789062,
+                "y": 641.8369750976562
+              },
+              "lr": {
+                "x": 543.8140258789062,
+                "y": 660.9339599609375
+              },
+              "ll": {
+                "x": 510.6510009765625,
+                "y": 660.9339599609375
+              }
+            },
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 663.9369506835938
+              },
+              "ur": {
+                "x": 340.37701416015625,
+                "y": 663.9369506835938
+              },
+              "lr": {
+                "x": 340.37701416015625,
+                "y": 683.033935546875
+              },
+              "ll": {
+                "x": 67.0,
+                "y": 683.033935546875
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "810a5f0ed588b8acb1349077fa8449eca60d2734d024cb37b7f8c623b940ee5b"
+        }
+      },
+      {
+        "annotation_id": "da1ca76c-6f91-5297-81b2-b18bf7326214",
+        "source_locator": "page:8",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            268,
+            324
+          ],
+          "matched_text": "four times \ufb01ve is twelve, and four times six is thirteen",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 113.54000854492188,
+                "y": 119.63700103759766
+              },
+              "ur": {
+                "x": 424.53900146484375,
+                "y": 119.63700103759766
+              },
+              "lr": {
+                "x": 424.53900146484375,
+                "y": 138.73399353027344
+              },
+              "ll": {
+                "x": 113.54000854492188,
+                "y": 138.73399353027344
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "16601d8f5aa007d7b9890afca0fd50fb35e21c8b94e9d1a627daeac9a705ce58"
+        }
+      },
+      {
+        "annotation_id": "e5e8b3c2-d264-530d-ada5-7f650b61d75e",
+        "source_locator": "page:8",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            206,
+            255
           ],
           "matched_text": "I\u2019ll try if I know all the things I used to know.",
           "candidate_count": 1,
@@ -1694,68 +1778,28 @@
             {
               "ul": {
                 "x": 259.51702880859375,
-                "y": 663.9369506835938
+                "y": 97.53699493408203
               },
               "ur": {
                 "x": 521.6749877929688,
-                "y": 663.9369506835938
+                "y": 97.53699493408203
               },
               "lr": {
                 "x": 521.6749877929688,
-                "y": 683.033935546875
+                "y": 116.63399505615234
               },
               "ll": {
                 "x": 259.51702880859375,
-                "y": 683.033935546875
+                "y": 116.63399505615234
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "d4c2ec6726667e0953cfcfb762950c58896bcaaeadbd8c999eb816b011998007"
+          "source_digest": "16601d8f5aa007d7b9890afca0fd50fb35e21c8b94e9d1a627daeac9a705ce58"
         }
       },
       {
-        "annotation_id": "74a7e5c9-53e6-540f-af49-076909a3edbd",
-        "source_locator": "page:7",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            880,
-            916
-          ],
-          "matched_text": "she was ready to ask help of any one",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 281.1490478515625,
-                "y": 314.4370422363281
-              },
-              "ur": {
-                "x": 492.7500305175781,
-                "y": 314.4370422363281
-              },
-              "lr": {
-                "x": 492.7500305175781,
-                "y": 333.5340576171875
-              },
-              "ll": {
-                "x": 281.1490478515625,
-                "y": 333.5340576171875
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "d4c2ec6726667e0953cfcfb762950c58896bcaaeadbd8c999eb816b011998007"
-        }
-      },
-      {
-        "annotation_id": "78873c6a-bce7-5d8b-95ba-1e35c932876d",
+        "annotation_id": "9d42e5a0-9ef3-5cbe-9bef-b9455f82c58a",
         "source_locator": "page:8",
         "result": {
           "schema_version": "1.0",
@@ -1764,8 +1808,106 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            439,
-            493
+            1538,
+            1624
+          ],
+          "matched_text": "\u2018Who am I then? Tell me that \ufb01rst, and\nthen, if I like being that person, I\u2019ll come up",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 304.9130859375,
+                "y": 522.3370971679688
+              },
+              "ur": {
+                "x": 528.8380126953125,
+                "y": 522.3370971679688
+              },
+              "lr": {
+                "x": 528.8380126953125,
+                "y": 541.43408203125
+              },
+              "ll": {
+                "x": 304.9130859375,
+                "y": 541.43408203125
+              }
+            },
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 544.4370727539062
+              },
+              "ur": {
+                "x": 320.824951171875,
+                "y": 544.4370727539062
+              },
+              "lr": {
+                "x": 320.824951171875,
+                "y": 563.5340576171875
+              },
+              "ll": {
+                "x": 67.0,
+                "y": 563.5340576171875
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "16601d8f5aa007d7b9890afca0fd50fb35e21c8b94e9d1a627daeac9a705ce58"
+        }
+      },
+      {
+        "annotation_id": "6049acbe-c3c7-5353-864b-a9b3bccf5ecd",
+        "source_locator": "page:8",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            2073,
+            2115
+          ],
+          "matched_text": "went to the table to measure herself by it",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 92.0770034790039,
+                "y": 686.0369262695312
+              },
+              "ur": {
+                "x": 329.36602783203125,
+                "y": 686.0369262695312
+              },
+              "lr": {
+                "x": 329.36602783203125,
+                "y": 705.1339111328125
+              },
+              "ll": {
+                "x": 92.0770034790039,
+                "y": 705.1339111328125
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "16601d8f5aa007d7b9890afca0fd50fb35e21c8b94e9d1a627daeac9a705ce58"
+        }
+      },
+      {
+        "annotation_id": "2ee05c48-fd83-5a84-9c29-0bd22b068544",
+        "source_locator": "page:8",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            853,
+            907
           ],
           "matched_text": "How doth the little crocodile Improve his shining tail",
           "candidate_count": 1,
@@ -1774,206 +1916,28 @@
             {
               "ul": {
                 "x": 72.88899993896484,
-                "y": 194.93699645996094
+                "y": 305.4370422363281
               },
               "ur": {
                 "x": 379.5980224609375,
-                "y": 194.93699645996094
+                "y": 305.4370422363281
               },
               "lr": {
                 "x": 379.5980224609375,
-                "y": 214.03399658203125
+                "y": 324.5340576171875
               },
               "ll": {
                 "x": 72.88899993896484,
-                "y": 214.03399658203125
+                "y": 324.5340576171875
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "d8b4158c704610c99e9ba08355382a7a05c57187008c41047f708e22fee13c18"
+          "source_digest": "16601d8f5aa007d7b9890afca0fd50fb35e21c8b94e9d1a627daeac9a705ce58"
         }
       },
       {
-        "annotation_id": "9801d6ed-dac6-5081-8d61-c0f66485427c",
-        "source_locator": "page:8",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            1818,
-            1887
-          ],
-          "matched_text": "she soon found out that the cause of this was the fan she was holding",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 115.35999298095703,
-                "y": 619.7369995117188
-              },
-              "ur": {
-                "x": 514.4080200195312,
-                "y": 619.7369995117188
-              },
-              "lr": {
-                "x": 514.4080200195312,
-                "y": 638.833984375
-              },
-              "ll": {
-                "x": 115.35999298095703,
-                "y": 638.833984375
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "d8b4158c704610c99e9ba08355382a7a05c57187008c41047f708e22fee13c18"
-        }
-      },
-      {
-        "annotation_id": "e8ff8ee2-c9a0-58bd-bbae-a2b815118b3d",
-        "source_locator": "page:8",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            641,
-            666
-          ],
-          "matched_text": "With gently smiling jaws!",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 148.82200622558594,
-                "y": 270.2370300292969
-              },
-              "ur": {
-                "x": 296.0080261230469,
-                "y": 270.2370300292969
-              },
-              "lr": {
-                "x": 296.0080261230469,
-                "y": 289.33404541015625
-              },
-              "ll": {
-                "x": 148.82200622558594,
-                "y": 289.33404541015625
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "d8b4158c704610c99e9ba08355382a7a05c57187008c41047f708e22fee13c18"
-        }
-      },
-      {
-        "annotation_id": "84c2ffa0-41bc-5bd5-8b00-66135500e260",
-        "source_locator": "page:8",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            1917,
-            1964
-          ],
-          "matched_text": "just in time to avoid shrinking away altogether",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 199.1320037841797,
-                "y": 641.8369750976562
-              },
-              "ur": {
-                "x": 469.4930419921875,
-                "y": 641.8369750976562
-              },
-              "lr": {
-                "x": 469.4930419921875,
-                "y": 660.9339599609375
-              },
-              "ll": {
-                "x": 199.1320037841797,
-                "y": 660.9339599609375
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "d8b4158c704610c99e9ba08355382a7a05c57187008c41047f708e22fee13c18"
-        }
-      },
-      {
-        "annotation_id": "bf5e8b70-8bfb-55a8-b114-40b61abf794e",
-        "source_locator": "page:8",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            59,
-            123
-          ],
-          "matched_text": "London is the capital of\nParis, and Paris is the capital of Rome",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 395.1980895996094,
-                "y": 53.336997985839844
-              },
-              "ur": {
-                "x": 530.775146484375,
-                "y": 53.336997985839844
-              },
-              "lr": {
-                "x": 530.775146484375,
-                "y": 72.43399810791016
-              },
-              "ll": {
-                "x": 395.1980895996094,
-                "y": 72.43399810791016
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
-                "y": 75.43700408935547
-              },
-              "ur": {
-                "x": 285.36102294921875,
-                "y": 75.43700408935547
-              },
-              "lr": {
-                "x": 285.36102294921875,
-                "y": 94.53400421142578
-              },
-              "ll": {
-                "x": 67.0,
-                "y": 94.53400421142578
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "d8b4158c704610c99e9ba08355382a7a05c57187008c41047f708e22fee13c18"
-        }
-      },
-      {
-        "annotation_id": "a26a9f41-dc69-57f2-91d4-a8518c01a057",
+        "annotation_id": "d5e56768-22fa-5e37-9927-8294a869eb7d",
         "source_locator": "page:9",
         "result": {
           "schema_version": "1.0",
@@ -1982,8 +1946,8 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            99,
-            159
+            416,
+            476
           ],
           "matched_text": "the little golden key was lying on the glass table as before",
           "candidate_count": 1,
@@ -1992,28 +1956,28 @@
             {
               "ul": {
                 "x": 159.0270233154297,
-                "y": 75.43700408935547
+                "y": 172.83700561523438
               },
               "ur": {
                 "x": 492.3600158691406,
-                "y": 75.43700408935547
+                "y": 172.83700561523438
               },
               "lr": {
                 "x": 492.3600158691406,
-                "y": 94.53400421142578
+                "y": 191.9340057373047
               },
               "ll": {
                 "x": 159.0270233154297,
-                "y": 94.53400421142578
+                "y": 191.9340057373047
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "7727b84771bb6e58e42c4b10afc522cf87ab59168aaf1bc5775a14d79b60d701"
+          "source_digest": "6e1491b210d91d26d4ff92bd948de36c136f60ebd321872826a70df26b77258f"
         }
       },
       {
-        "annotation_id": "c94638bc-92a7-5658-938c-7b4b87fe4a8e",
+        "annotation_id": "e4a0ac8d-b432-543e-ac0a-e6d7eb26f134",
         "source_locator": "page:9",
         "result": {
           "schema_version": "1.0",
@@ -2022,8 +1986,88 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            892,
-            956
+            916,
+            950
+          ],
+          "matched_text": "had come to the general conclusion",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 299.4530029296875,
+                "y": 314.4370422363281
+              },
+              "ur": {
+                "x": 503.74798583984375,
+                "y": 314.4370422363281
+              },
+              "lr": {
+                "x": 503.74798583984375,
+                "y": 333.5340576171875
+              },
+              "ll": {
+                "x": 299.4530029296875,
+                "y": 333.5340576171875
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "6e1491b210d91d26d4ff92bd948de36c136f60ebd321872826a70df26b77258f"
+        }
+      },
+      {
+        "annotation_id": "08eaacd3-055a-5402-84ed-1fce8c415cef",
+        "source_locator": "page:9",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            84,
+            155
+          ],
+          "matched_text": "she dropped it hastily, just in time to avoid shrinking away altogether",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 75.43700408935547
+              },
+              "ur": {
+                "x": 469.4930419921875,
+                "y": 75.43700408935547
+              },
+              "lr": {
+                "x": 469.4930419921875,
+                "y": 94.53400421142578
+              },
+              "ll": {
+                "x": 67.0,
+                "y": 94.53400421142578
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "6e1491b210d91d26d4ff92bd948de36c136f60ebd321872826a70df26b77258f"
+        }
+      },
+      {
+        "annotation_id": "b75a6d85-d133-5b8f-ac74-7200074ef76e",
+        "source_locator": "page:9",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            1209,
+            1273
           ],
           "matched_text": "the pool of tears which she had wept when she was nine feet high",
           "candidate_count": 1,
@@ -2032,28 +2076,28 @@
             {
               "ul": {
                 "x": 157.29798889160156,
-                "y": 305.4370422363281
+                "y": 402.8370666503906
               },
               "ur": {
                 "x": 537.1190185546875,
-                "y": 305.4370422363281
+                "y": 402.8370666503906
               },
               "lr": {
                 "x": 537.1190185546875,
-                "y": 324.5340576171875
+                "y": 421.93408203125
               },
               "ll": {
                 "x": 157.29798889160156,
-                "y": 324.5340576171875
+                "y": 421.93408203125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "7727b84771bb6e58e42c4b10afc522cf87ab59168aaf1bc5775a14d79b60d701"
+          "source_digest": "6e1491b210d91d26d4ff92bd948de36c136f60ebd321872826a70df26b77258f"
         }
       },
       {
-        "annotation_id": "ca2721fc-fb01-5948-a84c-73041bf1638d",
+        "annotation_id": "4b5a502c-7b4e-5e29-ab68-349f8318bf4a",
         "source_locator": "page:9",
         "result": {
           "schema_version": "1.0",
@@ -2062,88 +2106,8 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            481,
-            522
-          ],
-          "matched_text": "and in that case I can go back by railway",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 120.48199462890625,
-                "y": 194.93699645996094
-              },
-              "ur": {
-                "x": 356.4840087890625,
-                "y": 194.93699645996094
-              },
-              "lr": {
-                "x": 356.4840087890625,
-                "y": 214.03399658203125
-              },
-              "ll": {
-                "x": 120.48199462890625,
-                "y": 214.03399658203125
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "7727b84771bb6e58e42c4b10afc522cf87ab59168aaf1bc5775a14d79b60d701"
-        }
-      },
-      {
-        "annotation_id": "857b8a4d-3361-55e2-8251-bf04fda1f80e",
-        "source_locator": "page:9",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            1682,
-            1707
-          ],
-          "matched_text": "there\u2019s no harm in trying",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 96.88699340820312,
-                "y": 553.4370727539062
-              },
-              "ur": {
-                "x": 240.52401733398438,
-                "y": 553.4370727539062
-              },
-              "lr": {
-                "x": 240.52401733398438,
-                "y": 572.5340576171875
-              },
-              "ll": {
-                "x": 96.88699340820312,
-                "y": 572.5340576171875
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "7727b84771bb6e58e42c4b10afc522cf87ab59168aaf1bc5775a14d79b60d701"
-        }
-      },
-      {
-        "annotation_id": "df8b044d-9a8f-5ce6-b233-93360d1acbc4",
-        "source_locator": "page:9",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            1382,
-            1427
+            1699,
+            1744
           ],
           "matched_text": "but then she remembered how small she was now",
           "candidate_count": 1,
@@ -2152,28 +2116,28 @@
             {
               "ul": {
                 "x": 156.3489990234375,
-                "y": 456.0370788574219
+                "y": 553.4370727539062
               },
               "ur": {
                 "x": 443.33697509765625,
-                "y": 456.0370788574219
+                "y": 553.4370727539062
               },
               "lr": {
                 "x": 443.33697509765625,
-                "y": 475.13409423828125
+                "y": 572.5340576171875
               },
               "ll": {
                 "x": 156.3489990234375,
-                "y": 475.13409423828125
+                "y": 572.5340576171875
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "7727b84771bb6e58e42c4b10afc522cf87ab59168aaf1bc5775a14d79b60d701"
+          "source_digest": "6e1491b210d91d26d4ff92bd948de36c136f60ebd321872826a70df26b77258f"
         }
       },
       {
-        "annotation_id": "d8bb043a-f70d-5398-9eea-595616d872aa",
+        "annotation_id": "6e3730d3-9935-5839-8014-4515ed660c35",
         "source_locator": "page:10",
         "result": {
           "schema_version": "1.0",
@@ -2182,38 +2146,38 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            256,
-            275
+            85,
+            131
           ],
-          "matched_text": "\u201cO\u00f9 est ma chatte?\u201d",
+          "matched_text": "A mouse\u2014of a mouse\u2014to a mouse\u2014a mouse\u2014O mouse!",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 166.6840057373047,
-                "y": 119.63700103759766
+                "x": 134.80801391601562,
+                "y": 75.43700408935547
               },
               "ur": {
-                "x": 281.9160461425781,
-                "y": 119.63700103759766
+                "x": 463.6949768066406,
+                "y": 75.43700408935547
               },
               "lr": {
-                "x": 281.9160461425781,
-                "y": 138.73399353027344
+                "x": 463.6949768066406,
+                "y": 94.53400421142578
               },
               "ll": {
-                "x": 166.6840057373047,
-                "y": 138.73399353027344
+                "x": 134.80801391601562,
+                "y": 94.53400421142578
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "a1f693582509354f2c76e477d987abcae8396467b55ab3bd96b89b47fb29b8f1"
+          "source_digest": "a731931372a9eeba2e5bf2660ca7f5e965fc336312f5b1c44e5ec39baa0d6c5d"
         }
       },
       {
-        "annotation_id": "c0868493-2f84-58b9-9809-4f7247e23dfa",
+        "annotation_id": "3e315617-9fdd-5a15-b14b-70a5787361ac",
         "source_locator": "page:10",
         "result": {
           "schema_version": "1.0",
@@ -2222,38 +2186,38 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            168,
-            234
+            1344,
+            1380
           ],
-          "matched_text": "Alice had no very clear notion how long ago anything had happened.",
+          "matched_text": "such a capital one for catching mice",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 114.41099548339844,
-                "y": 97.53699493408203
+                "x": 136.23800659179688,
+                "y": 478.1370849609375
               },
               "ur": {
-                "x": 513.3419799804688,
-                "y": 97.53699493408203
+                "x": 343.6270751953125,
+                "y": 478.1370849609375
               },
               "lr": {
-                "x": 513.3419799804688,
-                "y": 116.63399505615234
+                "x": 343.6270751953125,
+                "y": 497.2341003417969
               },
               "ll": {
-                "x": 114.41099548339844,
-                "y": 116.63399505615234
+                "x": 136.23800659179688,
+                "y": 497.2341003417969
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "a1f693582509354f2c76e477d987abcae8396467b55ab3bd96b89b47fb29b8f1"
+          "source_digest": "a731931372a9eeba2e5bf2660ca7f5e965fc336312f5b1c44e5ec39baa0d6c5d"
         }
       },
       {
-        "annotation_id": "611a1ca2-db08-569d-8eac-7c94ddf7fe12",
+        "annotation_id": "5cdf8d90-ccb8-584f-a7bb-75582dd51a8d",
         "source_locator": "page:10",
         "result": {
           "schema_version": "1.0",
@@ -2262,38 +2226,38 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1350,
-            1395
+            532,
+            573
           ],
-          "matched_text": "who was trembling down to the end of his tail",
+          "matched_text": "which was the \ufb01rst sentence in her French",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 247.2580108642578,
-                "y": 456.0370788574219
+                "x": 285.7120361328125,
+                "y": 217.03700256347656
               },
               "ur": {
-                "x": 513.471923828125,
-                "y": 456.0370788574219
+                "x": 529.3710327148438,
+                "y": 217.03700256347656
               },
               "lr": {
-                "x": 513.471923828125,
-                "y": 475.13409423828125
+                "x": 529.3710327148438,
+                "y": 236.13400268554688
               },
               "ll": {
-                "x": 247.2580108642578,
-                "y": 475.13409423828125
+                "x": 285.7120361328125,
+                "y": 236.13400268554688
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "a1f693582509354f2c76e477d987abcae8396467b55ab3bd96b89b47fb29b8f1"
+          "source_digest": "a731931372a9eeba2e5bf2660ca7f5e965fc336312f5b1c44e5ec39baa0d6c5d"
         }
       },
       {
-        "annotation_id": "fc6bedb9-3625-5ec5-af04-8d31e31a312b",
+        "annotation_id": "62e326d4-4d62-5a46-b3f1-9823957d230f",
         "source_locator": "page:10",
         "result": {
           "schema_version": "1.0",
@@ -2302,38 +2266,38 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1558,
-            1599
+            1138,
+            1169
           ],
-          "matched_text": "in a great hurry to change the subject of",
+          "matched_text": "Alice went on, half to herself,",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 232.91900634765625,
-                "y": 531.3370971679688
+                "x": 362.4380187988281,
+                "y": 411.8370666503906
               },
               "ur": {
-                "x": 464.37109375,
-                "y": 531.3370971679688
+                "x": 532.5040283203125,
+                "y": 411.8370666503906
               },
               "lr": {
-                "x": 464.37109375,
-                "y": 550.43408203125
+                "x": 532.5040283203125,
+                "y": 430.93408203125
               },
               "ll": {
-                "x": 232.91900634765625,
-                "y": 550.43408203125
+                "x": 362.4380187988281,
+                "y": 430.93408203125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "a1f693582509354f2c76e477d987abcae8396467b55ab3bd96b89b47fb29b8f1"
+          "source_digest": "a731931372a9eeba2e5bf2660ca7f5e965fc336312f5b1c44e5ec39baa0d6c5d"
         }
       },
       {
-        "annotation_id": "40c31013-0c85-56d1-b666-49c09d1ab12d",
+        "annotation_id": "78ff2c6d-a5ac-53c3-bed8-22a0bc48a001",
         "source_locator": "page:10",
         "result": {
           "schema_version": "1.0",
@@ -2342,38 +2306,38 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            917,
-            950
+            2032,
+            2060
           ],
-          "matched_text": "she swam lazily about in the pool",
+          "matched_text": "A little bright-eyed terrier",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 82.56100463867188,
-                "y": 336.53704833984375
+                "x": 170.31101989746094,
+                "y": 695.0369262695312
               },
               "ur": {
-                "x": 275.87103271484375,
-                "y": 336.53704833984375
+                "x": 319.6030578613281,
+                "y": 695.0369262695312
               },
               "lr": {
-                "x": 275.87103271484375,
-                "y": 355.6340637207031
+                "x": 319.6030578613281,
+                "y": 714.1339111328125
               },
               "ll": {
-                "x": 82.56100463867188,
-                "y": 355.6340637207031
+                "x": 170.31101989746094,
+                "y": 714.1339111328125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "a1f693582509354f2c76e477d987abcae8396467b55ab3bd96b89b47fb29b8f1"
+          "source_digest": "a731931372a9eeba2e5bf2660ca7f5e965fc336312f5b1c44e5ec39baa0d6c5d"
         }
       },
       {
-        "annotation_id": "6a913014-82e0-5c85-81c3-20f5d1fd743b",
+        "annotation_id": "d9b91638-a59d-58ec-a705-c0ab03461330",
         "source_locator": "page:11",
         "result": {
           "schema_version": "1.0",
@@ -2382,56 +2346,38 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            142,
-            181
+            246,
+            288
           ],
-          "matched_text": "we won\u2019t talk\nabout cats or dogs either",
+          "matched_text": "He says it kills all the rats and\u2014oh dear!",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 456.1029968261719,
-                "y": 84.43700408935547
+                "x": 116.7249984741211,
+                "y": 119.63700103759766
               },
               "ur": {
-                "x": 534.2589721679688,
-                "y": 84.43700408935547
+                "x": 351.362060546875,
+                "y": 119.63700103759766
               },
               "lr": {
-                "x": 534.2589721679688,
-                "y": 103.53400421142578
+                "x": 351.362060546875,
+                "y": 138.73399353027344
               },
               "ll": {
-                "x": 456.1029968261719,
-                "y": 103.53400421142578
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
-                "y": 106.53699493408203
-              },
-              "ur": {
-                "x": 209.19400024414062,
-                "y": 106.53699493408203
-              },
-              "lr": {
-                "x": 209.19400024414062,
-                "y": 125.63399505615234
-              },
-              "ll": {
-                "x": 67.0,
-                "y": 125.63399505615234
+                "x": 116.7249984741211,
+                "y": 138.73399353027344
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "d32001e62eada62891f7536ffa9994c706a9e08f526a2d396aaa9d325705eee6"
+          "source_digest": "ba2d9ba644f2fce437589ad4aac260188a1296e647692d7353deb6416b6691c7"
         }
       },
       {
-        "annotation_id": "c0ee7ac6-8cdc-549c-aefa-5272a2db81a6",
+        "annotation_id": "8a9960e3-63f4-54f1-8320-d4bf1da206cc",
         "source_locator": "page:11",
         "result": {
           "schema_version": "1.0",
@@ -2440,8 +2386,8 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1324,
-            1368
+            1684,
+            1728
           ],
           "matched_text": "\u201cI am older than you, and must know better;\u201d",
           "candidate_count": 1,
@@ -2450,28 +2396,28 @@
             {
               "ul": {
                 "x": 122.00299835205078,
-                "y": 496.1370849609375
+                "y": 575.5370483398438
               },
               "ur": {
                 "x": 384.8500671386719,
-                "y": 496.1370849609375
+                "y": 575.5370483398438
               },
               "lr": {
                 "x": 384.8500671386719,
-                "y": 515.2340698242188
+                "y": 594.634033203125
               },
               "ll": {
                 "x": 122.00299835205078,
-                "y": 515.2340698242188
+                "y": 594.634033203125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "d32001e62eada62891f7536ffa9994c706a9e08f526a2d396aaa9d325705eee6"
+          "source_digest": "ba2d9ba644f2fce437589ad4aac260188a1296e647692d7353deb6416b6691c7"
         }
       },
       {
-        "annotation_id": "7e1623d5-4f47-51b8-8e03-be3d1103922c",
+        "annotation_id": "118ce92e-31e6-59be-ab34-6d0efce91975",
         "source_locator": "page:11",
         "result": {
           "schema_version": "1.0",
@@ -2480,56 +2426,38 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1931,
-            1963
+            1468,
+            1515
           ],
-          "matched_text": "This is the\ndriest thing I know.",
+          "matched_text": "it seemed quite natural to Alice to \ufb01nd herself",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 455.4530029296875,
-                "y": 690.9369506835938
+                "x": 271.8800354003906,
+                "y": 509.2370910644531
               },
               "ur": {
-                "x": 514.7330322265625,
-                "y": 690.9369506835938
+                "x": 537.0020141601562,
+                "y": 509.2370910644531
               },
               "lr": {
-                "x": 514.7330322265625,
-                "y": 710.033935546875
+                "x": 537.0020141601562,
+                "y": 528.3341064453125
               },
               "ll": {
-                "x": 455.4530029296875,
-                "y": 710.033935546875
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
-                "y": 713.0369262695312
-              },
-              "ur": {
-                "x": 180.1000213623047,
-                "y": 713.0369262695312
-              },
-              "lr": {
-                "x": 180.1000213623047,
-                "y": 732.1339111328125
-              },
-              "ll": {
-                "x": 67.0,
-                "y": 732.1339111328125
+                "x": 271.8800354003906,
+                "y": 528.3341064453125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "d32001e62eada62891f7536ffa9994c706a9e08f526a2d396aaa9d325705eee6"
+          "source_digest": "ba2d9ba644f2fce437589ad4aac260188a1296e647692d7353deb6416b6691c7"
         }
       },
       {
-        "annotation_id": "6e4a4716-5ac4-5eb7-984b-332717e5b998",
+        "annotation_id": "d3c493c7-1855-5f0b-9b86-5a397d45082a",
         "source_locator": "page:11",
         "result": {
           "schema_version": "1.0",
@@ -2538,66 +2466,8 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            517,
-            602
-          ],
-          "matched_text": "the pool was getting quite crowded with the birds and\nanimals that had fallen into it",
-          "candidate_count": 1,
-          "coordinate_space": "pdf_display_points",
-          "quads": [
-            {
-              "ul": {
-                "x": 220.99803161621094,
-                "y": 203.93701171875
-              },
-              "ur": {
-                "x": 533.5050048828125,
-                "y": 203.93701171875
-              },
-              "lr": {
-                "x": 533.5050048828125,
-                "y": 223.0340118408203
-              },
-              "ll": {
-                "x": 220.99803161621094,
-                "y": 223.0340118408203
-              }
-            },
-            {
-              "ul": {
-                "x": 67.0,
-                "y": 226.03701782226562
-              },
-              "ur": {
-                "x": 238.18405151367188,
-                "y": 226.03701782226562
-              },
-              "lr": {
-                "x": 238.18405151367188,
-                "y": 245.13401794433594
-              },
-              "ll": {
-                "x": 67.0,
-                "y": 245.13401794433594
-              }
-            }
-          ],
-          "epub_segments": [],
-          "source_digest": "d32001e62eada62891f7536ffa9994c706a9e08f526a2d396aaa9d325705eee6"
-        }
-      },
-      {
-        "annotation_id": "dc5ac851-1a6d-515a-98b6-4a453254da99",
-        "source_locator": "page:11",
-        "result": {
-          "schema_version": "1.0",
-          "status": "resolved",
-          "renderer": "pdf",
-          "reason": "unique_verified_quote",
-          "normalization": "nfc-whitespace-typographic-v1",
-          "raw_span": [
-            1534,
-            1583
+            1894,
+            1943
           ],
           "matched_text": "who seemed to be a person of authority among them",
           "candidate_count": 1,
@@ -2606,28 +2476,86 @@
             {
               "ul": {
                 "x": 174.5749969482422,
-                "y": 571.4370727539062
+                "y": 650.8369750976562
               },
               "ur": {
                 "x": 478.72296142578125,
-                "y": 571.4370727539062
+                "y": 650.8369750976562
               },
               "lr": {
                 "x": 478.72296142578125,
-                "y": 590.5340576171875
+                "y": 669.9339599609375
               },
               "ll": {
                 "x": 174.5749969482422,
-                "y": 590.5340576171875
+                "y": 669.9339599609375
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "d32001e62eada62891f7536ffa9994c706a9e08f526a2d396aaa9d325705eee6"
+          "source_digest": "ba2d9ba644f2fce437589ad4aac260188a1296e647692d7353deb6416b6691c7"
         }
       },
       {
-        "annotation_id": "d08ccefc-7d53-5e94-abb0-87cacc0039a2",
+        "annotation_id": "cdff8de5-41db-54ff-a58c-aeafc20dd4f9",
+        "source_locator": "page:11",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "pdf",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            707,
+            736
+          ],
+          "matched_text": "(with passion,\nAlice thought)",
+          "candidate_count": 1,
+          "coordinate_space": "pdf_display_points",
+          "quads": [
+            {
+              "ul": {
+                "x": 452.5540466308594,
+                "y": 239.1370086669922
+              },
+              "ur": {
+                "x": 533.3880615234375,
+                "y": 239.1370086669922
+              },
+              "lr": {
+                "x": 533.3880615234375,
+                "y": 258.2340087890625
+              },
+              "ll": {
+                "x": 452.5540466308594,
+                "y": 258.2340087890625
+              }
+            },
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 261.2370300292969
+              },
+              "ur": {
+                "x": 149.61500549316406,
+                "y": 261.2370300292969
+              },
+              "lr": {
+                "x": 149.61500549316406,
+                "y": 280.33404541015625
+              },
+              "ll": {
+                "x": 67.0,
+                "y": 280.33404541015625
+              }
+            }
+          ],
+          "epub_segments": [],
+          "source_digest": "ba2d9ba644f2fce437589ad4aac260188a1296e647692d7353deb6416b6691c7"
+        }
+      },
+      {
+        "annotation_id": "1b73126e-9e93-57e9-bf29-0005826e1c17",
         "source_locator": "page:12",
         "result": {
           "schema_version": "1.0",
@@ -2636,38 +2564,56 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            301,
-            337
+            172,
+            204
           ],
-          "matched_text": "\u201cI thought you did,\u201d said the Mouse.",
+          "matched_text": "This is the\ndriest thing I know.",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 67.0,
-                "y": 181.8369903564453
+                "x": 455.4530029296875,
+                "y": 106.53699493408203
               },
               "ur": {
-                "x": 276.5990295410156,
-                "y": 181.8369903564453
+                "x": 514.7330322265625,
+                "y": 106.53699493408203
               },
               "lr": {
-                "x": 276.5990295410156,
-                "y": 200.93399047851562
+                "x": 514.7330322265625,
+                "y": 125.63399505615234
+              },
+              "ll": {
+                "x": 455.4530029296875,
+                "y": 125.63399505615234
+              }
+            },
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 128.63699340820312
+              },
+              "ur": {
+                "x": 180.1000213623047,
+                "y": 128.63699340820312
+              },
+              "lr": {
+                "x": 180.1000213623047,
+                "y": 147.73399353027344
               },
               "ll": {
                 "x": 67.0,
-                "y": 200.93399047851562
+                "y": 147.73399353027344
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "de2fe8a82f8605f0e7cde76618b80b86d8a13e06eb67f96b83e03a6567619fc1"
+          "source_digest": "498bdc17922d27cd902f61929d96b75982fdd21801ec1ddf78810c253c7b3ff8"
         }
       },
       {
-        "annotation_id": "5e06b327-959c-5579-83df-74179155309f",
+        "annotation_id": "167593d8-7bc7-5084-9cdb-409734233fe5",
         "source_locator": "page:12",
         "result": {
           "schema_version": "1.0",
@@ -2676,38 +2622,38 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            505,
-            549
+            601,
+            632
           ],
-          "matched_text": "\u201cFound it,\u201d the Mouse replied rather crossly",
+          "matched_text": "\u201cNot I!\u201d said the Lory hastily.",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
                 "x": 67.0,
-                "y": 257.13702392578125
+                "y": 310.3370666503906
               },
               "ur": {
-                "x": 318.7799072265625,
-                "y": 257.13702392578125
+                "x": 236.36399841308594,
+                "y": 310.3370666503906
               },
               "lr": {
-                "x": 318.7799072265625,
-                "y": 276.2340393066406
+                "x": 236.36399841308594,
+                "y": 329.43408203125
               },
               "ll": {
                 "x": 67.0,
-                "y": 276.2340393066406
+                "y": 329.43408203125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "de2fe8a82f8605f0e7cde76618b80b86d8a13e06eb67f96b83e03a6567619fc1"
+          "source_digest": "498bdc17922d27cd902f61929d96b75982fdd21801ec1ddf78810c253c7b3ff8"
         }
       },
       {
-        "annotation_id": "d40d11fe-5f4e-527f-8c11-30bd29ddaa53",
+        "annotation_id": "89d9301f-956b-514a-9f65-df66a6e94dbb",
         "source_locator": "page:12",
         "result": {
           "schema_version": "1.0",
@@ -2716,38 +2662,38 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            696,
-            741
+            837,
+            865
           ],
-          "matched_text": "The question is, what did the archbishop \ufb01nd?",
+          "matched_text": "\u201cFound what?\u201d said the Duck.",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 228.48606872558594,
-                "y": 332.4370422363281
+                "x": 67.0,
+                "y": 416.7370910644531
               },
               "ur": {
-                "x": 496.11712646484375,
-                "y": 332.4370422363281
+                "x": 237.38629150390625,
+                "y": 416.7370910644531
               },
               "lr": {
-                "x": 496.11712646484375,
-                "y": 351.5340576171875
+                "x": 237.38629150390625,
+                "y": 435.8341064453125
               },
               "ll": {
-                "x": 228.48606872558594,
-                "y": 351.5340576171875
+                "x": 67.0,
+                "y": 435.8341064453125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "de2fe8a82f8605f0e7cde76618b80b86d8a13e06eb67f96b83e03a6567619fc1"
+          "source_digest": "498bdc17922d27cd902f61929d96b75982fdd21801ec1ddf78810c253c7b3ff8"
         }
       },
       {
-        "annotation_id": "0b5b8a80-abcd-54da-9ae8-4226cda00c49",
+        "annotation_id": "26128ce2-c23a-5bb9-b157-4d2f9595fef8",
         "source_locator": "page:12",
         "result": {
           "schema_version": "1.0",
@@ -2756,38 +2702,38 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            1051,
-            1100
+            1104,
+            1142
           ],
-          "matched_text": "\u201cAs wet as ever,\u201d said Alice in a melancholy tone",
+          "matched_text": "The Mouse did not notice this question",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
                 "x": 67.0,
-                "y": 460.93707275390625
+                "y": 554.2371215820312
               },
               "ur": {
-                "x": 349.4770202636719,
-                "y": 460.93707275390625
+                "x": 291.0940246582031,
+                "y": 554.2371215820312
               },
               "lr": {
-                "x": 349.4770202636719,
-                "y": 480.0340881347656
+                "x": 291.0940246582031,
+                "y": 573.3341064453125
               },
               "ll": {
                 "x": 67.0,
-                "y": 480.0340881347656
+                "y": 573.3341064453125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "de2fe8a82f8605f0e7cde76618b80b86d8a13e06eb67f96b83e03a6567619fc1"
+          "source_digest": "498bdc17922d27cd902f61929d96b75982fdd21801ec1ddf78810c253c7b3ff8"
         }
       },
       {
-        "annotation_id": "49bf2964-6910-5713-92a1-6188c4558762",
+        "annotation_id": "d365f652-098f-5e71-af6f-9c077361090e",
         "source_locator": "page:12",
         "result": {
           "schema_version": "1.0",
@@ -2796,153 +2742,181 @@
           "reason": "unique_verified_quote",
           "normalization": "nfc-whitespace-typographic-v1",
           "raw_span": [
-            743,
-            804
+            1330,
+            1366
           ],
-          "matched_text": "The Mouse did not notice this question, but hurriedly went on",
+          "matched_text": "How\nare you getting on now, my dear?",
           "candidate_count": 1,
           "coordinate_space": "pdf_display_points",
           "quads": [
             {
               "ul": {
-                "x": 67.0,
-                "y": 363.53704833984375
+                "x": 512.6790161132812,
+                "y": 598.4370727539062
               },
               "ur": {
-                "x": 425.0070495605469,
-                "y": 363.53704833984375
+                "x": 539.5760498046875,
+                "y": 598.4370727539062
               },
               "lr": {
-                "x": 425.0070495605469,
-                "y": 382.6340637207031
+                "x": 539.5760498046875,
+                "y": 617.5340576171875
+              },
+              "ll": {
+                "x": 512.6790161132812,
+                "y": 617.5340576171875
+              }
+            },
+            {
+              "ul": {
+                "x": 67.0,
+                "y": 620.5370483398438
+              },
+              "ur": {
+                "x": 261.50604248046875,
+                "y": 620.5370483398438
+              },
+              "lr": {
+                "x": 261.50604248046875,
+                "y": 639.634033203125
               },
               "ll": {
                 "x": 67.0,
-                "y": 382.6340637207031
+                "y": 639.634033203125
               }
             }
           ],
           "epub_segments": [],
-          "source_digest": "de2fe8a82f8605f0e7cde76618b80b86d8a13e06eb67f96b83e03a6567619fc1"
+          "source_digest": "498bdc17922d27cd902f61929d96b75982fdd21801ec1ddf78810c253c7b3ff8"
         }
       }
     ],
     "composition_degradations": [
       {
-        "annotation_id": "633ec24e-4c97-5daa-ae74-32bd4c169249",
+        "annotation_id": "0d1bc85f-2757-547c-9463-b45ecfe2c6a0",
         "code": "connector_routing_fallback",
         "detail": "Connector routing exhausted all waypoint attempts; direct path used as fallback."
       },
       {
-        "annotation_id": "611a1ca2-db08-569d-8eac-7c94ddf7fe12",
+        "annotation_id": "e6b1b299-6b61-5b17-b042-c46927dd0581",
+        "code": "connector_routing_fallback",
+        "detail": "Connector routing exhausted all waypoint attempts; direct path used as fallback."
+      },
+      {
+        "annotation_id": "de67b0ed-22bc-59d2-8edb-0e1a2853a3bf",
+        "code": "connector_routing_fallback",
+        "detail": "Connector routing exhausted all waypoint attempts; direct path used as fallback."
+      },
+      {
+        "annotation_id": "548d4a4d-4c69-5327-9d4e-db303022ff81",
         "code": "connector_routing_fallback",
         "detail": "Connector routing exhausted all waypoint attempts; direct path used as fallback."
       }
     ],
     "rendered": [
-      "dc0d402c-4f61-500e-87c0-356c8f38ea00",
-      "633ec24e-4c97-5daa-ae74-32bd4c169249",
-      "132afc86-ba90-5725-98d8-fc25bdac9e74",
-      "503905c3-6daf-51a0-bdb6-99a1980afcaf",
-      "86f09cd6-5470-5046-9c86-d96ac009ecee",
-      "eaefb656-781b-5363-ab38-cc93fd8fe707",
-      "891992d0-31fd-5842-a24b-6f3976be7d76",
-      "ea4d8418-8239-582f-90c0-75d09906b455",
-      "ffb9f4a4-bd1c-5cb3-8200-475e0a2b3074",
-      "2e464f90-f109-53e9-98ad-656be451a5f8",
-      "be650285-05db-5b70-a3cc-d98803aea92a",
-      "1aa86ab7-3e16-56f0-aa54-387708e5281f",
-      "9e1cdacb-6d02-50f8-bbb6-1e501b5f243b",
-      "bad02c5a-8fb8-5670-9931-6de9df6bf263",
-      "9d5a208d-5b79-5291-9cfb-d3faef41ae47",
-      "54f84043-6ba8-5cf7-8996-97dc9048cc0a",
-      "6b7b786d-b698-5917-80e3-1fbcc8fb4f54",
-      "7c65aaee-aec6-5d83-829b-754746bed9df",
-      "4e5055d0-ee24-56b2-81fa-787d25f5b219",
-      "7666feac-d566-5e7c-85a7-46c6d044473e",
-      "7f029e2c-1e43-5d15-93de-3006bf81870f",
-      "5f335dbe-94f8-5a6c-8cd2-678d53a97c7a",
-      "03725cff-ae96-5189-9d72-a77816935a28",
-      "d48e1e27-c9e9-5557-b3df-5a085d494d60",
-      "3fec4f42-905d-5e4b-86e1-b4f565658209",
-      "c45d8b52-bff2-50ab-982c-f5ff1491438f",
-      "8766a3e0-b5d0-5f46-94da-185d50ee1d37",
-      "56172b9c-2ac5-5dce-bf5b-2ff1a7b353c6",
-      "7b7f3d4c-8bf6-5100-ac0f-a2f614a8c7e3",
-      "a2e7b9eb-2c8e-5942-934c-d0eabaa21f72",
-      "da61358d-3280-51b9-b280-d4447867f5b0",
-      "86182348-29a7-5048-aa72-98b9aa939def",
-      "74a7e5c9-53e6-540f-af49-076909a3edbd",
-      "c8039bd8-0b7b-5b92-b89c-47179afda45f",
-      "ccb5f0fe-923b-54fb-a135-fbf378a54141",
-      "9801d6ed-dac6-5081-8d61-c0f66485427c",
-      "78873c6a-bce7-5d8b-95ba-1e35c932876d",
-      "bf5e8b70-8bfb-55a8-b114-40b61abf794e",
-      "84c2ffa0-41bc-5bd5-8b00-66135500e260",
-      "e8ff8ee2-c9a0-58bd-bbae-a2b815118b3d",
-      "857b8a4d-3361-55e2-8251-bf04fda1f80e",
-      "a26a9f41-dc69-57f2-91d4-a8518c01a057",
-      "ca2721fc-fb01-5948-a84c-73041bf1638d",
-      "df8b044d-9a8f-5ce6-b233-93360d1acbc4",
-      "c94638bc-92a7-5658-938c-7b4b87fe4a8e",
-      "fc6bedb9-3625-5ec5-af04-8d31e31a312b",
-      "d8bb043a-f70d-5398-9eea-595616d872aa",
-      "611a1ca2-db08-569d-8eac-7c94ddf7fe12",
-      "40c31013-0c85-56d1-b666-49c09d1ab12d",
-      "c0868493-2f84-58b9-9809-4f7247e23dfa",
-      "c0ee7ac6-8cdc-549c-aefa-5272a2db81a6",
-      "7e1623d5-4f47-51b8-8e03-be3d1103922c",
-      "6a913014-82e0-5c85-81c3-20f5d1fd743b",
-      "6e4a4716-5ac4-5eb7-984b-332717e5b998",
-      "dc5ac851-1a6d-515a-98b6-4a453254da99",
-      "5e06b327-959c-5579-83df-74179155309f",
-      "d08ccefc-7d53-5e94-abb0-87cacc0039a2",
-      "0b5b8a80-abcd-54da-9ae8-4226cda00c49",
-      "d40d11fe-5f4e-527f-8c11-30bd29ddaa53",
-      "49bf2964-6910-5713-92a1-6188c4558762"
+      "0212318d-576a-5883-b63b-60ba896f8641",
+      "1f921b9e-4a40-5b54-b9d2-22a7f4d01c3f",
+      "e5b9c5ec-2501-510b-a5bc-6c6a6d9fa3d5",
+      "e744eec2-2a6b-5f9f-953b-9672a4ebcc7a",
+      "51b72a3e-42b5-570c-af73-688777f15050",
+      "8a3b62f2-ed4f-53c8-9ab8-6cf3ffbe31ad",
+      "945ac46f-cb04-5dde-a2e8-50808c6c22f9",
+      "0d1bc85f-2757-547c-9463-b45ecfe2c6a0",
+      "e6b1b299-6b61-5b17-b042-c46927dd0581",
+      "2a2274a7-fde5-5aa7-ae25-8ca5c042c17e",
+      "23587040-f1be-5ea2-bb7b-b2c569620a85",
+      "f422789f-1b89-5430-ac3a-4474e41ccd2b",
+      "c49c1d48-b2b9-5289-9dd5-8172ed8639b3",
+      "a17e0352-7381-55f4-9ea2-42d8d776629c",
+      "3004a359-99ea-5cfa-b6c9-29eb7c9d1fa4",
+      "256b9b6f-996c-55b0-a51d-8c49b439a587",
+      "bc53e636-6789-56ef-995c-6629223ff80b",
+      "de67b0ed-22bc-59d2-8edb-0e1a2853a3bf",
+      "020b3c97-63d9-574c-855b-e87720c66742",
+      "a93acade-5767-5f66-8d42-81777fb7327f",
+      "dd913fc2-a213-5995-8788-83e1edaaa43b",
+      "f1438920-4186-5ff0-b225-642b4e0d50b9",
+      "e1b429da-2dff-5066-8f12-a28d47ee3a65",
+      "3cc765e0-a54f-5519-9189-2190b4e25d1e",
+      "e2a88c53-fb18-5496-bef9-a166459391ec",
+      "e0461e56-4add-59a8-b642-486fe3b35b51",
+      "fb8e5259-378c-5a1a-9a49-6d241a17a7d4",
+      "1454bf6c-1634-51f8-a80a-c820ee3f1160",
+      "557120d2-b8e3-5aad-b61a-5883fb3c8ebb",
+      "5e37990c-ffa1-5530-ba92-125e7ffba8dd",
+      "31f46dfb-a0f7-5076-92ce-52a4f064fe63",
+      "ab7fa3ca-a8d0-5837-be28-f4eb731bc6e1",
+      "5ede89b7-6b24-523e-a7da-7b33b061838b",
+      "ed0932e6-607d-5127-8269-630df789a8d2",
+      "548d4a4d-4c69-5327-9d4e-db303022ff81",
+      "6049acbe-c3c7-5353-864b-a9b3bccf5ecd",
+      "e5e8b3c2-d264-530d-ada5-7f650b61d75e",
+      "9d42e5a0-9ef3-5cbe-9bef-b9455f82c58a",
+      "da1ca76c-6f91-5297-81b2-b18bf7326214",
+      "2ee05c48-fd83-5a84-9c29-0bd22b068544",
+      "b75a6d85-d133-5b8f-ac74-7200074ef76e",
+      "08eaacd3-055a-5402-84ed-1fce8c415cef",
+      "e4a0ac8d-b432-543e-ac0a-e6d7eb26f134",
+      "4b5a502c-7b4e-5e29-ab68-349f8318bf4a",
+      "d5e56768-22fa-5e37-9927-8294a869eb7d",
+      "78ff2c6d-a5ac-53c3-bed8-22a0bc48a001",
+      "6e3730d3-9935-5839-8014-4515ed660c35",
+      "62e326d4-4d62-5a46-b3f1-9823957d230f",
+      "5cdf8d90-ccb8-584f-a7bb-75582dd51a8d",
+      "3e315617-9fdd-5a15-b14b-70a5787361ac",
+      "118ce92e-31e6-59be-ab34-6d0efce91975",
+      "8a9960e3-63f4-54f1-8320-d4bf1da206cc",
+      "d9b91638-a59d-58ec-a705-c0ab03461330",
+      "d3c493c7-1855-5f0b-9b86-5a397d45082a",
+      "cdff8de5-41db-54ff-a58c-aeafc20dd4f9",
+      "89d9301f-956b-514a-9f65-df66a6e94dbb",
+      "1b73126e-9e93-57e9-bf29-0005826e1c17",
+      "d365f652-098f-5e71-af6f-9c077361090e",
+      "167593d8-7bc7-5084-9cdb-409734233fe5",
+      "26128ce2-c23a-5bb9-b157-4d2f9595fef8"
     ],
     "skipped": [],
     "marks_only": [],
     "warnings": [
       {
-        "annotation_id": "86f09cd6-5470-5046-9c86-d96ac009ecee",
+        "annotation_id": "1f921b9e-4a40-5b54-b9d2-22a7f4d01c3f",
         "code": "shifted",
-        "detail": "Shifted note top from y=708.04 to y=714.00 to avoid occupied space."
+        "detail": "Shifted note top from y=185.84 to y=39.39 to avoid occupied space."
       },
       {
-        "annotation_id": "ffb9f4a4-bd1c-5cb3-8200-475e0a2b3074",
-        "code": "side_switched",
-        "detail": "Switched from margin_right to margin_left to find usable space."
-      },
-      {
-        "annotation_id": "6b7b786d-b698-5917-80e3-1fbcc8fb4f54",
+        "annotation_id": "0d1bc85f-2757-547c-9463-b45ecfe2c6a0",
         "code": "shifted",
-        "detail": "Shifted note top from y=708.14 to y=597.00 to avoid occupied space."
+        "detail": "Shifted note top from y=75.44 to y=8.00 to avoid occupied space."
       },
       {
-        "annotation_id": "d48e1e27-c9e9-5557-b3df-5a085d494d60",
+        "annotation_id": "23587040-f1be-5ea2-bb7b-b2c569620a85",
         "code": "shifted",
-        "detail": "Shifted note top from y=292.34 to y=195.94 to avoid occupied space."
+        "detail": "Shifted note top from y=610.74 to y=589.00 to avoid occupied space."
       },
       {
-        "annotation_id": "56172b9c-2ac5-5dce-bf5b-2ff1a7b353c6",
+        "annotation_id": "de67b0ed-22bc-59d2-8edb-0e1a2853a3bf",
         "code": "shifted",
-        "detail": "Shifted note top from y=150.74 to y=205.78 to avoid occupied space."
+        "detail": "Shifted note top from y=610.74 to y=676.84 to avoid occupied space."
       },
       {
-        "annotation_id": "bf5e8b70-8bfb-55a8-b114-40b61abf794e",
+        "annotation_id": "e1b429da-2dff-5066-8f12-a28d47ee3a65",
         "code": "shifted",
-        "detail": "Shifted note top from y=53.34 to y=0.00 to avoid occupied space."
+        "detail": "Shifted note top from y=695.04 to y=615.00 to avoid occupied space."
       },
       {
-        "annotation_id": "ca2721fc-fb01-5948-a84c-73041bf1638d",
-        "code": "side_switched",
-        "detail": "Switched from margin_right to margin_left to find usable space."
+        "annotation_id": "fb8e5259-378c-5a1a-9a49-6d241a17a7d4",
+        "code": "scale_reduced",
+        "detail": "Reduced note scale to 0.90 after larger geometry did not fit."
       },
       {
-        "annotation_id": "d08ccefc-7d53-5e94-abb0-87cacc0039a2",
+        "annotation_id": "fb8e5259-378c-5a1a-9a49-6d241a17a7d4",
         "code": "shifted",
-        "detail": "Shifted note top from y=181.84 to y=0.00 to avoid occupied space."
+        "detail": "Shifted note top from y=53.34 to y=8.00 to avoid occupied space."
+      },
+      {
+        "annotation_id": "78ff2c6d-a5ac-53c3-bed8-22a0bc48a001",
+        "code": "shifted",
+        "detail": "Shifted note top from y=695.04 to y=589.00 to avoid occupied space."
       }
     ],
     "degradation_flags": [
@@ -2951,7 +2925,7 @@
     "output_hashes": [
       {
         "role": "pdf",
-        "sha256": "cfcbab00084e1fd26a6771d2f0f4a3484db152b1f828bba8d336e84952524f69"
+        "sha256": "544135957ed8f34022b67a53dab9f33a94a8f03da8835c8223f1242f8d921583"
       }
     ]
   }

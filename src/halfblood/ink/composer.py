@@ -61,6 +61,8 @@ class ComposeRequest:
     document_seed: int
     page_bounds: SurfaceRect
     obstacles: tuple[SurfaceRect, ...] = ()
+    #: Every note box placed on the page. Marks must not draw over them.
+    note_boxes: tuple[SurfaceRect, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -327,8 +329,19 @@ class BuiltinRoughInkEngine:
                 rng, request.local_target_quads, style, request.local_bounds, group_id
             )
         elif role is RoughRole.CIRCLE:
+            page = request.composition.page_bounds
+            avoid = tuple(
+                _surface_rect_to_local(rect, page) for rect in request.composition.note_boxes
+            )
+            if request.local_note_box is not None:
+                avoid = (*avoid, request.local_note_box)
             group = make_circle(
-                rng, request.local_target_quads, style, request.local_bounds, group_id
+                rng,
+                request.local_target_quads,
+                style,
+                request.local_bounds,
+                group_id,
+                avoid=avoid,
             )
         elif role is RoughRole.STRIKE:
             group = make_strike(

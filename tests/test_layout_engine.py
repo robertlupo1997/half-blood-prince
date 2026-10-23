@@ -894,12 +894,14 @@ def test_p3s1_dense_characterization_snapshot() -> None:
         ),
         (
             "n5", "margin_left",
-            8.0, 72.0, 50.0, 792.0,
+            # Was 72-792: the note ran to the page's bottom trim. Notes now keep
+            # page_edge_pad (8pt) from the top and bottom edges too (2026-10-23).
+            8.0, 64.0, 50.0, 784.0,
             0.8,
             (
                 (AnchorWarningCode.SCALE_REDUCED, "Reduced note scale to 0.90 after larger geometry did not fit."),
                 (AnchorWarningCode.SCALE_REDUCED, "Reduced note scale to 0.80 after larger geometry did not fit."),
-                (AnchorWarningCode.SHIFTED,        "Shifted note top from y=450.00 to y=72.00 to avoid occupied space."),
+                (AnchorWarningCode.SHIFTED,        "Shifted note top from y=450.00 to y=64.00 to avoid occupied space."),
             ),
         ),
         (
@@ -1503,3 +1505,31 @@ def test_p3s2b_beam_emits_side_switched_for_winning_geometry() -> None:
         "SIDE_SWITCHED must appear on a beam-placed note forced to the non-preferred side; "
         f"got warnings={ann.warnings}"
     )
+
+
+@pytest.mark.parametrize("solver", ["greedy", "beam"])
+@pytest.mark.parametrize("anchor_y", [0.0, 2.0, 780.0, 790.0])
+def test_note_keeps_page_edge_pad_from_top_and_bottom(solver: str, anchor_y: float) -> None:
+    """A note near the page's top or bottom edge stays ``page_edge_pad`` inside it.
+
+    Before 2026-10-23 the pad applied only to the sides: real-model Alice notes
+    were shifted to y=0 (first line on the trim) and one ended past y=792.
+    """
+    config = LayoutConfig(solver=solver)  # type: ignore[arg-type]
+    request = NoteRequest(
+        annotation_id="edge",
+        source_locator="p:1",
+        annotation_type=AnnotationType.CORRECTION,
+        confidence=0.9,
+        content="Near the edge.",
+        requested_placement="margin_right",
+        anchor=_anchor(100.0, anchor_y, 400.0, min(anchor_y + 14.0, 792.0)),
+        render_seed=1,
+    )
+    result = run_layout([request], _PAGE, [], DenseMeasurer(), config=config,
+                        body_columns=_CHAR_COLS)
+    assert len(result.placed) == 1
+    box = result.placed[0].note_box
+    assert box is not None
+    assert box.y0 >= _PAGE.y0 + config.page_edge_pad - 1e-6
+    assert box.y1 <= _PAGE.y1 - config.page_edge_pad + 1e-6

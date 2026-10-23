@@ -1238,6 +1238,11 @@ class DocumentProcessor:
 
                 # --- Drawing phase ---
                 req_by_id = {request.annotation_id: request for request in requests}
+                placed_note_boxes = tuple(
+                    placed.note_box
+                    for placed in layout_result.placed
+                    if placed.note_box is not None
+                )
                 for resolved_ann in layout_result.placed:
                     _, ann = ann_by_id[resolved_ann.annotation_id]
                     page_bounds = SurfaceRect(
@@ -1252,6 +1257,7 @@ class DocumentProcessor:
                         document_seed=plan.document_seed,
                         page_bounds=page_bounds,
                         obstacles=page_occ.obstacles,
+                        note_boxes=placed_note_boxes,
                     )
                     composition = composer.compose(
                         request,
@@ -1339,6 +1345,7 @@ class DocumentProcessor:
                         document_seed=plan.document_seed,
                         page_bounds=page_bounds,
                         obstacles=page_occ.obstacles,
+                        note_boxes=placed_note_boxes,
                     )
                     composition = composer.compose(
                         compose_request,

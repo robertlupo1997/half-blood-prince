@@ -11,8 +11,8 @@ quote does not prove that an LLM's comment is correct.
 ## What it does
 
 <p align="center">
-  <img src="examples/real/alice-page-02.png" width="440" alt="Page 2 of Alice's Adventures in Wonderland with handwritten margin notes connected to circled and underlined passages, including a note on the dropped marmalade jar and one on Antipathies for Antipodes.">
-  <img src="examples/real/alice-page-06.png" width="440" alt="Page 6 of Alice's Adventures in Wonderland with margin notes on the EAT ME cake and on Alice's reasoning that either size gets her into the garden.">
+  <img src="examples/real/alice-page-02.png" width="440" alt="Page 2 of Alice's Adventures in Wonderland with handwritten margin notes connected to circled and underlined passages, including a note on the dropped marmalade jar, one giving the Earth's radius as roughly 3,960 miles, and one on Antipathies for Antipodes.">
+  <img src="examples/real/alice-page-08.png" width="440" alt="Page 8 of Alice's Adventures in Wonderland with margin notes, including one showing that four times five is twelve in base 18 and four times six is thirteen in base 21, and one tracing the crocodile verse to Watts's busy bee.">
 </p>
 
 Give it a PDF or EPUB and a persona. A model writes margin notes, each
@@ -23,7 +23,7 @@ run report.
 The pages above are from a real-model run on public-domain *Alice*
 (PDF pages 1–12: 60 notes generated, 60 placed, 0 refused), generated
 through the Claude Code CLI (`--provider claude-cli`, CLI alias `opus`)
-on 2026-10-22. One note from a second run that day, on the single
+on 2026-10-23. One note from a run on 2026-10-22, on the single
 82,383-character chapter of *The Elements of Style* (35 generated, 35
 placed):
 

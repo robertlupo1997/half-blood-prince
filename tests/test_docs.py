@@ -255,7 +255,7 @@ def test_readme_example_artifacts_exist() -> None:
         "examples/screenshot.png",
         "scripts/build_example_book.py",
         "examples/real/alice-page-02.png",
-        "examples/real/alice-page-06.png",
+        "examples/real/alice-page-08.png",
         "examples/real/NOTES-REVIEW.md",
     ]
     for rel in cited:
@@ -287,7 +287,9 @@ def test_real_model_showcase_counts_match_its_reports() -> None:
 def test_committed_example_sidecars_report_full_success() -> None:
     """The committed sidecars must match what the README claims about them.
 
-    The README table asserted 78/78 before the 2026-10-22 italics fix; it is now 77/77 annotated pages with no failures on the PDF
+    The README table asserted 78/78 before the 2026-10-22 italics fix and 77/77
+    until the builder stopped dropping paragraphs under 40 characters; it is now
+    80/80 annotated pages with no failures on the PDF
     and a skipped cover page on the EPUB. If the pipeline changes and the
     artifacts are regenerated differently, this test forces the README table
     to be updated in the same commit.
@@ -297,8 +299,8 @@ def test_committed_example_sidecars_report_full_success() -> None:
     pdf_report = json.loads(
         (_ROOT / "examples" / "hbp-example.pdf.report.json").read_text(encoding="utf-8")
     )
-    assert pdf_report["pages_total"] == 77
-    assert pdf_report["pages_annotated"] == 77
+    assert pdf_report["pages_total"] == 80
+    assert pdf_report["pages_annotated"] == 80
     assert pdf_report["failed_pages"] == []
 
     epub_report = json.loads(
@@ -324,3 +326,43 @@ def test_readme_does_not_reference_models_py_as_a_file_path(readme: str) -> None
         if re.search(r"`models\.py`", line) and "not a single" not in line
     ]
     assert not stray, f"stale models.py reference(s): {stray}"
+
+
+def test_example_book_builder_keeps_every_paragraph_of_the_text() -> None:
+    """Short dialogue lines are text of the book, not headings to filter.
+
+    The builder once dropped every paragraph under 40 characters: 74 paragraphs
+    of *Alice* ("Not I!" said the Lory hastily.) vanished from
+    ``examples/src/alice.pdf`` while the table of contents and three chapter
+    headings survived. A real-model note on page 12 spotted the gap.
+    """
+    import importlib.util
+
+    import fitz
+
+    spec = importlib.util.spec_from_file_location(
+        "build_example_book", _ROOT / "scripts" / "build_example_book.py"
+    )
+    assert spec is not None and spec.loader is not None
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+
+    raw = (_ROOT / "examples" / "src" / "pg11.txt").read_text(encoding="utf-8-sig")
+    body = builder.strip_gutenberg_boilerplate(raw)
+    paras = builder.paragraphs(body)
+
+    assert "“Not I!” said the Lory hastily." in paras
+    assert "“Found _what_?” said the Duck." in paras
+    assert "THE END" in paras
+    assert not [p for p in paras if p.startswith("CHAPTER ")], "chapter headings leak in"
+    assert not [p for p in paras if p.startswith("[Illustration")]
+    assert paras[0].startswith("Alice was beginning to get very tired")
+
+    blocks = [" ".join(b.split()) for b in re.split(r"\n\s*\n", body) if b.strip()]
+    first = next(i for i, b in enumerate(blocks) if b.startswith("CHAPTER I."))
+    text_blocks = [b for b in blocks[first:] if not re.match(r"CHAPTER [IVXLC]+\.", b)]
+    assert paras == text_blocks, "every paragraph after the front matter is kept, in order"
+
+    with fitz.open(_ROOT / "examples" / "src" / "alice.pdf") as doc:
+        text = " ".join(" ".join(page.get_text().split()) for page in doc)
+    assert "“Not I!” said the Lory hastily." in text, "rebuild examples/src/alice.pdf"
