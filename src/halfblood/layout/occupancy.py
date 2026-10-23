@@ -24,12 +24,19 @@ class PageOccupancy:
     ``words`` retains fine-grained word rectangles, while ``body_columns`` is
     inferred without allowing isolated page furniture to influence its edges.
     A low confidence signals that extraction was uncertain.
+
+    ``glyphs`` holds one tight ink box per visible character (the glyph's
+    outline extent, not the font's ascender-to-descender line box). Line boxes
+    on a typical book page touch or overlap their neighbours, so only glyph
+    boxes show the leading a connector can travel in. Empty when the surface
+    cannot supply them.
     """
 
     obstacles: tuple[SurfaceRect, ...]
     words: tuple[SurfaceRect, ...]
     body_columns: tuple[TextColumn, ...]
     confidence: float = 1.0
+    glyphs: tuple[SurfaceRect, ...] = ()
 
 
 class PageOccupancyProvider(Protocol):

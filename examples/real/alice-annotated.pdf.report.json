@@ -2791,28 +2791,7 @@
         }
       }
     ],
-    "composition_degradations": [
-      {
-        "annotation_id": "0d1bc85f-2757-547c-9463-b45ecfe2c6a0",
-        "code": "connector_routing_fallback",
-        "detail": "Connector routing exhausted all waypoint attempts; direct path used as fallback."
-      },
-      {
-        "annotation_id": "e6b1b299-6b61-5b17-b042-c46927dd0581",
-        "code": "connector_routing_fallback",
-        "detail": "Connector routing exhausted all waypoint attempts; direct path used as fallback."
-      },
-      {
-        "annotation_id": "de67b0ed-22bc-59d2-8edb-0e1a2853a3bf",
-        "code": "connector_routing_fallback",
-        "detail": "Connector routing exhausted all waypoint attempts; direct path used as fallback."
-      },
-      {
-        "annotation_id": "548d4a4d-4c69-5327-9d4e-db303022ff81",
-        "code": "connector_routing_fallback",
-        "detail": "Connector routing exhausted all waypoint attempts; direct path used as fallback."
-      }
-    ],
+    "composition_degradations": [],
     "rendered": [
       "0212318d-576a-5883-b63b-60ba896f8641",
       "1f921b9e-4a40-5b54-b9d2-22a7f4d01c3f",
@@ -2919,13 +2898,11 @@
         "detail": "Shifted note top from y=695.04 to y=589.00 to avoid occupied space."
       }
     ],
-    "degradation_flags": [
-      "connector_routing_fallback"
-    ],
+    "degradation_flags": [],
     "output_hashes": [
       {
         "role": "pdf",
-        "sha256": "544135957ed8f34022b67a53dab9f33a94a8f03da8835c8223f1242f8d921583"
+        "sha256": "fb1d9be8d4c154f3661268bf86286acae6065870c3a506f865c0d86cde33fd57"
       }
     ]
   }

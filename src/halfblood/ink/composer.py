@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal, Protocol, TypeAlias
 
+from halfblood.ink.connector_route import (
+    ConnectorRoute,
+    make_routed_connector,
+    plan_connector_route,
+)
 from halfblood.ink.geometry import BudgetExceededError, simplify_commands
 from halfblood.ink.model import (
     CubicTo,
@@ -63,6 +68,10 @@ class ComposeRequest:
     obstacles: tuple[SurfaceRect, ...] = ()
     #: Every note box placed on the page. Marks must not draw over them.
     note_boxes: tuple[SurfaceRect, ...] = ()
+    #: Tight glyph ink boxes for the page (``PageOccupancy.glyphs``). When
+    #: present, a margin note's connector is routed through the leading to the
+    #: quote's near end instead of by the generic obstacle router.
+    glyphs: tuple[SurfaceRect, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -78,6 +87,7 @@ class RoughRequest:
     target_edge: LocalPoint | None = None
     doodle_kind: DoodleKind | None = None
     interline_gap: float | None = None
+    connector_route: ConnectorRoute | None = None
 
 
 @dataclass(frozen=True)
@@ -373,6 +383,25 @@ class BuiltinRoughInkEngine:
                     "connector_geometry_unavailable",
                     "A note edge and target edge are required for connector generation.",
                 )
+            if request.connector_route is not None:
+                connector = make_routed_connector(
+                    rng, request.connector_route, style, request.local_bounds, group_id
+                )
+                return RoughResult(
+                    groups=(connector.group,),
+                    degradations=tuple(
+                        InkDegradation(
+                            annotation_id=request.composition.annotation.id,
+                            role=role,
+                            code=value.value,
+                            detail=(
+                                "Connector still touches body text or another note "
+                                f"({request.connector_route.kind.value} route)."
+                            ),
+                        )
+                        for value in connector.degradation
+                    ),
+                )
             obstacles = tuple(
                 _surface_rect_to_local(rect, request.composition.page_bounds)
                 for rect in request.composition.obstacles
@@ -637,7 +666,25 @@ class InkComposer:
 
         note_edge: LocalPoint | None = None
         target_edge: LocalPoint | None = None
-        if note_box is not None and target_quads:
+        connector_route: ConnectorRoute | None = None
+        if note_box is not None and target_quads and request.glyphs and not mark_only:
+            own_box = request.resolved.note_box
+            connector_route = plan_connector_route(
+                note_box,
+                target_quads,
+                tuple(_surface_rect_to_local(rect, page) for rect in request.glyphs),
+                other_notes=tuple(
+                    _surface_rect_to_local(rect, page)
+                    for rect in request.note_boxes
+                    if rect != own_box
+                ),
+                bounds=bounds,
+                clearance=style.nib.base_width / 2.0,
+            )
+        if connector_route is not None:
+            note_edge = LocalPoint(x=connector_route.start[0], y=connector_route.start[1])
+            target_edge = LocalPoint(x=connector_route.tip[0], y=connector_route.tip[1])
+        elif note_box is not None and target_quads:
             local_obstacles = tuple(
                 _surface_rect_to_local(rect, page) for rect in request.obstacles
             )
@@ -683,6 +730,7 @@ class InkComposer:
                 note_edge=note_edge,
                 target_edge=target_edge,
                 doodle_kind=doodle_kind,
+                connector_route=connector_route,
             )
             seed = derive_seed(
                 request.document_seed,

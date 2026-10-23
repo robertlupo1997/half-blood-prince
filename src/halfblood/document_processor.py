@@ -1258,6 +1258,7 @@ class DocumentProcessor:
                         page_bounds=page_bounds,
                         obstacles=page_occ.obstacles,
                         note_boxes=placed_note_boxes,
+                        glyphs=page_occ.glyphs,
                     )
                     composition = composer.compose(
                         request,
@@ -1346,6 +1347,7 @@ class DocumentProcessor:
                         page_bounds=page_bounds,
                         obstacles=page_occ.obstacles,
                         note_boxes=placed_note_boxes,
+                        glyphs=page_occ.glyphs,
                     )
                     composition = composer.compose(
                         compose_request,

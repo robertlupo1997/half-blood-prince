@@ -284,6 +284,33 @@ def test_real_model_showcase_counts_match_its_reports() -> None:
     assert "not been\nindependently judged" in readme
 
 
+def test_real_model_showcase_render_degradations_match_the_review() -> None:
+    """NOTES-REVIEW's render counts must be the ones the committed Alice report records.
+
+    The 2026-10-23 connector-routing fix took the showcase from 4 flagged (and
+    20 unflagged) crossings to none; the review and the claim ledger say 0.
+    """
+    import json
+    from collections import Counter
+
+    real = _ROOT / "examples" / "real"
+    render = json.loads(
+        (real / "alice-annotated.pdf.report.json").read_text(encoding="utf-8")
+    )["render"]
+    codes = Counter(item["code"] for item in render["composition_degradations"])
+    warnings = Counter(item["code"] for item in render["warnings"])
+    assert codes["connector_routing_fallback"] == 0
+    assert "connector_routing_fallback" not in render["degradation_flags"]
+    assert warnings == {"shifted": 7, "scale_reduced": 1}
+
+    review = " ".join((real / "NOTES-REVIEW.md").read_text(encoding="utf-8").split())
+    assert "reports 0 `connector_routing_fallback` degradations" in review
+    assert "8 layout warnings (7 `shifted`, 1 `scale_reduced`)" in review
+    assert "0 of 60 connectors cross a body glyph" in review
+    ledger = " ".join((_ROOT / "docs" / "readme-claims.md").read_text(encoding="utf-8").split())
+    assert "0 of 60 connectors cross a body glyph" in ledger
+
+
 def test_committed_example_sidecars_report_full_success() -> None:
     """The committed sidecars must match what the README claims about them.
 

@@ -38,7 +38,8 @@ Model output is not reproducible byte for byte.
 | Elements of Style, one chapter (7 windows of ≤12,000 chars) | 35 | 35 | 0 | 72,756 / 14,766 | 2m44 |
 
 Every quote resolved to exactly one place: no `ambiguous_target`, no
-`missing_target`. The PDF render reports 4 `connector_routing_fallback`
+`missing_target`. The PDF render (re-rendered 2026-10-23 from the same plan
+after the connector-routing fix below) reports 0 `connector_routing_fallback`
 degradations and 8 layout warnings (7 `shifted`, 1 `scale_reduced`).
 
 ## Source
@@ -173,7 +174,8 @@ specific to their line and, where checked against the source, accurate.
 
 Checked visually at 150 dpi on all twelve PDF pages of the 2026-10-23 render,
 plus a script that reads the drawn paths back: no mark or connector touches a
-note's handwriting, and no note runs off the page. Fixed while doing this:
+note's handwriting, no connector crosses a glyph of body text outside its own
+quote, and no note runs off the page. Fixed while doing this:
 
 - **Circles on wrapped quotes.** A `circle` mark drew one ellipse around the
   union of every line of its quote, padded by 6% of its width, so a two-line
@@ -189,10 +191,22 @@ note's handwriting, and no note runs off the page. Fixed while doing this:
 - From the first render, still in place: the `doodle_note` star sits above the
   note's top-left corner instead of across its handwriting.
 
-**Not fixed:** connectors still cross body text. When a quote ends mid-line the
-connector lands on the quote's top or bottom edge, and its bow then runs through
-the neighbouring line (visible on pages 6, 8, 9, 10 and 11, e.g. through
-"(with Alice's love)" on p. 6). The text runs next to a connector's endpoint
-are exempt from the router's obstacle check, so most of these crossings raise no
-`connector_routing_fallback`. The README makes no claim of collision-free
-connectors.
+- **Connectors through body text.** 20 of the 60 connectors crossed glyphs
+  of body text (92 glyphs in all, measured against each glyph's outline box,
+  the quote's own letters excluded), e.g. through "such" on p. 8 and
+  "(with Alice's love)" on p. 6. None of those 20 raised
+  `connector_routing_fallback`: the router exempted every text line within
+  2pt of the arrow's endpoint from its collision check, which is exactly the
+  line a mid-line quote's arrow ran through, while the 4 connectors it did
+  flag were others. The router also worked from line boxes, which touch
+  their neighbours on these pages (19pt boxes at a 22pt pitch), so it could
+  not see the ~9pt of leading between the glyphs. Connectors are now routed
+  like a pen: along the margin, into the leading above or below the quote's
+  line, ending on the quote's near end (left end for a left-margin note,
+  right end for a right one), or level into the line when nothing stands
+  between the margin and the quote; with no clean route, a short arrow stops
+  at the column edge. The fallback flag now fires whenever any drawn stroke,
+  arrowhead included, touches a glyph outside the quote or another note,
+  with no endpoint exemption (`src/halfblood/ink/connector_route.py`,
+  `tests/test_connector_leading_route.py`). Re-rendered from the committed
+  plan: 0 of 60 connectors cross a body glyph, and 0 are flagged.
