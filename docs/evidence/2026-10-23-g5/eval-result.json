@@ -1,0 +1,431 @@
+{
+  "run": {
+    "generator": {
+      "provider": "claude-cli",
+      "model": "opus"
+    },
+    "judge": {
+      "provider": "codex-cli",
+      "model": "default"
+    },
+    "self_judged": false
+  },
+  "results": [
+    {
+      "id": "chemistry-titration",
+      "title": "Principles of Quantitative Analysis",
+      "genre": "Chemistry Textbook",
+      "generation_error": null,
+      "annotation_count": 9,
+      "overall_score": 3.6,
+      "grade": "C",
+      "all_passed": false,
+      "scores": [
+        {
+          "metric": "voice_consistency",
+          "score": 4.0,
+          "passed": true,
+          "justification": "The voice is consistently authoritative and dry, with strong marginalia lines such as \u201cjust a number,\u201d \u201cVolume used is a subtraction, not a reading,\u201d and \u201cthen throw it out.\u201d A few entries are too long and instructional\u2014especially the concordance warning and final procedural rule\u2014to feel perfectly terse."
+        },
+        {
+          "metric": "relevance",
+          "score": 5.0,
+          "passed": true,
+          "justification": "Every note is tightly anchored to its target: burette rinsing addresses standardized base delivery, the 30-second criterion clarifies \u201cpermanent,\u201d endpoint versus equivalence point corrects that exact claim, and meniscus readings unpack \u201cvolume used.\u201d None floats free of the passage."
+        },
+        {
+          "metric": "insight_depth",
+          "score": 4.0,
+          "passed": true,
+          "justification": "The set adds substantial expert value: aliquot measurement, burette conditioning, indicator persistence, endpoint error, concordant-trial selection, meniscus technique, rough-titration handling, split drops, and washing flask walls. It also correctly identifies premature endpoint calls as systematically low. It falls short of 5 because some advice is standard laboratory technique, the rigid \u201c~1 mL portions\u201d rule is method-dependent, and the useful white-background detail is missed."
+        },
+        {
+          "metric": "variety",
+          "score": 3.0,
+          "passed": true,
+          "justification": "Functionally, the notes include warnings, corrections, insights, and a shortcut, but their declared labels are muddled: three non-requested categories\u2014\u201cdoodle_note,\u201d \u201ccrossed_out,\u201d and \u201cinvention\u201d\u2014replace clearer correction or shortcut labels. The content has variety, though the taxonomy is not cleanly or precisely matched."
+        },
+        {
+          "metric": "density",
+          "score": 2.0,
+          "passed": false,
+          "justification": "Nine annotations substantially exceed the stated ideal of 3\u20136 for a short passage. Most are individually useful, but together they crowd the margin; aliquot volume, burette rinsing, meniscus reading, and endpoint technique could be consolidated while preserving the central warnings and deliberate rough-trial insight."
+        }
+      ],
+      "annotations": [
+        {
+          "target_text": "To determine the concentration of an unknown acid",
+          "annotation_type": "insight",
+          "content": "Concentration of what volume? The acid aliquot is never measured. Without a volumetric pipette there's no denominator, just a number.",
+          "confidence": 0.9,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "slowly add standardized base from the burette",
+          "annotation_type": "warning",
+          "content": "Rinse the burette with the titrant first, twice. Leftover water dilutes your 'standardized' base and every result is high.",
+          "confidence": 0.85,
+          "position": "margin_left"
+        },
+        {
+          "target_text": "first permanent color change",
+          "annotation_type": "improvement",
+          "content": "Define 'permanent'. Phenolphthalein: pink that lasts ~30 s with swirling. CO2 from the air will bleach it eventually; don't chase that.",
+          "confidence": 0.8,
+          "position": "between_lines"
+        },
+        {
+          "target_text": "this marks the endpoint",
+          "annotation_type": "insight",
+          "content": "Endpoint, not equivalence point. Pick the wrong indicator and the gap between the two is your error.",
+          "confidence": 0.9,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "Record the volume of titrant used.",
+          "annotation_type": "improvement",
+          "content": "Record initial AND final readings, bottom of the meniscus, eye level, to 0.01 mL. 'Volume used' is a subtraction, not a reading.",
+          "confidence": 0.85,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "then average your results",
+          "annotation_type": "warning",
+          "content": "Average only concordant trials (within ~0.10 mL). Never average in the rough trial. See below: this page tells you to make one and forgets to say so.",
+          "confidence": 0.9,
+          "position": "margin_left"
+        },
+        {
+          "target_text": "which introduces systematic error",
+          "annotation_type": "doodle_note",
+          "content": "Systematically low, to be exact. The sophomore's version is overshooting.",
+          "confidence": 0.6,
+          "position": "between_lines"
+        },
+        {
+          "target_text": "always overshoots slightly on the first trial",
+          "annotation_type": "crossed_out",
+          "content": "Not 'overshoots slightly'. Run a quick rough titration in ~1 mL portions on purpose, then throw it out.",
+          "confidence": 0.8,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "approaching it slowly on subsequent trials",
+          "annotation_type": "invention",
+          "content": "My rule: run at full speed to 1 mL short of the rough value, then dropwise, then split drops and rinse them down with wash water.",
+          "confidence": 0.85,
+          "position": "margin_left"
+        }
+      ]
+    },
+    {
+      "id": "cooking-omelette",
+      "title": "The Weeknight Kitchen",
+      "genre": "Cooking / Recipe",
+      "generation_error": null,
+      "annotation_count": 6,
+      "overall_score": 3.6,
+      "grade": "C",
+      "all_passed": false,
+      "scores": [
+        {
+          "metric": "voice_consistency",
+          "score": 3.0,
+          "passed": false,
+          "justification": "The blunt authority and dry barbs\u2014\u201cDiner style, then\u201d and \u201cMedium heat gets you something that's neither French nor diner\u201d\u2014fit the persona. However, several notes are too expansive and conversational for terse marginalia, especially the four-sentence whisking note and the repeated \u201cWant it...?\u201d heat explanation."
+        },
+        {
+          "metric": "relevance",
+          "score": 5.0,
+          "passed": true,
+          "justification": "Every note is attached to a precise action or phrase and responds directly to it: whisking technique, omitted seasoning, \u201cmedium heat,\u201d butter readiness, the half-fold, and plating temperature."
+        },
+        {
+          "metric": "insight_depth",
+          "score": 4.0,
+          "passed": true,
+          "justification": "The annotations offer substantial practical expertise: advance salting for tenderness, heat choices tied to omelette style, butter foam as a temperature cue, avoiding browned butter, and warming the plate. The fold comment adds mostly taxonomy and attitude, while the whisking and warm-plate advice are useful but not especially surprising."
+        },
+        {
+          "metric": "variety",
+          "score": 3.0,
+          "passed": true,
+          "justification": "There is a reasonable functional spread\u2014technique improvements, seasoning and heat insights, a warning, and a doodle note. Still, the declared types do not match the requested set particularly well: \u201cinsight\u201d and \u201cwarning\u201d replace explicit correction and shortcut annotations, and no genuine shortcut appears."
+        },
+        {
+          "metric": "density",
+          "score": 3.0,
+          "passed": false,
+          "justification": "Six notes are only one above the ideal range of 2\u20135, but they slightly overcrowd a short, straightforward paragraph. The fold jab is expendable, and the long whisking and heat notes could be compressed; meanwhile, the reviewer-suggested room-temperature egg point and reassurance about intentional glossy/baveuse doneness are absent."
+        }
+      ],
+      "annotations": [
+        {
+          "target_text": "whisk until just combined",
+          "annotation_type": "improvement",
+          "content": "Combined fully, no streaks of white. Leave white streaks in and you get a marbled omelette. Beat it with a fork, don't whip it. You want it uniform, not foamy.",
+          "confidence": 0.8,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "Crack three eggs into a bowl",
+          "annotation_type": "insight",
+          "content": "Salt? None anywhere on the page. Add a pinch to the eggs 10 minutes ahead and the omelette comes out more tender.",
+          "confidence": 0.85,
+          "position": "margin_left"
+        },
+        {
+          "target_text": "over medium heat",
+          "annotation_type": "insight",
+          "content": "Medium heat gets you something that's neither French nor diner. Pick one. Want it soft and pale? Go lower and keep the pan moving. Want it set? Go hotter and be quick.",
+          "confidence": 0.75,
+          "position": "between_lines"
+        },
+        {
+          "target_text": "Melt a knob of butter",
+          "annotation_type": "warning",
+          "content": "Wait until the foam dies down before the eggs go in. If the butter browns, wipe the pan and start again.",
+          "confidence": 0.85,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "fold the omelette in half",
+          "annotation_type": "doodle_note",
+          "content": "In half. Diner style, then. Fine, but say so.",
+          "confidence": 0.7,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "slide it onto a plate",
+          "annotation_type": "improvement",
+          "content": "Use a warm plate. Eggs go cold quickly, and a cold plate takes the heat out of them before you sit down.",
+          "confidence": 0.8,
+          "position": "margin_left"
+        }
+      ]
+    },
+    {
+      "id": "philosophy-certainty",
+      "title": "On the Foundations of Certainty",
+      "genre": "Philosophy",
+      "generation_error": null,
+      "annotation_count": 4,
+      "overall_score": 4.2,
+      "grade": "B",
+      "all_passed": true,
+      "scores": [
+        {
+          "metric": "voice_consistency",
+          "score": 4.0,
+          "passed": true,
+          "justification": "The notes are consistently terse, dry, and pointed, especially \u201c'Could' is carrying the whole argument\u201d and \u201cthe sceptic wins before the argument starts.\u201d The third annotation\u2019s \u201cMy test\u201d and extended question feel slightly more like an instructor than private, sardonic marginalia, keeping the set from a 5."
+        },
+        {
+          "metric": "relevance",
+          "score": 5.0,
+          "passed": true,
+          "justification": "Every note is tightly anchored to its quoted target: \u201cCould\u201d prompts the possibility-versus-evidence distinction, \u201ctruly secure\u201d prompts scrutiny of the certainty standard, the deceived mind prompts doubt about reasoning, and \u201cmight\u201d exposes how the passage compresses the rebuilding step."
+        },
+        {
+          "metric": "insight_depth",
+          "score": 4.0,
+          "passed": true,
+          "justification": "The set adds substantial epistemological value: it distinguishes dubitability from grounds for doubt, challenges infallibilism, and notices that reasoning itself may fall within the deception hypothesis. The final note incisively flags the unsupported leap from foothold to system. It stops short of fully developing the deeper circularity and non-arbitrary-criterion problems highlighted in the reviewer notes."
+        },
+        {
+          "metric": "variety",
+          "score": 4.0,
+          "passed": true,
+          "justification": "Insight, warning, invention, and doodle_note provide a broad and mostly apt spread. The warning directly challenges a hidden standard, while the invention proposes a stress test. However, doodle_note is outside the expected type set, and its observation could more naturally have been classified as a warning or correction."
+        },
+        {
+          "metric": "density",
+          "score": 4.0,
+          "passed": true,
+          "justification": "Four annotations sit squarely within the ideal range of 2\u20135, and all four attach to distinct argumentative pressure points. The set is not cluttered, but it leaves the crucial circularity or criterion problem in rebuilding knowledge only implied rather than directly annotated, so it is not quite complete enough for a 5."
+        }
+      ],
+      "annotations": [
+        {
+          "target_text": "could, in principle, be an elaborate deception",
+          "annotation_type": "insight",
+          "content": "'Could' is carrying the whole argument. Being possible to doubt is not the same as giving us a reason to doubt. Cartesian doubt quietly treats the two as one.",
+          "confidence": 0.85,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "can any knowledge be considered truly secure?",
+          "annotation_type": "warning",
+          "content": "Watch 'truly.' If knowledge has to be secure against every logically possible doubt, the sceptic wins before the argument starts. Ask who set that standard, and why.",
+          "confidence": 0.8,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "even the deceived mind cannot deny it",
+          "annotation_type": "invention",
+          "content": "My test: a foundation also has to survive the question 'certain to whom, and with what reasoning?' The deceiver might be corrupting the reasoning too.",
+          "confidence": 0.75,
+          "position": "margin_left"
+        },
+        {
+          "target_text": "a structure of reliable knowledge might be rebuilt piece by piece",
+          "annotation_type": "doodle_note",
+          "content": "'Might.' Getting the foothold took a sentence. The rebuilding is the hard part, and it gets one word.",
+          "confidence": 0.8,
+          "position": "between_lines"
+        }
+      ]
+    },
+    {
+      "id": "physics-newton",
+      "title": "Classical Mechanics: A First Course",
+      "genre": "Physics Textbook",
+      "generation_error": null,
+      "annotation_count": 5,
+      "overall_score": 4.2,
+      "grade": "B",
+      "all_passed": true,
+      "scores": [
+        {
+          "metric": "voice_consistency",
+          "score": 4.0,
+          "passed": true,
+          "justification": "The notes are consistently terse, confident, and cutting\u2014especially \u201cCircular,\u201d \u201cNobody says so,\u201d and \u201cMiss this and you'll \u2018prove\u2019 a horse can't pull a cart.\u201d A few sentences are slightly more explanatory and chatty than true razor-thin marginalia, so the voice falls short of unmistakable perfection."
+        },
+        {
+          "metric": "relevance",
+          "score": 5.0,
+          "passed": true,
+          "justification": "Every note is tightly anchored to the nearby claim: inertial frames at \u201cunless acted upon,\u201d mass as inertia\u2019s measure, vector acceleration at the proportionality statement, different bodies at the third-law statement, and field momentum at \u201cequal and opposite.\u201d None floats free of the passage."
+        },
+        {
+          "metric": "insight_depth",
+          "score": 4.0,
+          "passed": true,
+          "justification": "Several annotations add substantial expert value: the first law defines inertial frames, action\u2013reaction forces act on different bodies, and electromagnetic interactions require accounting for field momentum. However, \u201cF = ma\u201d mostly compresses what the passage already says, and the set misses the important extension to F = dp/dt for variable-mass or relativistic settings."
+        },
+        {
+          "metric": "variety",
+          "score": 4.0,
+          "passed": true,
+          "justification": "The set mixes conceptual insight, editorial correction, formula shortcut, misconception warning, and a deeper qualification. Those functions suit their locations well, though the supplied labels (\u201cimprovement,\u201d \u201cwarning,\u201d and \u201cdoodle_note\u201d) do not cleanly match the requested insight/shortcut/invention/correction taxonomy, and there is no real invention-type note."
+        },
+        {
+          "metric": "density",
+          "score": 4.0,
+          "passed": true,
+          "justification": "Five annotations sit squarely within the ideal 3\u20136 range, and nearly all earn their space. It is not a 5 because the comparatively obvious F = ma note occupies room while the more consequential F = dp/dt generalization is omitted."
+        }
+      ],
+      "annotations": [
+        {
+          "target_text": "unless acted upon by a net external force",
+          "annotation_type": "insight",
+          "content": "The first law isn't a special case of the second. It defines the inertial frames where the second law holds. Nobody says so, so students think it's redundant.",
+          "confidence": 0.9,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "depends on the object's mass",
+          "annotation_type": "improvement",
+          "content": "Circular. Inertia doesn't 'depend on' mass. Mass is *defined* as the measure of inertia. Say that.",
+          "confidence": 0.8,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "directly proportional to the force and inversely proportional to the mass",
+          "annotation_type": "shortcut",
+          "content": "F = ma. Also a is the *vector* sum's direction, which this wording drops entirely.",
+          "confidence": 0.85,
+          "position": "between_lines"
+        },
+        {
+          "target_text": "For every action force exerted by one body on another",
+          "annotation_type": "warning",
+          "content": "The pair acts on DIFFERENT bodies, so the two forces never cancel. Miss this and you'll 'prove' a horse can't pull a cart.",
+          "confidence": 0.95,
+          "position": "margin_left"
+        },
+        {
+          "target_text": "equal and opposite reaction force",
+          "annotation_type": "doodle_note",
+          "content": "Strictly true only for contact/central forces. Magnetic forces between moving charges break it, and the field carries the momentum.",
+          "confidence": 0.75,
+          "position": "margin_right"
+        }
+      ]
+    },
+    {
+      "id": "rhetoric-persuasion",
+      "title": "The Art of Persuasion",
+      "genre": "Rhetoric / Writing Guide",
+      "generation_error": null,
+      "annotation_count": 4,
+      "overall_score": 4.0,
+      "grade": "B",
+      "all_passed": true,
+      "scores": [
+        {
+          "metric": "voice_consistency",
+          "score": 4.0,
+          "passed": true,
+          "justification": "The clipped challenges\u2014\u201cCloses? Too late.\u201d and \u201cIt\u2019s cowardice.\u201d\u2014are terse, sardonic, and authoritative. \u201cbefore they\u2019ve finished thinking it\u201d is slightly more conversational and theatrical than razor-sharp marginalia, keeping the set short of unmistakable mastery."
+        },
+        {
+          "metric": "relevance",
+          "score": 5.0,
+          "passed": true,
+          "justification": "Every note is tightly anchored to its quoted target: timing challenges \u201ccloses,\u201d the Steel Test operationalizes \u201cstrongest objection,\u201d \u201ccowardice\u201d diagnoses evidence-stacking, and \u201cSilence reads as concession\u201d directly addresses lost trust."
+        },
+        {
+          "metric": "insight_depth",
+          "score": 4.0,
+          "passed": true,
+          "justification": "The Steel Test is the strongest addition: requiring an opponent to endorse the stated objection is a concrete safeguard against straw-manning. Moving the killer objection earlier is also useful, though overly categorical; \u201cIt\u2019s cowardice\u201d speculates about motive, and \u201cSilence reads as concession\u201d mostly compresses the passage\u2019s existing point."
+        },
+        {
+          "metric": "variety",
+          "score": 3.0,
+          "passed": true,
+          "justification": "The set functionally includes improvement, diagnostic insight, a practical test, and a terse summary, so it is not repetitive. However, \u201cinvention\u201d is outside the expected annotation types, while the specifically useful warning against evidence-stacking or a gish gallop is missing; the type selection is therefore not fully matched to the passage."
+        },
+        {
+          "metric": "density",
+          "score": 4.0,
+          "passed": true,
+          "justification": "Four annotations sit at the upper edge of the ideal 2\u20134 range and cover all major claims without overwhelming the passage. The final doodle note is somewhat redundant with the source\u2019s statement about diminished trust, so not every annotation fully earns its place."
+        }
+      ],
+      "annotations": [
+        {
+          "target_text": "closes by addressing the strongest objection",
+          "annotation_type": "improvement",
+          "content": "Closes? Too late. Deal with the killer objection before they've finished thinking it, which means the middle, not the end.",
+          "confidence": 0.7,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "the strongest objection your audience is likely to raise",
+          "annotation_type": "invention",
+          "content": "Steel Test: say their objection better than they would. If they wouldn't sign off on your version of it, you've rebutted a strawman.",
+          "confidence": 0.85,
+          "position": "margin_right"
+        },
+        {
+          "target_text": "assuming that stacking more evidence will overwhelm any doubt",
+          "annotation_type": "insight",
+          "content": "It isn't an assumption. It's cowardice. Naming the objection means admitting it exists.",
+          "confidence": 0.75,
+          "position": "between_lines"
+        },
+        {
+          "target_text": "trusts the entire argument less",
+          "annotation_type": "doodle_note",
+          "content": "Silence reads as concession.",
+          "confidence": 0.9,
+          "position": "margin_right"
+        }
+      ]
+    }
+  ]
+}
