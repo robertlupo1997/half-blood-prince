@@ -163,3 +163,9 @@ resolver rather than the number.
 - `.pdf` and `.epub` only (`cli.py`). HTML is out of scope by decision, not by defect.
 - Legacy helpers (`_search_variants`, `_locate_text`, `render_annotations`) are compatibility
   code **outside** the placement contract. Do not use their recovery rates as evidence.
+
+## Code Review Rules
+
+- Flag any change on the supported placement path (`halfblood.placement`, the processors' `render_plan`) that accepts a quote by prefix, case folding, or first hit instead of refusing. Ambiguous or missing quotes must be skipped with a truthful reason code.
+- Flag a diff that edits `docs/evidence/**` or `examples/*.report.json` by hand or by script without saying in the PR how the numbers were regenerated.
+- Flag a number the diff adds to README, CLAUDE.md, AGENTS.md, or GATES.md (test counts, placement rates, costs) that does not come with the command that reproduces it.
