@@ -167,5 +167,5 @@ resolver rather than the number.
 ## Code Review Rules
 
 - Flag any change on the supported placement path (`halfblood.placement`, the processors' `render_plan`) that accepts a quote by prefix, case folding, or first hit instead of refusing. Ambiguous or missing quotes must be skipped with a truthful reason code.
-- Flag a diff that edits `docs/evidence/**` or `examples/*.report.json` by hand or by script without saying in the PR how the numbers were regenerated.
+- Flag a diff that changes measured values or generated artifacts (run reports, `receipts.json`, any `examples/**/*.report.json`) without saying in the PR how they were regenerated. Prose, verification scripts, and the owner's hand-written verdict under `docs/evidence/` are exempt.
 - Flag a number the diff adds to README, CLAUDE.md, AGENTS.md, or GATES.md (test counts, placement rates, costs) that does not come with the command that reproduces it.
