@@ -8,6 +8,45 @@ quoted passage** from **generating a useful note** from **drawing a
 readable annotation**. Those are three different checks. A resolved
 quote does not prove that an LLM's comment is correct.
 
+## What it does
+
+<p align="center">
+  <img src="examples/real/alice-page-02.png" width="440" alt="Page 2 of Alice's Adventures in Wonderland with handwritten margin notes connected to circled and underlined passages, including a note on the dropped marmalade jar, one giving the Earth's radius as roughly 3,960 miles, and one on Antipathies for Antipodes.">
+  <img src="examples/real/alice-page-08.png" width="440" alt="Page 8 of Alice's Adventures in Wonderland with margin notes, including one showing that four times five is twelve in base 18 and four times six is thirteen in base 21, and one tracing the crocodile verse to Watts's busy bee.">
+</p>
+
+Give it a PDF or EPUB and a persona. A model writes margin notes, each
+quoting the passage it reacts to. A note is drawn only when its complete
+quote resolves to one place in the text; every refusal is listed in the
+run report.
+
+The pages above are from a real-model run on public-domain *Alice*
+(PDF pages 1–12: 60 notes generated, 60 placed, 0 refused), generated
+through the Claude Code CLI (`--provider claude-cli`, CLI alias `opus`)
+on 2026-10-23. One note from a run on 2026-10-22, on the single
+82,383-character chapter of *The Elements of Style* (35 generated, 35
+placed):
+
+> **yours, and oneself have no apostrophe**
+>
+> *'Oneself' is reflexive, not possessive. The possessive is 'one's',
+> and it HAS an apostrophe. Wrong word, wrong rule.*
+
+That is a real error in the 1918 text. These notes have **not been
+independently judged** (gate G5 is open); the review in
+[`examples/real/NOTES-REVIEW.md`](examples/real/NOTES-REVIEW.md) is the
+generating agent's own reading against the source, including the notes
+it found wrong. Plans, run reports, and the annotated PDF and EPUB are
+in [`examples/real/`](examples/real/).
+
+<p align="center">
+  <img src="docs/img/pipeline.svg" width="900" alt="A page goes to a model that writes notes with verbatim quotes; the placement resolver checks each complete quote and returns resolved (drawn in the margin), ambiguous, unresolved, or unsupported_renderer (refused and listed in the run report).">
+</p>
+
+Long reflowable chapters are generated in windows of at most 12,000
+characters, so a long chapter is annotated throughout rather than
+getting a handful of notes for the whole chapter.
+
 ## Evidence-to-placement contract
 
 `halfblood.placement` accepts a quote and optional context or offsets.
@@ -120,7 +159,10 @@ For real generation, configure a supported provider and your own
 credentials. The default model is `claude-sonnet-5`. The `anthropic`
 provider reads `ANTHROPIC_API_KEY`. Other configured providers are
 `openai`, `openrouter`, `ollama`, `lmstudio`, `openai-compatible`,
-and `stub`; endpoint and model compatibility still need checking.
+`claude-cli`, and `stub`; endpoint and model compatibility still need
+checking. `claude-cli` runs a locally installed, signed-in Claude Code
+CLI headless (default alias `opus`), so a Claude subscription can
+generate without an API key; it is how `examples/real/` was made.
 Real generation can cost money. **No paid model-quality evaluation is
 presented as evidence for this release.**
 

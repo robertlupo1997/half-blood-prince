@@ -1,0 +1,1180 @@
+{
+  "report_version": "1.0",
+  "output": "examples/real/elements-of-style-annotated.epub",
+  "pages_total": 1,
+  "pages_attempted": 0,
+  "pages_annotated": 1,
+  "total_annotations": 35,
+  "failed_pages": [],
+  "skipped_pages": [],
+  "page_statuses": [
+    {
+      "page_number": 2,
+      "status": "resumed",
+      "attempts": 0,
+      "error": ""
+    }
+  ],
+  "render": {
+    "report_version": "1.1",
+    "placements": [
+      {
+        "annotation_id": "00ced65c-1518-58f3-925e-9ec18a47e6f1",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            939,
+            999
+          ],
+          "matched_text": "the conditions on which the welfare\nof society mainly depend",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 11,
+              "start": 170,
+              "end": 230
+            }
+          ],
+          "source_digest": "6c87ee0642ff8f88d39a8093db9bc0d227105b7fd750739af38a145ebf7fc319"
+        }
+      },
+      {
+        "annotation_id": "fa57ff84-3b26-55ac-97a0-50de0b8715dd",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            109,
+            153
+          ],
+          "matched_text": "is\nsimply a guess at the writer's intention.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 109,
+              "end": 153
+            }
+          ],
+          "source_digest": "b73ecee8b00dfa2b6d424ae7f606c0624fc14c56b12a948759f7fb81834269c4"
+        }
+      },
+      {
+        "annotation_id": "1d869694-b358-5327-84af-025f8c3a52ff",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            44
+          ],
+          "matched_text": "An unskilful writer will sometimes construct",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 44
+            }
+          ],
+          "source_digest": "1b083f60fbc5edb965cdb7df92bab8f945645eb7f6fbf21dc5251251a3286c47"
+        }
+      },
+      {
+        "annotation_id": "806e21a5-ee96-559e-9f2e-916fee630bcc",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            33
+          ],
+          "matched_text": "All the members were not present.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 33
+            }
+          ],
+          "source_digest": "9ade8783e300483670e828909fc0c5ef2e2af12f151bbb265958a85684f497dc"
+        }
+      },
+      {
+        "annotation_id": "b09be14d-b429-5d86-a84f-5595a8a2d6b5",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            726,
+            871
+          ],
+          "matched_text": "his proper course will probably be not to\npatch up the sentence by substituting one word or set of\nwords for another, but to recast it completely",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 12,
+              "start": 451,
+              "end": 596
+            }
+          ],
+          "source_digest": "66cb4d3597275191be9a977d95dbc92ca05b5f4d4b3334901f4a942e08be0044"
+        }
+      },
+      {
+        "annotation_id": "ef5e9de2-20b0-5025-be9c-b5325077982e",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            21
+          ],
+          "matched_text": "He is very ambitious.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "source_digest": "0d902b10639c858b22a5f63dcd5f7b5a43f5f431c68e1005eb51d8e0ae3994f6"
+        }
+      },
+      {
+        "annotation_id": "2d94dfef-5ebc-5f20-8992-b3a34a3e1d7a",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            177,
+            236
+          ],
+          "matched_text": "But in any sentence in which it is a mere clumsy substitute",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 177,
+              "end": 236
+            }
+          ],
+          "source_digest": "6f3a9aabd4742569aa142e89ea5901241d3df8df8b50508a7287473bc48645df"
+        }
+      },
+      {
+        "annotation_id": "3acc22df-fea6-5967-9eaf-b75e862c8f83",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            49
+          ],
+          "matched_text": "His brother, who he said would send him the money",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 49
+            }
+          ],
+          "source_digest": "1a633ede5588a7ba6db00e4bb31db7ac2655546ba3e774da446aeba70036b7a8"
+        }
+      },
+      {
+        "annotation_id": "a6813e00-d7be-501d-ad46-b2bf8afbf752",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            33
+          ],
+          "matched_text": "Write to-day, to-night, to-morrow",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 6
+            },
+            {
+              "run_index": 0,
+              "node_index": 1,
+              "start": 0,
+              "end": 6
+            },
+            {
+              "run_index": 0,
+              "node_index": 2,
+              "start": 0,
+              "end": 2
+            },
+            {
+              "run_index": 0,
+              "node_index": 3,
+              "start": 0,
+              "end": 8
+            },
+            {
+              "run_index": 0,
+              "node_index": 4,
+              "start": 0,
+              "end": 2
+            },
+            {
+              "run_index": 0,
+              "node_index": 5,
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "source_digest": "2da931da3f5f753209296b0723a7f4b1574b300566058678f5de61c45a7d8741"
+        }
+      },
+      {
+        "annotation_id": "864f3a95-0f92-5c34-b432-bd77c0605357",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            8
+          ],
+          "matched_text": "embarass",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 1,
+              "node_index": 0,
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "source_digest": "bb6d2c9b7216ae20f650d42ff52c64fa98b71fc12e04c6e7d4b209a464ce1e5f"
+        }
+      },
+      {
+        "annotation_id": "fdf8e2fb-4921-516a-b829-314330bacbd0",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            46,
+            83
+          ],
+          "matched_text": "yours, and\noneself have no apostrophe",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 7,
+              "start": 0,
+              "end": 5
+            },
+            {
+              "run_index": 0,
+              "node_index": 8,
+              "start": 0,
+              "end": 6
+            },
+            {
+              "run_index": 0,
+              "node_index": 9,
+              "start": 0,
+              "end": 7
+            },
+            {
+              "run_index": 0,
+              "node_index": 10,
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "source_digest": "7479a577be782b833fd0dc82bfa16676aa0787022450072f9166070c2253c99a"
+        }
+      },
+      {
+        "annotation_id": "4585f52b-4cd2-590f-bb5b-2d88c896ae1f",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            100,
+            150
+          ],
+          "matched_text": "The original text appears when hovering the cursor",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 3,
+              "start": 14,
+              "end": 64
+            }
+          ],
+          "source_digest": "e248f3c409cd9e40f53b250152cba30eb0af96582b7937b65e5a7d9d9af2f4f9"
+        }
+      },
+      {
+        "annotation_id": "01ce709a-e78d-54f5-b2ef-6f53721fe938",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            225,
+            309
+          ],
+          "matched_text": "Unless he\nis certain of doing as well, he will probably do best to follow\nthe rules.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 225,
+              "end": 309
+            }
+          ],
+          "source_digest": "9e2227c1d9d55bf311d80929d7a0acff140cc53932ff070c520575fc4ff7f3b8"
+        }
+      },
+      {
+        "annotation_id": "04037d63-1c90-52db-b960-e648e0e92329",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            308,
+            357
+          ],
+          "matched_text": "he must never insert one comma and omit\nthe other",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 2,
+              "start": 205,
+              "end": 254
+            }
+          ],
+          "source_digest": "b6524076bc4f568f1ac95f861c10bc88c47128142a74b28af833783f166829cc"
+        }
+      },
+      {
+        "annotation_id": "4c832836-ff7a-537a-817b-bbe1a0140ea8",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            373,
+            436
+          ],
+          "matched_text": "In the example\nabove, the relation is that of cause and result.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 2,
+              "start": 159,
+              "end": 222
+            }
+          ],
+          "source_digest": "8b14f74091f49e864bc266b70e507c9673356d46ec7f792f881b65b31423d53d"
+        }
+      },
+      {
+        "annotation_id": "0fc3ff6e-966f-597c-9f3e-52a70b1d05cf",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            37
+          ],
+          "matched_text": "I hardly knew him, he was so changed,",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 37
+            }
+          ],
+          "source_digest": "3914ddf2682b4133ef00a8b3f281f0b863f7919d01f39caf17403c9a993bd758"
+        }
+      },
+      {
+        "annotation_id": "48859522-3c8d-511e-8ce1-568d7f627ecb",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            73
+          ],
+          "matched_text": "He saw a woman accompanied by two children, walking slowly down\nthe road.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 73
+            }
+          ],
+          "source_digest": "79eb26b6136a6fc35111fbb9eae366a7dc56b86d8833ac72ed209fbb83367fba"
+        }
+      },
+      {
+        "annotation_id": "06ec85d8-6ae7-5e7a-8fe0-c12ae28c92f7",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            14,
+            97
+          ],
+          "matched_text": "begin each paragraph with a topic sentence, end it in conformity with the beginning",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 1,
+              "start": 12,
+              "end": 95
+            }
+          ],
+          "source_digest": "14d1f82dd1432822982ff90fd5686ce3ee4330f076401a024159009e1af85807"
+        }
+      },
+      {
+        "annotation_id": "335fab35-4891-5d75-8172-1f0fcf16b67d",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            33
+          ],
+          "matched_text": "This region was surveyed in 1900.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 33
+            }
+          ],
+          "source_digest": "a4a4c85b34df2696ae9565648c634abe511837d7edaefe28b673f6a588e18997"
+        }
+      },
+      {
+        "annotation_id": "b155b4de-3d67-51e8-b65d-9119cd51b6ba",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            48
+          ],
+          "matched_text": "Somewhere in the house a guitar hummed sleepily.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 48
+            }
+          ],
+          "source_digest": "af84bc3eb9bc27add0796d0de3210b005e646fba7c021fd9dbbc41e3ff2ec10f"
+        }
+      },
+      {
+        "annotation_id": "c0b2b52b-c683-5a37-bc80-83f02e8cef54",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            96
+          ],
+          "matched_text": "If those who have studied the art of writing are in accord\non any one point, it is on this, that",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 96
+            }
+          ],
+          "source_digest": "cc73ba248093a6a513fcadf8bc6066d6c43a40aec10ea4891c8664a1562e3e22"
+        }
+      },
+      {
+        "annotation_id": "098bde27-6fe6-511f-bce5-1894d4775ec2",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            503,
+            549
+          ],
+          "matched_text": "but that all the significant details are\ngiven",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 503,
+              "end": 549
+            }
+          ],
+          "source_digest": "658b9bc3cb59ac8568bb9b6921bde4cd23b73741dd4dde3c9923bffbfc94f74d"
+        }
+      },
+      {
+        "annotation_id": "4a751d0a-9ea3-5747-abb1-a4645abf2d09",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            11
+          ],
+          "matched_text": "In especial",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "source_digest": "547a00554958504b690edbc3b0e599d69281a9f83cce950dc6cc2076e5d1b5d6"
+        }
+      },
+      {
+        "annotation_id": "f633b53a-f1e6-5f80-ba72-38164270e9a2",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            142,
+            187
+          ],
+          "matched_text": "which might to advantage be\ncombined into one",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 142,
+              "end": 187
+            }
+          ],
+          "source_digest": "d272b9a1c605c56c43c725a87d2cb726ca711451028f4da99ee963e7bd35f088"
+        }
+      },
+      {
+        "annotation_id": "89db476f-0fde-52b6-bc9b-04be4232a92c",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            356,
+            444
+          ],
+          "matched_text": "Otherwise he had best avoid difficulty by\nputting his statements in the form of a table.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 1,
+              "start": 241,
+              "end": 329
+            }
+          ],
+          "source_digest": "c15377479a562e790c65e2cc958e626d1fba21c6c58f2877e699fce520f37204"
+        }
+      },
+      {
+        "annotation_id": "e0655fee-c6a5-5e0f-803d-245492132e0b",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            73
+          ],
+          "matched_text": "Because of its hardness, this steel is principally used in making razors.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 73
+            }
+          ],
+          "source_digest": "6439c6d8769c8eb21fa598d432f9942b59efa7c0d930a260bc321e5068f839a8"
+        }
+      },
+      {
+        "annotation_id": "d626715f-d621-558d-b046-7b14a3638e4c",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            164,
+            299
+          ],
+          "matched_text": "seeking for Spain a westward\npassage to the Indies as a set-off against the achievements of Portuguese\ndiscoverers, lighted on America.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 164,
+              "end": 299
+            }
+          ],
+          "source_digest": "f1b03b06c6d6b09852d21177be71752092ec0acc6378cfd0c308e6f2b32bfbc7"
+        }
+      },
+      {
+        "annotation_id": "d47f32c0-bf52-50c2-a206-a18b689cabcc",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            50
+          ],
+          "matched_text": "Keats declares that beauty is truth, truth beauty.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 50
+            }
+          ],
+          "source_digest": "d71baaf0b282f23831ded8818df18a34b1bf95e38d919fccbf4f12846773eb43"
+        }
+      },
+      {
+        "annotation_id": "9ba3cd03-a5d1-5abb-8e72-55fc541381a5",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            26
+          ],
+          "matched_text": "(b) Divide \u201con the vowel:\u201d",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 26
+            }
+          ],
+          "source_digest": "a0bfb36e555ab33dad4123e77db31cfcf1fef537f063fc61e2fcb941c79054ed"
+        }
+      },
+      {
+        "annotation_id": "e967076f-d44d-59d5-bd8e-bb6e237aa2f4",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            333,
+            391
+          ],
+          "matched_text": "however incontestable\nthey may be, are not properly facts.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 1,
+              "start": 328,
+              "end": 355
+            },
+            {
+              "run_index": 0,
+              "node_index": 2,
+              "start": 0,
+              "end": 6
+            },
+            {
+              "run_index": 0,
+              "node_index": 3,
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "source_digest": "a6988b04e811f887ca896f3825130c782ea37e5d8e0b0ba4532d2f3c01a18a9a"
+        }
+      },
+      {
+        "annotation_id": "88122c3f-a05e-5b0f-8baa-3077ce00bbf0",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            62
+          ],
+          "matched_text": "(Better use the same number of words to tell what Miss A. sang",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 62
+            }
+          ],
+          "source_digest": "acff8cfdbc4617d506ee0e1ad7dda627c5334dfca7368413b333645dc85041be"
+        }
+      },
+      {
+        "annotation_id": "43f21577-bdd8-5e85-936d-c1e7c90d7e06",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            0,
+            40
+          ],
+          "matched_text": "shows why the use of while is incorrect.",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 0,
+              "start": 0,
+              "end": 21
+            },
+            {
+              "run_index": 0,
+              "node_index": 1,
+              "start": 0,
+              "end": 5
+            },
+            {
+              "run_index": 0,
+              "node_index": 2,
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "source_digest": "9d6068bdf8d34575152bc9ab7fb6bd20cbb0f4b583e058652586f299fea1219a"
+        }
+      },
+      {
+        "annotation_id": "a68fbb3e-95b2-51cb-b4b3-1f68e77f49a0",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            37,
+            52
+          ],
+          "matched_text": "(\u201ca worth while",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 2,
+              "start": 15,
+              "end": 30
+            }
+          ],
+          "source_digest": "3dd82620ec584eaabe6f5d5bc0518bd45330d464eb130d89ce7de5dd4b0d9e65"
+        }
+      },
+      {
+        "annotation_id": "63cb51b6-bc94-5901-b175-895f1a07dacf",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            251,
+            287
+          ],
+          "matched_text": "rime for rhyme is the only allowable",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 1,
+              "start": 0,
+              "end": 4
+            },
+            {
+              "run_index": 0,
+              "node_index": 2,
+              "start": 0,
+              "end": 5
+            },
+            {
+              "run_index": 0,
+              "node_index": 3,
+              "start": 0,
+              "end": 5
+            },
+            {
+              "run_index": 0,
+              "node_index": 4,
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "source_digest": "96eca82687f341d0895ba7c513c504b8fdec12fbaf20b71954d51582ce5e7593"
+        }
+      },
+      {
+        "annotation_id": "07feba29-5814-5015-a4bc-1583451727f5",
+        "source_locator": "page:2",
+        "result": {
+          "schema_version": "1.0",
+          "status": "resolved",
+          "renderer": "epub",
+          "reason": "unique_verified_quote",
+          "normalization": "nfc-whitespace-typographic-v1",
+          "raw_span": [
+            111,
+            165
+          ],
+          "matched_text": "planned, letting, beginning. (Coming is an exception.)",
+          "candidate_count": 1,
+          "coordinate_space": "epub_dom_text",
+          "quads": [],
+          "epub_segments": [
+            {
+              "run_index": 0,
+              "node_index": 7,
+              "start": 0,
+              "end": 7
+            },
+            {
+              "run_index": 0,
+              "node_index": 8,
+              "start": 0,
+              "end": 2
+            },
+            {
+              "run_index": 0,
+              "node_index": 9,
+              "start": 0,
+              "end": 7
+            },
+            {
+              "run_index": 0,
+              "node_index": 10,
+              "start": 0,
+              "end": 2
+            },
+            {
+              "run_index": 0,
+              "node_index": 11,
+              "start": 0,
+              "end": 9
+            },
+            {
+              "run_index": 0,
+              "node_index": 12,
+              "start": 0,
+              "end": 3
+            },
+            {
+              "run_index": 0,
+              "node_index": 13,
+              "start": 0,
+              "end": 6
+            },
+            {
+              "run_index": 0,
+              "node_index": 14,
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "source_digest": "7d9dd0f5b9b13177ea5890ac590d38efc87b8ea328982c349a1bf45e83d57248"
+        }
+      }
+    ],
+    "composition_degradations": [],
+    "rendered": [
+      "00ced65c-1518-58f3-925e-9ec18a47e6f1",
+      "fa57ff84-3b26-55ac-97a0-50de0b8715dd",
+      "1d869694-b358-5327-84af-025f8c3a52ff",
+      "806e21a5-ee96-559e-9f2e-916fee630bcc",
+      "b09be14d-b429-5d86-a84f-5595a8a2d6b5",
+      "ef5e9de2-20b0-5025-be9c-b5325077982e",
+      "2d94dfef-5ebc-5f20-8992-b3a34a3e1d7a",
+      "3acc22df-fea6-5967-9eaf-b75e862c8f83",
+      "a6813e00-d7be-501d-ad46-b2bf8afbf752",
+      "864f3a95-0f92-5c34-b432-bd77c0605357",
+      "fdf8e2fb-4921-516a-b829-314330bacbd0",
+      "4585f52b-4cd2-590f-bb5b-2d88c896ae1f",
+      "01ce709a-e78d-54f5-b2ef-6f53721fe938",
+      "04037d63-1c90-52db-b960-e648e0e92329",
+      "4c832836-ff7a-537a-817b-bbe1a0140ea8",
+      "0fc3ff6e-966f-597c-9f3e-52a70b1d05cf",
+      "48859522-3c8d-511e-8ce1-568d7f627ecb",
+      "06ec85d8-6ae7-5e7a-8fe0-c12ae28c92f7",
+      "335fab35-4891-5d75-8172-1f0fcf16b67d",
+      "b155b4de-3d67-51e8-b65d-9119cd51b6ba",
+      "c0b2b52b-c683-5a37-bc80-83f02e8cef54",
+      "098bde27-6fe6-511f-bce5-1894d4775ec2",
+      "4a751d0a-9ea3-5747-abb1-a4645abf2d09",
+      "f633b53a-f1e6-5f80-ba72-38164270e9a2",
+      "89db476f-0fde-52b6-bc9b-04be4232a92c",
+      "e0655fee-c6a5-5e0f-803d-245492132e0b",
+      "d626715f-d621-558d-b046-7b14a3638e4c",
+      "d47f32c0-bf52-50c2-a206-a18b689cabcc",
+      "9ba3cd03-a5d1-5abb-8e72-55fc541381a5",
+      "e967076f-d44d-59d5-bd8e-bb6e237aa2f4",
+      "88122c3f-a05e-5b0f-8baa-3077ce00bbf0",
+      "43f21577-bdd8-5e85-936d-c1e7c90d7e06",
+      "a68fbb3e-95b2-51cb-b4b3-1f68e77f49a0",
+      "63cb51b6-bc94-5901-b175-895f1a07dacf",
+      "07feba29-5814-5015-a4bc-1583451727f5"
+    ],
+    "skipped": [],
+    "marks_only": [],
+    "warnings": [],
+    "degradation_flags": [
+      "epub_no_target_geometry"
+    ],
+    "output_hashes": []
+  }
+}

@@ -69,6 +69,14 @@ class RoughProfile(_StyleBase):
     overshoot_ratio: float = Field(ge=0.0, le=0.5, default=0.12)
     """Fraction of line width to overshoot at each end of linear marks."""
 
+    overshoot_max: float = Field(ge=0.0, le=36.0, default=4.0)
+    """Absolute cap, in page points, on the overshoot at each end of a linear mark.
+
+    The ratio alone scales with the quad: on a full 415pt body line 0.12 meant
+    up to ~50pt of ink past the text, so the stroke started in the margin. A
+    pen overshoots by a nib's flick, not by a fraction of the line.
+    """
+
     wobble_amplitude: float = Field(ge=0.0, le=0.5, default=0.05)
     """Cubic-wobble amplitude as a fraction of connector length."""
 

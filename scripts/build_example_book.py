@@ -2,7 +2,7 @@
 Project Gutenberg sources.
 
 Produces:
-  examples/src/alice.pdf   -- typeset from pg11.txt with a real text layer (~60 pages)
+  examples/src/alice.pdf   -- typeset from pg11.txt with a real text layer (80 pages)
   examples/src/alice.epub  -- verbatim Project Gutenberg EPUB (ebook #11)
 
 Usage: python scripts/build_example_book.py [--gutenberg-txt PATH] [--epub PATH]
@@ -26,8 +26,6 @@ EPUB_URL = "https://www.gutenberg.org/ebooks/11.epub3.images"
 START_MARK = re.compile(r"\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG.*?\*\*\*")
 END_MARK = re.compile(r"\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG.*?\*\*\*")
 
-CHAPTER_HEADING = re.compile(r"^(CHAPTER [IVX]+\.)$")
-TITLE_LINE = re.compile(r"^([A-Z][A-Z '\u2019-]+)$")
 
 
 def strip_gutenberg_boilerplate(text: str) -> str:
@@ -38,13 +36,46 @@ def strip_gutenberg_boilerplate(text: str) -> str:
     return text[start.end() : end.start()].strip()
 
 
+#: A chapter heading block: "CHAPTER I." on its own line, then the title.
+CHAPTER_BLOCK = re.compile(r"^CHAPTER [IVXLC]+\.(?:\s.*)?$", re.DOTALL)
+#: Gutenberg's placeholder for an illustration the plain text cannot carry.
+ILLUSTRATION = re.compile(r"^\[Illustration[^\]]*\]$")
+
+
 def paragraphs(body: str) -> list[str]:
-    out: list[str] = []
-    for block in re.split(r"\n\s*\n", body):
-        clean = " ".join(block.split())
-        if len(clean) >= 40:  # drop headings/orphan lines; keep real prose
-            out.append(clean)
-    return out
+    """Every paragraph of the book's text, without front matter or headings.
+
+    Dropped: everything before the first chapter heading (illustration
+    placeholder, title, byline, edition line and the table of contents), the
+    chapter heading blocks themselves, and ``[Illustration]`` placeholders.
+    Nothing else is filtered: a one-line reply such as "Not I!" said the Lory
+    hastily. is text of the book. (A former length filter, "drop anything under
+    40 characters", removed 74 such paragraphs while keeping the table of
+    contents and the three chapter headings that happened to be longer.)
+    """
+    blocks = [" ".join(block.split()) for block in re.split(r"\n\s*\n", body)]
+    blocks = [block for block in blocks if block]
+    first_chapter = next(
+        (i for i, block in enumerate(blocks) if CHAPTER_BLOCK.match(block)), None
+    )
+    if first_chapter is None:
+        raise SystemExit("could not locate the first chapter heading")
+    return [
+        block
+        for block in blocks[first_chapter:]
+        if not CHAPTER_BLOCK.match(block) and not ILLUSTRATION.match(block)
+    ]
+
+
+#: Project Gutenberg plain text marks italics as ``_word_``. The closing marker
+#: may sit inside a word (``_Un_important``), so only the opening one is
+#: required to start a word.
+GUTENBERG_ITALIC = re.compile(r"(?<![\w_])_(?=\S)([^_]+?)(?<=\S)_")
+
+
+def italicize(escaped: str) -> str:
+    """Turn Gutenberg ``_..._`` italic markers into ``<i>`` on escaped text."""
+    return GUTENBERG_ITALIC.sub(r"<i>\1</i>", escaped)
 
 
 def to_html(paras: list[str]) -> str:
@@ -54,7 +85,7 @@ def to_html(paras: list[str]) -> str:
         "p { margin: 0 0 9pt 0; }",
         "</style></head><body>",
     ]
-    parts.extend(f"<p>{html.escape(p)}</p>" for p in paras)
+    parts.extend(f"<p>{italicize(html.escape(p))}</p>" for p in paras)
     parts.append("</body></html>")
     return "\n".join(parts)
 

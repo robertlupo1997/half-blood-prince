@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520" role="img" aria-labelledby="t d">
+  <title id="t">Half-Blood Prince pipeline: refuse rather than guess</title>
+  <desc id="d">A PDF or EPUB page goes to a model with a persona, which writes notes that each carry a verbatim quote. The placement resolver checks the complete normalized quote and returns one of four outcomes: resolved (the note is drawn in the margin with a mark and a connector), ambiguous (refused, more than one match), unresolved (refused, quote not found or a bound exceeded), or unsupported_renderer (refused, fixed-layout EPUB). Every refusal is listed in the run report JSON.</desc>
+  <defs>
+    <style>
+      .body { font-family: Georgia, "Times New Roman", "DejaVu Serif", serif; fill: #2b2620; }
+      .mono { font-family: "SFMono-Regular", Menlo, Consolas, "DejaVu Sans Mono", monospace; fill: #2b2620; }
+      .hand { font-family: "Segoe Print", "Bradley Hand", "Chalkboard SE", "Comic Neue", cursive; font-style: italic; fill: #7a1f2b; }
+      .h { font-size: 17px; font-weight: bold; }
+      .s { font-size: 14px; }
+      .xs { font-size: 13px; }
+      .muted { fill: #6b6254; }
+      .card { fill: #fffaf0; stroke: #2b2620; stroke-width: 1.4; }
+      .refuse { fill: #fbf3e6; stroke: #7a1f2b; stroke-width: 1.4; stroke-dasharray: 5 4; }
+      .ink { stroke: #2b2620; stroke-width: 1.6; fill: none; }
+      .accent { stroke: #7a1f2b; stroke-width: 1.8; fill: none; }
+      .rule { stroke: #b9c7d6; stroke-width: 1; opacity: 0.45; }
+    </style>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2b2620"/>
+    </marker>
+    <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7a1f2b"/>
+    </marker>
+  </defs>
+
+  <!-- paper -->
+  <rect x="0" y="0" width="900" height="520" rx="18" fill="#f6efe1"/>
+  <g>
+    <line class="rule" x1="18" y1="62" x2="882" y2="62"/>
+    <line class="rule" x1="18" y1="94" x2="882" y2="94"/>
+    <line class="rule" x1="18" y1="126" x2="882" y2="126"/>
+    <line class="rule" x1="18" y1="158" x2="882" y2="158"/>
+    <line class="rule" x1="18" y1="190" x2="882" y2="190"/>
+    <line class="rule" x1="18" y1="222" x2="882" y2="222"/>
+    <line class="rule" x1="18" y1="254" x2="882" y2="254"/>
+    <line class="rule" x1="18" y1="286" x2="882" y2="286"/>
+    <line class="rule" x1="18" y1="318" x2="882" y2="318"/>
+    <line class="rule" x1="18" y1="350" x2="882" y2="350"/>
+    <line class="rule" x1="18" y1="382" x2="882" y2="382"/>
+    <line class="rule" x1="18" y1="414" x2="882" y2="414"/>
+    <line class="rule" x1="18" y1="446" x2="882" y2="446"/>
+    <line class="rule" x1="18" y1="478" x2="882" y2="478"/>
+  </g>
+  <line x1="26" y1="14" x2="26" y2="506" stroke="#7a1f2b" stroke-width="1" opacity="0.35"/>
+
+  <!-- heading -->
+  <text class="body h" x="40" y="40">From a page to the margin — or to the report</text>
+
+  <!-- 1. page -->
+  <rect class="card" x="40" y="70" width="200" height="124" rx="6"/>
+  <text class="body h" x="56" y="96">1 · Page</text>
+  <text class="body s muted" x="56" y="116">PDF page or EPUB chapter</text>
+  <g stroke="#2b2620" stroke-width="2" opacity="0.35" stroke-linecap="round">
+    <line x1="56" y1="136" x2="224" y2="136"/>
+    <line x1="56" y1="150" x2="210" y2="150"/>
+    <line x1="56" y1="164" x2="224" y2="164"/>
+    <line x1="56" y1="178" x2="168" y2="178"/>
+  </g>
+
+  <path class="ink" d="M244,132 L292,132" marker-end="url(#ah)"/>
+
+  <!-- 2. model -->
+  <rect class="card" x="298" y="70" width="268" height="124" rx="6"/>
+  <text class="body h" x="314" y="96">2 · Model + persona</text>
+  <text class="body s muted" x="314" y="116">writes notes, each with a verbatim quote</text>
+  <rect x="314" y="128" width="236" height="54" rx="4" fill="#f6efe1" stroke="#c9bca4"/>
+  <text class="mono xs" x="324" y="148">quote: "as to whether"</text>
+  <text class="hand s" x="324" y="171">‘as to’ is padding. Cut it.</text>
+
+  <path class="ink" d="M570,132 L618,132" marker-end="url(#ah)"/>
+
+  <!-- 3. resolver -->
+  <rect class="card" x="624" y="70" width="236" height="124" rx="6"/>
+  <text class="body h" x="640" y="96">3 · Placement resolver</text>
+  <text class="body s" x="640" y="120">checks the <tspan font-weight="bold">complete</tspan></text>
+  <text class="body s" x="640" y="139">normalized quote</text>
+  <text class="body xs muted" x="640" y="162">no prefix, no case folding,</text>
+  <text class="body xs muted" x="640" y="179">no paraphrase, no first hit</text>
+
+  <!-- fan-out -->
+  <path class="ink" d="M742,194 L742,214"/>
+  <path class="ink" d="M772,214 L137,214 L137,236" marker-end="url(#ah)"/>
+  <path class="ink" d="M352,214 L352,236" marker-end="url(#ah)"/>
+  <path class="ink" d="M567,214 L567,236" marker-end="url(#ah)"/>
+  <path class="ink" d="M772,214 L772,236" marker-end="url(#ah)"/>
+  <text class="body xs muted" x="460" y="207" text-anchor="middle">exactly one of four outcomes</text>
+
+  <!-- outcomes -->
+  <!-- resolved -->
+  <rect class="card" x="40" y="242" width="194" height="128" rx="6"/>
+  <text class="mono s" x="56" y="266" font-weight="bold">resolved</text>
+  <text class="body xs muted" x="56" y="285">exactly one match</text>
+  <g stroke="#2b2620" stroke-width="2" opacity="0.35" stroke-linecap="round">
+    <line x1="56" y1="306" x2="136" y2="306"/>
+    <line x1="56" y1="322" x2="136" y2="322"/>
+    <line x1="56" y1="338" x2="136" y2="338"/>
+  </g>
+  <line x1="62" y1="325" x2="124" y2="325" stroke="#7a1f2b" stroke-width="2.2" stroke-linecap="round"/>
+  <path class="accent" d="M126,322 C142,312 150,312 160,308" marker-end="url(#ahr)" transform="rotate(180 143 315)"/>
+  <text class="hand xs" x="164" y="314" transform="rotate(-4 190 310)">note</text>
+  <text class="hand xs" x="164" y="331" transform="rotate(-4 190 327)">here</text>
+  <text class="body xs" x="56" y="360">drawn: mark + connector</text>
+
+  <!-- ambiguous -->
+  <rect class="refuse" x="256" y="242" width="194" height="128" rx="6"/>
+  <text class="mono s" x="272" y="266" font-weight="bold">ambiguous</text>
+  <text class="body xs" x="272" y="290">more than one match</text>
+  <text class="body xs muted" x="272" y="308">which one? not guessed</text>
+
+  <!-- unresolved -->
+  <rect class="refuse" x="472" y="242" width="194" height="128" rx="6"/>
+  <text class="mono s" x="488" y="266" font-weight="bold">unresolved</text>
+  <text class="body xs" x="488" y="290">quote not found,</text>
+  <text class="body xs" x="488" y="308">hints disagree, or a</text>
+  <text class="body xs" x="488" y="326">bound is exceeded</text>
+
+  <!-- unsupported -->
+  <rect class="refuse" x="688" y="242" width="172" height="128" rx="6"/>
+  <text class="mono s" x="702" y="266" font-weight="bold">unsupported_</text>
+  <text class="mono s" x="702" y="284" font-weight="bold">renderer</text>
+  <text class="body xs" x="702" y="308">fixed-layout EPUB</text>
+  <text class="body xs muted" x="702" y="326">no coordinates claimed</text>
+
+  <!-- refused stamps -->
+  <g class="hand" font-size="17" font-weight="bold">
+    <text x="350" y="356" transform="rotate(-6 380 350)">refused</text>
+    <text x="566" y="356" transform="rotate(-6 596 350)">refused</text>
+    <text x="770" y="356" transform="rotate(-6 800 350)">refused</text>
+  </g>
+
+  <!-- to report -->
+  <path class="accent" d="M353,370 L353,398" marker-end="url(#ahr)"/>
+  <path class="accent" d="M569,370 L569,398" marker-end="url(#ahr)"/>
+  <path class="accent" d="M774,370 L774,398" marker-end="url(#ahr)"/>
+
+  <rect class="card" x="256" y="404" width="604" height="62" rx="6"/>
+  <text class="body s" x="272" y="428"><tspan font-weight="bold">Run report JSON</tspan> — every refusal is listed, with its reason</text>
+  <text class="mono xs muted" x="272" y="452">{"status": "ambiguous", "reason": "ambiguous_quote", ...}</text>
+
+  <!-- punchline -->
+  <g transform="rotate(-3 140 440)">
+    <text class="hand" x="44" y="432" font-size="24" font-weight="bold">Refuse rather</text>
+    <text class="hand" x="62" y="462" font-size="24" font-weight="bold">than guess.</text>
+    <path class="accent" d="M60,474 C100,468 150,480 200,470" stroke-width="2.2"/>
+  </g>
+</svg>

@@ -123,8 +123,9 @@ def _linear_mark_endpoints(
     bounds: LocalRect,
 ) -> tuple[tuple[float, float], tuple[float, float]]:
     width = quad.x1 - quad.x0
-    left = rng.uniform(0.3, 1.0) * style.rough.overshoot_ratio * width
-    right = rng.uniform(0.3, 1.0) * style.rough.overshoot_ratio * width
+    reach = min(style.rough.overshoot_ratio * width, style.rough.overshoot_max)
+    left = rng.uniform(0.3, 1.0) * reach
+    right = rng.uniform(0.3, 1.0) * reach
     start = _point(quad.x0 - left, y, bounds)
     end = _point(quad.x1 + right, y, bounds)
     return start, end
@@ -156,60 +157,168 @@ def make_underline(
     return InkGroup(group_id=group_id, role=InkRole.UNDERLINE, paths=tuple(paths))
 
 
+#: Most a circle loop may stand off its line's glyph box, in page points. A pen
+#: rings a phrase closely; padding scaled by the span's width put the loop of a
+#: two-line quote 25pt out into the margin, across the margin notes (observed on
+#: the real-model Alice render, page 2, 2026-10-22).
+CIRCLE_PAD_X = 2.0
+CIRCLE_PAD_Y = 1.5
+
+#: Horizontal radius cap, in page points, of a loop's rounded ends.
+_CIRCLE_CAP_RADIUS = 8.0
+
+#: Clearance kept between a loop and a note box it must not touch.
+_CIRCLE_NOTE_CLEARANCE = 0.75
+
+#: Bezier constant for a quarter ellipse.
+_KAPPA = 0.5523
+
+
+def _circle_lines(quads: Sequence[LocalRect]) -> list[LocalRect]:
+    """Merge quads into one rect per text line (vertical overlap >= half)."""
+
+    lines: list[LocalRect] = []
+    for quad in sorted(quads, key=lambda q: ((q.y0 + q.y1) / 2.0, q.x0)):
+        if lines:
+            last = lines[-1]
+            overlap = min(last.y1, quad.y1) - max(last.y0, quad.y0)
+            smaller = min(last.y1 - last.y0, quad.y1 - quad.y0)
+            if smaller > 0 and overlap >= 0.5 * smaller:
+                lines[-1] = LocalRect(
+                    x0=min(last.x0, quad.x0),
+                    y0=min(last.y0, quad.y0),
+                    x1=max(last.x1, quad.x1),
+                    y1=max(last.y1, quad.y1),
+                )
+                continue
+        lines.append(quad)
+    return lines
+
+
+def _intersects(a: LocalRect, b: LocalRect) -> bool:
+    return a.x0 < b.x1 and b.x0 < a.x1 and a.y0 < b.y1 and b.y0 < a.y1
+
+
+def _circle_clip(
+    line: LocalRect,
+    bounds: LocalRect,
+    avoid: Sequence[LocalRect],
+) -> LocalRect:
+    """The rect one loop must stay inside: its line, a pen's pad, minus notes."""
+
+    x0 = max(bounds.x0, line.x0 - CIRCLE_PAD_X)
+    x1 = min(bounds.x1, line.x1 + CIRCLE_PAD_X)
+    y0 = max(bounds.y0, line.y0 - CIRCLE_PAD_Y)
+    y1 = min(bounds.y1, line.y1 + CIRCLE_PAD_Y)
+    for box in avoid:
+        clip = LocalRect(x0=x0, y0=y0, x1=x1, y1=y1)
+        if not _intersects(clip, box):
+            continue
+        # Give up only the pad on the side facing the note; never the glyphs.
+        c = _CIRCLE_NOTE_CLEARANCE
+        if box.x0 >= line.x1:
+            x1 = max(line.x1, min(x1, box.x0 - c))
+        elif box.x1 <= line.x0:
+            x0 = min(line.x0, max(x0, box.x1 + c))
+        elif box.y0 >= line.y1:
+            y1 = max(line.y1, min(y1, box.y0 - c))
+        elif box.y1 <= line.y0:
+            y0 = min(line.y0, max(y0, box.y1 + c))
+    return LocalRect(x0=x0, y0=y0, x1=max(x1, x0 + 1e-3), y1=max(y1, y0 + 1e-3))
+
+
+def _loop_commands(
+    rng: random.Random,
+    clip: LocalRect,
+) -> list[MoveTo | CubicTo]:
+    """One hand-drawn rounded loop inside ``clip``, overlapping a little at the end.
+
+    Every control point is clamped into ``clip``; a cubic Bezier lies inside the
+    convex hull of its control points, so the stroke cannot leave it.
+    """
+
+    cx0, cy0, cx1, cy1 = clip.x0, clip.y0, clip.x1, clip.y1
+    width = cx1 - cx0
+    b = (cy1 - cy0) / 2.0
+    cym = (cy0 + cy1) / 2.0
+    a = max(min(_CIRCLE_CAP_RADIUS, width * 0.45, max(b, 1e-3)), 1e-3)
+    a_right = a * rng.uniform(0.85, 1.0)
+    a_left = a * rng.uniform(0.85, 1.0)
+    noise = min(a, b) * 0.06
+    wobble = b * 0.12
+    k = _KAPPA
+
+    def pt(x: float, y: float) -> tuple[float, float]:
+        return _point(x + rng.uniform(-noise, noise), y + rng.uniform(-noise, noise), clip)
+
+    def cubic(
+        c1: tuple[float, float], c2: tuple[float, float], end: tuple[float, float]
+    ) -> CubicTo:
+        return CubicTo(x1=c1[0], y1=c1[1], x2=c2[0], y2=c2[1], x=end[0], y=end[1])
+
+    tr = _point(cx1 - a_right, cy0, clip)
+    r_mid = _point(cx1, cym + rng.uniform(-0.1, 0.1) * b, clip)
+    br = _point(cx1 - a_right, cy1, clip)
+    bl = _point(cx0 + a_left, cy1, clip)
+    l_mid = _point(cx0, cym + rng.uniform(-0.1, 0.1) * b, clip)
+    tl = _point(cx0 + a_left, cy0, clip)
+    tail = _point(
+        cx1 - a_right + a_right * rng.uniform(0.3, 0.7),
+        cy0 + rng.uniform(0.2, 0.6) * b * 0.5,
+        clip,
+    )
+    span = bl[0] - br[0]
+    top_span = tail[0] - tl[0]
+    commands: list[MoveTo | CubicTo] = [MoveTo(x=tr[0], y=tr[1])]
+    commands.append(cubic(pt(tr[0] + k * a_right, cy0), pt(cx1, r_mid[1] - k * b), r_mid))
+    commands.append(cubic(pt(cx1, r_mid[1] + k * b), pt(br[0] + k * a_right, cy1), br))
+    commands.append(
+        cubic(
+            _point(br[0] + span / 3.0, cy1 - rng.uniform(0.0, wobble), clip),
+            _point(br[0] + 2.0 * span / 3.0, cy1 - rng.uniform(0.0, wobble), clip),
+            bl,
+        )
+    )
+    commands.append(cubic(pt(bl[0] - k * a_left, cy1), pt(cx0, l_mid[1] + k * b), l_mid))
+    commands.append(cubic(pt(cx0, l_mid[1] - k * b), pt(tl[0] - k * a_left, cy0), tl))
+    commands.append(
+        cubic(
+            _point(tl[0] + top_span / 3.0, cy0 + rng.uniform(0.0, wobble), clip),
+            _point(tl[0] + 2.0 * top_span / 3.0, cy0 + rng.uniform(0.0, wobble), clip),
+            tail,
+        )
+    )
+    return commands
+
+
 def make_circle(
     rng: random.Random,
     cluster_quads: Sequence[LocalRect],
     style: InkStyleProfile,
     bounds: LocalRect,
     group_id: str = "circle",
+    avoid: Sequence[LocalRect] = (),
 ) -> InkGroup:
-    """Draw an irregular, deliberately open loop around a quad cluster."""
+    """Ring each line of the quote with its own tight, hand-drawn loop.
+
+    A quote that wraps is ringed line fragment by line fragment, the way a pen
+    circles a phrase that breaks across lines. Each loop stays inside its line's
+    glyph box plus ``CIRCLE_PAD_X``/``CIRCLE_PAD_Y`` and gives up that pad on any
+    side where it would touch a box in ``avoid`` (placed margin notes).
+    """
 
     if not cluster_quads:
         raise ValueError("cluster_quads must not be empty")
 
-    x0 = min(quad.x0 for quad in cluster_quads)
-    y0 = min(quad.y0 for quad in cluster_quads)
-    x1 = max(quad.x1 for quad in cluster_quads)
-    y1 = max(quad.y1 for quad in cluster_quads)
-    width = x1 - x0
-    height = y1 - y0
-    pad_x = max(0.5, width * 0.06)
-    pad_y = max(0.5, height * 0.12)
-    left = max(bounds.x0, x0 - pad_x)
-    right = min(bounds.x1, x1 + pad_x)
-    top = max(bounds.y0, y0 - pad_y)
-    bottom = min(bounds.y1, y1 + pad_y)
-    cx = (left + right) / 2.0
-    cy = (top + bottom) / 2.0
-    rx = max((right - left) / 2.0, 1e-6)
-    ry = max((bottom - top) / 2.0, 1e-6)
-    gap_angle = rng.uniform(0.10, 0.18)
-    angles = (0.0, math.pi / 2.0, math.pi, 3.0 * math.pi / 2.0, 2.0 * math.pi - gap_angle)
-    endpoints = [(cx + rx * math.cos(a), cy + ry * math.sin(a)) for a in angles]
-    commands: list[MoveTo | CubicTo] = [MoveTo(x=endpoints[0][0], y=endpoints[0][1])]
-    noise = min(rx, ry) * 0.08
-    for angle0, angle1, start, end in zip(
-        angles, angles[1:], endpoints, endpoints[1:], strict=False
-    ):
-        span = angle1 - angle0
-        factor = 4.0 / 3.0 * math.tan(span / 4.0)
-        c1 = _point(
-            start[0] - factor * rx * math.sin(angle0) + rng.uniform(-noise, noise),
-            start[1] + factor * ry * math.cos(angle0) + rng.uniform(-noise, noise),
-            bounds,
-        )
-        c2 = _point(
-            end[0] + factor * rx * math.sin(angle1) + rng.uniform(-noise, noise),
-            end[1] - factor * ry * math.cos(angle1) + rng.uniform(-noise, noise),
-            bounds,
-        )
-        commands.append(
-            CubicTo(x1=c1[0], y1=c1[1], x2=c2[0], y2=c2[1], x=end[0], y=end[1])
-        )
-
-    path = StrokePath(commands=tuple(commands), stroke=_stroke(style))
-    return InkGroup(group_id=group_id, role=InkRole.CIRCLE, paths=(path,))
+    paths: list[StrokePath] = []
+    command_count = 0
+    for line in _circle_lines(cluster_quads):
+        if not _can_add(paths, command_count, 7, style):
+            break
+        commands = _loop_commands(rng, _circle_clip(line, bounds, avoid))
+        paths.append(StrokePath(commands=tuple(commands), stroke=_stroke(style)))
+        command_count += len(commands)
+    return InkGroup(group_id=group_id, role=InkRole.CIRCLE, paths=tuple(paths))
 
 
 def make_strike(

@@ -968,6 +968,19 @@ def run_layout(
     else:
         margin_strips = None
 
+    # Notes keep the same pad from the top and bottom page edges as from the
+    # sides: a note shifted to y=0 put its first line on the trim, and one
+    # pushed to the bottom left its descenders past the page (real-model Alice
+    # render, pages 2, 6 and 10, 2026-10-22). Targets were resolved against the
+    # full page above; only note placement uses the inset rect.
+    pad_y = min(config.page_edge_pad, max(0.0, (page_rect.y1 - page_rect.y0) / 4.0))
+    page_rect = SurfaceRect(
+        x0=page_rect.x0,
+        y0=page_rect.y0 + pad_y,
+        x1=page_rect.x1,
+        y1=page_rect.y1 - pad_y,
+    )
+
     if config.solver == "beam":
         return _run_beam(
             request_targets=request_targets,

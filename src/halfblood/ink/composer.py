@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal, Protocol, TypeAlias
 
+from halfblood.ink.connector_route import (
+    ConnectorRoute,
+    make_routed_connector,
+    plan_connector_route,
+)
 from halfblood.ink.geometry import BudgetExceededError, simplify_commands
 from halfblood.ink.model import (
     CubicTo,
@@ -61,6 +66,12 @@ class ComposeRequest:
     document_seed: int
     page_bounds: SurfaceRect
     obstacles: tuple[SurfaceRect, ...] = ()
+    #: Every note box placed on the page. Marks must not draw over them.
+    note_boxes: tuple[SurfaceRect, ...] = ()
+    #: Tight glyph ink boxes for the page (``PageOccupancy.glyphs``). When
+    #: present, a margin note's connector is routed through the leading to the
+    #: quote's near end instead of by the generic obstacle router.
+    glyphs: tuple[SurfaceRect, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -76,6 +87,7 @@ class RoughRequest:
     target_edge: LocalPoint | None = None
     doodle_kind: DoodleKind | None = None
     interline_gap: float | None = None
+    connector_route: ConnectorRoute | None = None
 
 
 @dataclass(frozen=True)
@@ -327,8 +339,19 @@ class BuiltinRoughInkEngine:
                 rng, request.local_target_quads, style, request.local_bounds, group_id
             )
         elif role is RoughRole.CIRCLE:
+            page = request.composition.page_bounds
+            avoid = tuple(
+                _surface_rect_to_local(rect, page) for rect in request.composition.note_boxes
+            )
+            if request.local_note_box is not None:
+                avoid = (*avoid, request.local_note_box)
             group = make_circle(
-                rng, request.local_target_quads, style, request.local_bounds, group_id
+                rng,
+                request.local_target_quads,
+                style,
+                request.local_bounds,
+                group_id,
+                avoid=avoid,
             )
         elif role is RoughRole.STRIKE:
             group = make_strike(
@@ -359,6 +382,25 @@ class BuiltinRoughInkEngine:
                     request,
                     "connector_geometry_unavailable",
                     "A note edge and target edge are required for connector generation.",
+                )
+            if request.connector_route is not None:
+                connector = make_routed_connector(
+                    rng, request.connector_route, style, request.local_bounds, group_id
+                )
+                return RoughResult(
+                    groups=(connector.group,),
+                    degradations=tuple(
+                        InkDegradation(
+                            annotation_id=request.composition.annotation.id,
+                            role=role,
+                            code=value.value,
+                            detail=(
+                                "Connector still touches body text or another note "
+                                f"({request.connector_route.kind.value} route)."
+                            ),
+                        )
+                        for value in connector.degradation
+                    ),
                 )
             obstacles = tuple(
                 _surface_rect_to_local(rect, request.composition.page_bounds)
@@ -410,8 +452,12 @@ class BuiltinRoughInkEngine:
                     "doodle_geometry_unavailable",
                     "No note or target geometry was resolved for doodle placement.",
                 )
-            center = LocalPoint(x=(box.x0 + box.x1) / 2.0, y=(box.y0 + box.y1) / 2.0)
-            size = max(1.0, min(box.x1 - box.x0, box.y1 - box.y0) * 0.18)
+            # The doodle sits just above the note's top-left corner, not on the
+            # box centre: centred, it was drawn straight across the note's own
+            # handwriting (observed on real-model renders of Alice, 2026-10-22).
+            # Small and capped so it fits the gap between stacked notes.
+            size = max(1.0, min(5.5, min(box.x1 - box.x0, box.y1 - box.y0) * 0.12))
+            center = LocalPoint(x=box.x0 + size * 1.2, y=box.y0 - size * 1.3)
             group = make_doodle(
                 rng,
                 request.doodle_kind,
@@ -506,13 +552,69 @@ def _closest_rect_points(first: LocalRect, second: LocalRect) -> tuple[LocalPoin
     return LocalPoint(x=first_x, y=first_y), LocalPoint(x=second_x, y=second_y)
 
 
+#: How far (page points) a same-line text obstacle must extend past the target
+#: quad's note-facing edge before it counts as text in the connector's way. The
+#: occupancy provider pads each line run by 1.5pt, so a target that ends flush
+#: with its line must not register as blocked.
+_SAME_LINE_SLACK = 3.0
+
+#: Inset (page points) from the target's note-facing end at which a connector
+#: lands when it has to arrive on the quad's top or bottom edge.
+_EDGE_LANDING_INSET = 3.0
+
+
+def _text_continues_toward_note(
+    quad: LocalRect,
+    note_box: LocalRect,
+    obstacles: tuple[LocalRect, ...],
+) -> bool:
+    """True when body text sits on the quad's own line between it and the note.
+
+    A quote that ends mid-line (``... she`` followed by ``opened it,``) has its
+    note-facing side edge pressed against the next word. A connector landing on
+    that edge must run back through the rest of the line to reach it.
+    """
+    mid_y = (quad.y0 + quad.y1) / 2.0
+    for obstacle in obstacles:
+        if not obstacle.y0 <= mid_y <= obstacle.y1:
+            continue
+        note_right = note_box.x0 >= quad.x1
+        note_left = note_box.x1 <= quad.x0
+        if note_right and quad.x1 + _SAME_LINE_SLACK < obstacle.x1 and obstacle.x0 < note_box.x0:
+            return True
+        if note_left and obstacle.x0 < quad.x0 - _SAME_LINE_SLACK and obstacle.x1 > note_box.x1:
+            return True
+    return False
+
+
+def _line_edge_points(note_box: LocalRect, quad: LocalRect) -> tuple[LocalPoint, LocalPoint]:
+    """Land on the quad's top or bottom edge near its note-facing end.
+
+    The connector then runs along the gap between lines instead of across the
+    words that follow the quote on its line.
+    """
+    # Top edge unless the note sits wholly below the quote's line.
+    target_y = quad.y1 if note_box.y0 >= quad.y1 else quad.y0
+    inset = min(_EDGE_LANDING_INSET, (quad.x1 - quad.x0) / 2.0)
+    if note_box.x0 >= quad.x1:
+        target_x, note_x = quad.x1 - inset, note_box.x0
+    else:
+        target_x, note_x = quad.x0 + inset, note_box.x1
+    note_y = _clamp(target_y, note_box.y0, note_box.y1)
+    return LocalPoint(x=note_x, y=note_y), LocalPoint(x=target_x, y=target_y)
+
+
 def _connector_edges(
     note_box: LocalRect,
     target_quads: tuple[LocalRect, ...],
+    obstacles: tuple[LocalRect, ...] = (),
 ) -> tuple[LocalPoint, LocalPoint]:
     candidates: list[tuple[float, int, LocalPoint, LocalPoint]] = []
     for index, quad in enumerate(target_quads):
-        note_point, target_point = _closest_rect_points(note_box, quad)
+        if _text_continues_toward_note(quad, note_box, obstacles):
+            note_point, target_point = _line_edge_points(note_box, quad)
+        else:
+            note_point, target_point = _closest_rect_points(note_box, quad)
         distance = math.hypot(note_point.x - target_point.x, note_point.y - target_point.y)
         candidates.append((distance, index, note_point, target_point))
     _, _, note_edge, target_edge = min(candidates, key=lambda candidate: candidate[:2])
@@ -564,8 +666,29 @@ class InkComposer:
 
         note_edge: LocalPoint | None = None
         target_edge: LocalPoint | None = None
-        if note_box is not None and target_quads:
-            note_edge, target_edge = _connector_edges(note_box, target_quads)
+        connector_route: ConnectorRoute | None = None
+        if note_box is not None and target_quads and request.glyphs and not mark_only:
+            own_box = request.resolved.note_box
+            connector_route = plan_connector_route(
+                note_box,
+                target_quads,
+                tuple(_surface_rect_to_local(rect, page) for rect in request.glyphs),
+                other_notes=tuple(
+                    _surface_rect_to_local(rect, page)
+                    for rect in request.note_boxes
+                    if rect != own_box
+                ),
+                bounds=bounds,
+                clearance=style.nib.base_width / 2.0,
+            )
+        if connector_route is not None:
+            note_edge = LocalPoint(x=connector_route.start[0], y=connector_route.start[1])
+            target_edge = LocalPoint(x=connector_route.tip[0], y=connector_route.tip[1])
+        elif note_box is not None and target_quads:
+            local_obstacles = tuple(
+                _surface_rect_to_local(rect, page) for rect in request.obstacles
+            )
+            note_edge, target_edge = _connector_edges(note_box, target_quads, local_obstacles)
 
         degradations: list[InkDegradation] = []
         doodle_kind: DoodleKind | None = None
@@ -607,6 +730,7 @@ class InkComposer:
                 note_edge=note_edge,
                 target_edge=target_edge,
                 doodle_kind=doodle_kind,
+                connector_route=connector_route,
             )
             seed = derive_seed(
                 request.document_seed,

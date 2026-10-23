@@ -101,6 +101,11 @@ PROVIDER_PRESETS: dict[str, ProviderPreset] = {
     "openai-compatible": ProviderPreset(
         "openai-compatible", None, "HALFBLOOD_API_KEY", "auto"
     ),
+    # Local signed-in Claude Code CLI: it owns its own authentication, so no
+    # key env. The loopback base_url is never contacted, as for the stub.
+    "claude-cli": ProviderPreset(
+        "claude-cli", "http://127.0.0.1:9/v1", None, "json-schema", default_model="opus"
+    ),
     # Offline deterministic stub: base_url is a loopback discard port that is
     # never contacted; it exists only to satisfy base_url validation.
     "stub": ProviderPreset(

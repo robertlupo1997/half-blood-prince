@@ -188,6 +188,34 @@ def _infer_columns(lines: list[_LineRun], page_rect: fitz.Rect) -> tuple[tuple[T
     return tuple(columns), confidence
 
 
+def _glyph_ink_rects(page: fitz.Page, matrix: fitz.Matrix) -> tuple[SurfaceRect, ...]:
+    """One tight outline box per visible character, in display space.
+
+    ``TEXT_ACCURATE_BBOXES`` measures each glyph's outline instead of the
+    font's line box. On the Alice example the line boxes are 19pt tall at a
+    22pt pitch, leaving 3pt of "leading"; the glyph outlines leave about 9pt,
+    which is where a hand-drawn connector actually runs.
+    """
+    raw: dict[str, Any] = page.get_text("rawdict", flags=fitz.TEXT_ACCURATE_BBOXES)
+    rects: list[SurfaceRect] = []
+    for block in raw.get("blocks", []):
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                for char in span.get("chars", []):
+                    if str(char.get("c", "")).isspace():
+                        continue
+                    bbox = char.get("bbox")
+                    if bbox is None:
+                        continue
+                    rect = _display_rect(
+                        (float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])),
+                        matrix,
+                    )
+                    if _valid_rect(rect):
+                        rects.append(_surface_rect(rect))
+    return tuple(rects)
+
+
 class PdfTextLayerOccupancyProvider:
     """Extract occupancy from a PDF page's existing text layer."""
 
@@ -243,4 +271,5 @@ class PdfTextLayerOccupancyProvider:
             words=tuple(word.rect for word in words),
             body_columns=body_columns,
             confidence=confidence,
+            glyphs=_glyph_ink_rects(page, rotation_matrix),
         )
