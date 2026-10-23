@@ -11,6 +11,7 @@ from halfblood.generation.errors import ProviderConfigurationError
 from halfblood.generation.providers.anthropic import AnthropicProvider
 from halfblood.generation.providers.base import LLMProvider, ProviderCapabilities
 from halfblood.generation.providers.claude_cli import ClaudeCliProvider
+from halfblood.generation.providers.codex_cli import CodexCliProvider
 from halfblood.generation.providers.openai_compat import OpenAICompatibleProvider
 from halfblood.generation.providers.stub import StubProvider
 
@@ -108,6 +109,11 @@ def build_provider(
     """Construct an adapter from already-resolved, nonsecret configuration."""
     if config.provider == "stub":
         return StubProvider()
+    if config.provider == "codex-cli":
+        return CodexCliProvider(
+            timeout_seconds=config.timeout_seconds,
+            max_retries=config.max_retries,
+        )
     if config.provider == "claude-cli":
         return ClaudeCliProvider(
             timeout_seconds=config.timeout_seconds,

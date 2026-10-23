@@ -106,6 +106,11 @@ PROVIDER_PRESETS: dict[str, ProviderPreset] = {
     "claude-cli": ProviderPreset(
         "claude-cli", "http://127.0.0.1:9/v1", None, "json-schema", default_model="opus"
     ),
+    # Local signed-in OpenAI Codex CLI, mainly as an independent eval judge.
+    # "default" model defers to ~/.codex/config.toml.
+    "codex-cli": ProviderPreset(
+        "codex-cli", "http://127.0.0.1:9/v1", None, "json-schema", default_model="default"
+    ),
     # Offline deterministic stub: base_url is a loopback discard port that is
     # never contacted; it exists only to satisfy base_url validation.
     "stub": ProviderPreset(
