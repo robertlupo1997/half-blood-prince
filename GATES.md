@@ -159,12 +159,25 @@ automated, not as a control.
   author is the same shape `HBP-ROADMAP-OX.md` discounted when it dropped the study-tool
   product. G4 is an internal bar, not marketing.
 
-## G5 — quality does not silently regress 🔴 UNMET, now unblocked
+## G5 — quality does not silently regress ✅ MET 2026-10-23
 
-- [ ] G5: **the eval harness runs with an independent judge and no `--allow-self-judge`.**
+- [x] G5: **the eval harness runs with an independent judge and no `--allow-self-judge`.**
 
   CHECK: `.venv/bin/python eval/eval_harness.py --judge-model <independent> --json-out eval-result.json`
   EXPECT: `/"self_judged":\s*false/`
+
+  **Met 2026-10-23.** Generator `claude-cli` (alias `opus`), judge `codex-cli` (OpenAI
+  Codex, the owner's default model), `"self_judged": false`, run from `origin/main` at
+  `5c261b6` on the owner's machine with no API key:
+  [`docs/evidence/2026-10-23-g5/eval-result.json`](docs/evidence/2026-10-23-g5/eval-result.json).
+  Overall 3.92/5 (grade B), and the harness exits 1: three cases pass every metric, two fail
+  on **density** (9 notes on a 91-word chemistry passage whose ideal is 3–6; 6 on an
+  81-word recipe whose ideal is 2–5). Density averaged 3.40 against a 3.5 threshold; every
+  other metric passed, relevance at 5.00. The gate is that the run happens with an
+  independent judge, and it did; the score is the finding. The persona prompt was revised
+  the same day to scale the note count to the text, and a Claude-only re-generation of the
+  five cases landed every count inside its ideal range (5, 4, 4, 4, 4). **That revision has
+  not been re-graded by Codex yet**, so the committed score is still the one above.
 
   Costs money and needs a key, so this is a release gate, not a CI gate. Budgeted under $5
   by `HBP-ROADMAP-OX.md:14-16`.

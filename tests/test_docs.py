@@ -281,7 +281,17 @@ def test_real_model_showcase_counts_match_its_reports() -> None:
         assert report["render"]["skipped"] == []
     assert "60 notes generated, 60 placed, 0 refused" in readme
     assert "35 generated, 35" in readme
-    assert "not been\nindependently judged" in readme
+    # The README's quality line must be the committed independent grading, not a claim.
+    g5 = json.loads(
+        (_ROOT / "docs/evidence/2026-10-23-g5/eval-result.json").read_text(encoding="utf-8")
+    )
+    assert g5["run"]["self_judged"] is False
+    assert (g5["run"]["generator"]["provider"], g5["run"]["judge"]["provider"]) == (
+        "claude-cli",
+        "codex-cli",
+    )
+    overall = sum(case["overall_score"] for case in g5["results"]) / len(g5["results"])
+    assert f"{overall:.2f}/5" in readme
 
 
 def test_real_model_showcase_render_degradations_match_the_review() -> None:

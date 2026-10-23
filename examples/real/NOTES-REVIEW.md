@@ -5,8 +5,9 @@ Two public-domain books, generated with `--provider claude-cli`
 Half-Blood Prince persona. *Elements of Style* was generated on 2026-10-22;
 *Alice* was regenerated on 2026-10-23 against the rebuilt
 `examples/src/alice.pdf` (see "Source" below). Read line by line against the source text by the
-agent that produced them. **That is a self-review, not an independent judgement:
-gate G5 (a frontier quality score) is still open.**
+agent that produced them. **That is a self-review, not an independent judgement.**
+The independent grading (gate G5, 2026-10-23) scored the separate eval set, not these
+books; see `GATES.md`.
 
 ## Files
 

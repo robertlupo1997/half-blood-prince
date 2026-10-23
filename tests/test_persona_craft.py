@@ -97,7 +97,13 @@ class TestDefaultPromptIsUnchanged:
         assert "WHAT YOUR ANNOTATIONS DO" in ANNOTATION_CRAFT
 
     def test_default_prompt_length_is_pinned(self) -> None:
-        """5891 characters: the 2026-10-22 revision, changed deliberately.
+        """6337 characters: the 2026-10-23 revision, changed deliberately.
+
+        The first independent grading (Claude generator, Codex judge,
+        ``docs/evidence/2026-10-23-g5``) failed only on density: 9 notes on a
+        91-word passage. The revision scales the count to the text, keeps notes
+        terse, and asks for the type that names each note's job. Before that,
+        the 2026-10-22 revision was 5891 characters.
 
         The pre-split prompt was 4779 characters. It was rewritten after the first
         real-model run on public-domain books (``examples/real/NOTES-REVIEW.md``):
@@ -109,7 +115,7 @@ class TestDefaultPromptIsUnchanged:
         recorded spacing must reproduce the prompt exactly.
         """
         prompt = _prompt(None)
-        assert len(prompt) == 5891
+        assert len(prompt) == 6337
         assert prompt.startswith(DEFAULT_PERSONA.rstrip())
         assert f"{DEFAULT_PERSONA.rstrip()}\n\n{ANNOTATION_CRAFT.rstrip()}\n\n\nTASK\n" in prompt
 
