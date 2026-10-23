@@ -32,8 +32,13 @@ placed):
 > *'Oneself' is reflexive, not possessive. The possessive is 'one's',
 > and it HAS an apostrophe. Wrong word, wrong rule.*
 
-That is a real error in the 1918 text. These notes have **not been
-independently judged** (gate G5 is open); the review in
+That is a real error in the 1918 text. An independent grading
+(Claude writing, OpenAI Codex judging, 2026-10-23) scored the eval set
+**3.92/5, grade B**, and failed it on one metric: too many notes on short
+passages ([evidence](docs/evidence/2026-10-23-g5/eval-result.json),
+[gate G5](GATES.md)). The prompt was revised for density the same day;
+that revision has not been re-graded yet. The *Alice* and *Elements of
+Style* notes shown here were not part of that grading. The review in
 [`examples/real/NOTES-REVIEW.md`](examples/real/NOTES-REVIEW.md) is the
 generating agent's own reading against the source, including the notes
 it found wrong. Plans, run reports, and the annotated PDF and EPUB are

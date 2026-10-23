@@ -5,7 +5,7 @@
 ⛔ **Every count and claim below is re-derivable. Run the command; do not carry the number.**
 This file has been stale before and cost a full investigation cycle.
 
-**What done means:** [`GATES.md`](GATES.md). Six gates; four are met. That file is the
+**What done means:** [`GATES.md`](GATES.md). Six gates; five are met (G4 is the owner's verdict). That file is the
 definition of done this project ran 34 sessions without.
 
 ## Build & verify — recorded 2026-09-11 by `setup-harness`
