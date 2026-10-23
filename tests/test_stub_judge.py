@@ -142,7 +142,9 @@ def test_harness_main_runs_offline_and_fails_thresholds(
     # Stub neutral scores sit below most thresholds: exit 1 is the honest outcome.
     assert excinfo.value.code == 1
     data = __import__("json").loads(json_out.read_text())
-    assert len(data) == len(module.TEST_CASES)
-    assert all(case["generation_error"] is None for case in data)
+    assert data["run"]["self_judged"] is True
+    assert data["run"]["judge"] == {"provider": "stub", "model": "stub-deterministic"}
+    assert len(data["results"]) == len(module.TEST_CASES)
+    assert all(case["generation_error"] is None for case in data["results"])
     out = capsys.readouterr().out
     assert "Overall average score" in out

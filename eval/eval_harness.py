@@ -864,7 +864,16 @@ def main() -> None:
     all_passed = print_report(results, console)
 
     if args.json_out:
-        args.json_out.write_text(json.dumps(_results_to_json(results), indent=2))
+        run = {
+            "generator": {"provider": generator_config.provider, "model": generator_config.model},
+            "judge": {"provider": judge_config.provider, "model": judge_config.model},
+            "self_judged": (
+                generator_config.provider == judge_config.provider
+                and generator_config.model == judge_config.model
+            ),
+        }
+        payload = {"run": run, "results": _results_to_json(results)}
+        args.json_out.write_text(json.dumps(payload, indent=2))
         console.print(f"Wrote raw results to [cyan]{args.json_out}[/cyan]")
 
     raise SystemExit(0 if all_passed else 1)

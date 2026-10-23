@@ -159,10 +159,12 @@ For real generation, configure a supported provider and your own
 credentials. The default model is `claude-sonnet-5`. The `anthropic`
 provider reads `ANTHROPIC_API_KEY`. Other configured providers are
 `openai`, `openrouter`, `ollama`, `lmstudio`, `openai-compatible`,
-`claude-cli`, and `stub`; endpoint and model compatibility still need
+`claude-cli`, `codex-cli`, and `stub`; endpoint and model compatibility still need
 checking. `claude-cli` runs a locally installed, signed-in Claude Code
 CLI headless (default alias `opus`), so a Claude subscription can
 generate without an API key; it is how `examples/real/` was made.
+`codex-cli` does the same through a signed-in OpenAI Codex CLI (read-only
+sandbox), which makes an independent, non-Anthropic eval judge.
 Real generation can cost money. **No paid model-quality evaluation is
 presented as evidence for this release.**
 

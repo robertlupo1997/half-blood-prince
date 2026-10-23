@@ -124,6 +124,7 @@ def _provider_options(command: _CommandFunction) -> _CommandFunction:
                     "lmstudio",
                     "openai-compatible",
                     "claude-cli",
+                    "codex-cli",
                     "stub",
                 )
             ),
