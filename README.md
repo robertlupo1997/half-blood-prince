@@ -2,6 +2,10 @@
 
 Quoted evidence, placed on a document — or an explicit refusal.
 
+<p align="center">
+  <img src="docs/img/demo-alice-page-02.gif" width="520" alt="Page 2 of Alice's Adventures in Wonderland, with handwritten margin notes appearing one at a time, each joined by an arrow to the circled or underlined passage it quotes.">
+</p>
+
 Half-Blood Prince is a Python toolkit and CLI for PDF and EPUB
 annotations. Its deterministic placement interface separates **finding a
 quoted passage** from **generating a useful note** from **drawing a
