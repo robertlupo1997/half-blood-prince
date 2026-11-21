@@ -150,6 +150,12 @@ automated, not as a control.
   ⚠ The earlier plan for this gate was a ~$0.10 paid generation, on the belief that no free
   model could generate. That belief was a hardcoded `max_tokens=2048` in this repository.
 
+  **2026-11-21: a packet on the current prompt.** The run above predates the 2026-10-23
+  density revision. A fresh *Alice* run on that prompt (pages 1–12, 60 generated, 60 placed)
+  and the three notes put to Trey are in
+  [`docs/evidence/2026-11-21-g4-packet/`](docs/evidence/2026-11-21-g4-packet/README.md).
+  His verdict, once given, is recorded there.
+
   **G4 now waits only on Trey reading it.** Five notes is a thin read; if that is too few to
   judge, raise `--max-per-page` and regenerate — still free.
 
